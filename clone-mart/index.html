@@ -170,6 +170,29 @@ button:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){
   .hbtn.pulse,.tag.shelf.empty .tx{animation:none}
 }
+
+/* ---------- daily goals (HUD right column; top is set from JS so it sits under the top bar) ---------- */
+#goals{position:fixed;right:max(10px,env(safe-area-inset-right,0px));top:calc(env(safe-area-inset-top,0px) + 62px);width:min(196px,48vw);pointer-events:auto;cursor:pointer;color:var(--paper);
+  background:var(--chip);border:2px solid rgba(255,255,255,.12);border-radius:12px;padding:6px 9px 7px;font-size:12px;line-height:1.3;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+#goals .gh{display:flex;justify-content:space-between;align-items:baseline;gap:6px;font-weight:900;color:var(--sign)}
+#goals .gh .rw,#goals .gh .sm{color:var(--paper);font-weight:700;font-size:11px;opacity:.85;white-space:nowrap}
+#goals .gh .sm,#goals.mini .gh .rw,#goals.mini .g{display:none}
+#goals.mini{width:auto;max-width:min(196px,48vw);padding:4px 9px}
+#goals.mini .gh .sm{display:inline}
+#goals .evs{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+#goals .ev{font-weight:900;font-size:11px;border-radius:7px;padding:1px 6px;background:rgba(255,159,67,.95);color:var(--ink)}
+#goals .ev.rush{background:var(--coral);color:#fff}
+#goals .g{display:grid;grid-template-columns:13px 1fr auto;column-gap:4px;row-gap:2px;align-items:center;font-weight:700;margin-top:5px}
+#goals .g .ck{text-align:center;opacity:.8}
+#goals .g .lb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#goals .g .v{font-size:11px;font-variant-numeric:tabular-nums;opacity:.85;white-space:nowrap}
+#goals .g i{grid-column:2/4;height:3px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden}
+#goals .g i b{display:block;height:100%;width:0;background:var(--sign)}
+#goals .g.done{color:var(--mint)} #goals .g.done i b{background:var(--mint)}
+#goals .g.fail{color:var(--coral)} #goals .g.fail .lb{text-decoration:line-through}
+#storeUpg{margin-top:18px;padding-top:14px;border-top:2px dashed #cfc6b2}
+#storeUpg .upg-h{margin:0 0 2px;font-size:18px;font-weight:900}
+#storeUpg .upg-sub{margin:0 0 10px;color:var(--muted);font-size:13px;font-weight:500}
 </style>
 </head>
 <body>
@@ -189,6 +212,7 @@ button:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
   </div>
 </div>
 <div id="alerts"></div>
+<div id="goals" role="button" aria-label="今日目標（點一下展開或收合）" hidden></div>
 <div id="toast"></div>
 <div id="hint" class="off"></div>
 <div id="joy" hidden><div id="joyknob"></div></div>
@@ -321,6 +345,29 @@ const ROLE = Object.fromEntries(ROLES.map(r => [r.id, r]));
 const LV_WORK = [0, 0.85, 1.15, 1.5];
 const LV_MOVE = [0, 2.7, 3.3, 4.0];
 const upgradeCost = (r, lv) => lv === 1 ? Math.round(r.cost*0.75) : Math.round(r.cost*1.4);
+
+/* goals, events & store upgrades (see "goals & events" section below) */
+const RUSHES = [   // rush hours: spawn interval × RUSH_MULT, shopping lists lean to `boost`
+  {id:'lunch',  name:'午餐尖峰', icon:'🍱', from:11.5, to:13,    boost:{bento:3, noodle:2}},
+  {id:'dinner', name:'下班尖峰', icon:'🌆', from:17.5, to:19.25, boost:{drink:2, snack:2}},
+];
+const RUSH_MULT = d => clamp(0.8 - 0.05*d, 0.5, 0.75);   // day 1: ×0.75 … day 6+: ×0.5
+const DAY_EVENTS = [   // one per day from day 4 (55% chance); fields are multipliers / overrides
+  {id:'normal', name:'平常日', icon:'🏪', desc:''},
+  {id:'promo',  name:'促銷日', icon:'🏷️', desc:'全品項 9 折，客人變多', spawn:0.8, price:0.9},
+  {id:'rain',   name:'雨天',   icon:'☔', desc:'客人少一點、愛喝咖啡、地板容易髒', spawn:1.15, coffee:0.5, mess:1.6},
+  {id:'payday', name:'發薪日', icon:'💰', desc:'大部分客人會多買一樣', extraItem:0.6},
+  {id:'heat',   name:'熱浪',   icon:'🥵', desc:'飲料大賣，熱咖啡沒人要', boost:{drink:3}, coffee:0.12},
+];
+const VIP_PAY = 1.5, VIP_DRAIN = 1.6;
+const vipChance = d => d >= 3 ? Math.min(0.12, 0.03 + d*0.012) : 0;
+const STORE_UPG = [   // bought in the team panel; each has 2 levels
+  {id:'shelf',  name:'加大貨架',   icon:'🗄️', desc:'每個貨架能放更多商品，補一次撐更久。', cost:[700,1600],  fx:[1,1.35,1.7],  fxText:v=>'容量 ×'+v},
+  {id:'coffee', name:'高速咖啡機', icon:'☕', desc:'沖一杯咖啡的時間縮短。',               cost:[500,1200],  fx:[1,0.7,0.5],   fxText:v=>'沖泡時間 ×'+v},
+  {id:'pos',    name:'快速收銀機', icon:'💳', desc:'每位客人結帳更快。',                   cost:[800,1800],  fx:[1,0.8,0.65],  fxText:v=>'結帳時間 ×'+v},
+  {id:'sign',   name:'招牌燈箱',   icon:'💡', desc:'更醒目的招牌，吸引更多客人上門。',     cost:[900,2000],  fx:[1,0.88,0.78], fxText:v=>'來客間隔 ×'+v},
+];
+const STORE = Object.fromEntries(STORE_UPG.map(u => [u.id, u]));
 
 /* ---------------- renderer / scene ---------------- */
 const canvas = $('#game');
@@ -1240,7 +1287,7 @@ const G = {
   state:'title', prevState:'play', day:1, time:0, money:START_MONEY, rating:3, cups:2,
   spawnT:2, closingT:0, tips:new Set(), clones:{}, stats:null,
 };
-function newStats(){ return {customers:0, served:0, angry:0, stolen:0, caught:0, revenue:0, stockCost:0, coffeeCost:0, items:0}; }
+function newStats(){ return {customers:0, served:0, angry:0, stolen:0, caught:0, revenue:0, stockCost:0, coffeeCost:0, items:0, coffeeSold:0, vip:0, vipServed:0, bonus:0, missed:0}; }
 G.stats = newStats();
 const customers = [], queue = [], messes = [], staff = [];
 let player = null;
@@ -1279,25 +1326,32 @@ function setCloneLevel(s, lv){ s.level = lv; s.work = LV_WORK[lv]; s.agent.speed
 /* ----- customers ----- */
 function spawnCustomer(){
   const side = Math.random() < 0.5 ? -1 : 1;
-  const kid = Math.random() < 0.12;
-  const hasHat = Math.random() < 0.2;
-  const ch = makeChar({shirt:pick(SHIRTS), pants:pick(PANTS), skin:pick(SKIN), hair:pick(HAIR), cap: hasHat ? pick([0x2f3b52,0xe85d75,0x58c48f,0xf2f2f2]) : 0, scale: kid ? 0.82 : rand(1.0,1.12)});
+  const thiefChance = G.day >= 2 ? Math.min(0.14, 0.05 + G.day*0.012) : 0;
+  const thief = Math.random() < thiefChance;
+  const vip = !thief && G.state !== 'title' && Math.random() < vipChance(G.day);
+  const ev = G.event || DAY_EVENTS[0];
+  const kid = !vip && Math.random() < 0.12;
+  const hasHat = vip || Math.random() < 0.2;
+  const ch = makeChar({shirt: vip ? 0x22223a : pick(SHIRTS), pants:pick(PANTS), skin:pick(SKIN), hair:pick(HAIR), cap: vip ? 0xffcf3a : hasHat ? pick([0x2f3b52,0xe85d75,0x58c48f,0xf2f2f2]) : 0, scale: kid ? 0.82 : vip ? 1.1 : rand(1.0,1.12)});
   const a = new Agent(ch, rand(1.9,2.5) * (kid ? 1.1 : 1));
   a.pos.set(side*13.5, 0, STREET_Z + rand(-0.4,0.4));
-  // shopping list
-  const n = Math.random() < 0.5 ? 1 : (Math.random() < 0.7 ? 2 : 3);
+  // shopping list (rush hours and day events tilt what people want)
+  let n = vip ? (Math.random() < 0.5 ? 2 : 3) : Math.random() < 0.5 ? 1 : (Math.random() < 0.7 ? 2 : 3);
+  if (ev.extraItem && Math.random() < ev.extraItem) n = Math.min(SHELVES.length, n + 1);
+  const boost = Object.assign({}, ev.boost, G.rush && G.state === 'play' ? G.rush.boost : null);
+  const wt = x => x.weight * (boost[x.id] || 1);
   const pool = SHELVES.slice(); const list = [];
   for (let i=0;i<n;i++){
-    const tot = pool.reduce((s,x)=>s+x.weight,0); let r = Math.random()*tot, k = 0;
-    while (r > pool[k].weight){ r -= pool[k].weight; k++; }
+    const tot = pool.reduce((s,x)=>s+wt(x),0); let r = Math.random()*tot, k = 0;
+    while (k < pool.length-1 && r > wt(pool[k])){ r -= wt(pool[k]); k++; }
     list.push(pool[k].id); pool.splice(k,1);
   }
-  const thiefChance = G.day >= 2 ? Math.min(0.14, 0.05 + G.day*0.012) : 0;
-  const c = {agent:a, ch, side, list, li:0, basket:[], patience:100, wantsCoffee: Math.random() < 0.28, gotCoffee:false,
-    thief: Math.random() < thiefChance, state:'arrive', timer:0, qi:-1, tag:new Tag(''), emoteT:0, emote:'', greeted:false, entered:false, payT:0, dirtT:rand(4,12)};
+  const c = {agent:a, ch, side, list, li:0, basket:[], patience:100, wantsCoffee: Math.random() < (ev.coffee !== undefined ? ev.coffee : 0.28), gotCoffee:false,
+    thief, vip, state:'arrive', timer:0, qi:-1, tag:new Tag(''), emoteT:0, emote:'', greeted:false, entered:false, payT:0, dirtT:rand(4,12)};
   a.path = [{x:side*9.3, z:STREET_Z}, {x:DOOR_OUT.x + rand(-0.3,0.3), z:DOOR_OUT.z}];
   customers.push(c);
   G.stats.customers++;
+  if (vip) G.stats.vip++;
 }
 function emote(c, e, t){ c.emote = e; c.emoteT = t || 1.4; }
 function goNextShelf(c){
@@ -1335,6 +1389,7 @@ function removeCustomer(c){
 function angryLeave(c){
   emote(c, '💢', 2.2); SFX.bad();
   G.stats.angry++; addRating(-0.22);
+  if (c.vip) addRating(-0.25);
   floatText(c.agent.pos.x, 2.3, c.agent.pos.z, '評價 ↓', 'bad txt');
   if (c.basket.length && Math.random() < 0.6) spawnMess(c.agent.pos.x, c.agent.pos.z, 'drop');
   c.basket.length = 0;
@@ -1349,11 +1404,12 @@ function updateCustomer(c, dt){
     c.entered = true; SFX.chime();
     const gd = cloneOf('guard');
     if (gd && dist2(gd.agent.pos, GUARD_SPOT) < 1.5){ c.patience = 125; emote(c, '😊', 1.2); gd.greetT = 1.2; }
+    if (c.vip){ toast('👑 VIP 客人光臨！別讓他等太久', ''); tip('vip', '戴金帽的 👑 VIP 付 1.5 倍的錢，但特別沒耐心，氣走他評價會掉很多。'); }
   }
   // mess generation while inside
   if (c.entered && p.z < 6.4 && c.state !== 'leave'){
     c.dirtT -= dt;
-    if (c.dirtT <= 0){ c.dirtT = rand(10,22); if (Math.random() < 0.35 + G.day*0.03) spawnMess(p.x, p.z, Math.random()<0.5?'spill':'trash'); }
+    if (c.dirtT <= 0){ c.dirtT = rand(10,22); if (Math.random() < (0.35 + G.day*0.03) * ((G.event && G.event.mess) || 1)) spawnMess(p.x, p.z, Math.random()<0.5?'spill':'trash'); }
   }
   switch (c.state){
     case 'arrive': if (arrived) goNextShelf(c); break;
@@ -1365,7 +1421,7 @@ function updateCustomer(c, dt){
       if (c.timer <= 0){
         const sh = SHELF[c.list[c.li]];
         if (sh.stock > 0){ sh.stock--; c.basket.push(sh.id); emote(c, sh.icon, 0.9); G.stats.items++; }
-        else { c.patience -= 30; emote(c, '😡', 1.6); addRating(-0.06); SFX.bad(); tip('restock', '貨架空了！先到倉庫「拿貨」格子拿箱子，再走到貨架前就會自動補滿。'); }
+        else { c.patience -= 30; emote(c, '😡', 1.6); addRating(-0.06); SFX.bad(); G.stats.missed++; tip('restock', '貨架空了！先到倉庫「拿貨」格子拿箱子，再走到貨架前就會自動補滿。'); }
         c.li++;
         if (c.patience <= 0){ angryLeave(c); break; }
         goNextShelf(c);
@@ -1374,6 +1430,7 @@ function updateCustomer(c, dt){
     case 'queue': {
       let drain = 1.9 + Math.min(1.2, G.day*0.08);
       for (const m of messes) if (dist2(m, p) < 3) drain += 0.7;
+      if (c.vip) drain *= VIP_DRAIN;
       c.patience -= drain*dt;
       if (arrived && c.qi >= 0) a.face(c.qi < 7 ? Math.PI/2 : -Math.PI/2);
       if (c.patience <= 0) angryLeave(c);
@@ -1397,11 +1454,12 @@ function updateCustomer(c, dt){
       break;
   }
   // tag
-  if (c.emoteT > 0){ c.emoteT -= dt; c.tag.icon(c.emote); }
-  else if (c.state === 'escape') c.tag.icon('🕶️❗');
-  else if (c.state === 'queue') c.tag.icon(c.wantsCoffee && !c.gotCoffee ? '☕' : (c.qi === 0 ? '💳' : ''));
-  else if (c.state === 'toShelf' || c.state === 'browse') c.tag.icon(SHELF[c.list[c.li]] ? SHELF[c.list[c.li]].icon : '');
-  else c.tag.icon('');
+  let ic = '';
+  if (c.emoteT > 0){ c.emoteT -= dt; ic = c.emote; }
+  else if (c.state === 'escape') ic = '🕶️❗';
+  else if (c.state === 'queue') ic = c.wantsCoffee && !c.gotCoffee ? '☕' : (c.qi === 0 ? '💳' : '');
+  else if (c.state === 'toShelf' || c.state === 'browse') ic = SHELF[c.list[c.li]] ? SHELF[c.list[c.li]].icon : '';
+  c.tag.icon(c.vip && c.state !== 'leave' ? '👑' + ic : ic);
   if (c.state === 'queue' || (c.patience < 100 && c.state !== 'leave' && c.state !== 'escape')){
     const f = c.patience/100;
     c.tag.setBar(f, f > 0.5 ? '#34d6a6' : f > 0.25 ? '#ffcf3a' : '#ff6058');
@@ -1565,13 +1623,14 @@ function updateClone(s, dt){
 /* ----- register & coffee ----- */
 function updateRegister(dt){
   // coffee machine
+  const brewT = BREW_TIME * upgFx('coffee');
   if (coffee.power > 0 && G.cups < MAX_CUPS){
     if (G.money >= COFFEE_COST){
       coffee.prog += dt*coffee.power;
-      if (coffee.prog >= BREW_TIME){ coffee.prog = 0; G.cups++; addMoney(-COFFEE_COST); G.stats.coffeeCost += COFFEE_COST; SFX.brew(); }
+      if (coffee.prog >= brewT){ coffee.prog = 0; G.cups++; addMoney(-COFFEE_COST); G.stats.coffeeCost += COFFEE_COST; SFX.brew(); }
     }
   }
-  coffeeTag.icon(G.cups === 0 ? '☕❗' : '☕').text(G.cups + '/' + MAX_CUPS).setBar(coffee.power > 0 && G.cups < MAX_CUPS ? coffee.prog/BREW_TIME : null, '#c98b5a');
+  coffeeTag.icon(G.cups === 0 ? '☕❗' : '☕').text(G.cups + '/' + MAX_CUPS).setBar(coffee.power > 0 && G.cups < MAX_CUPS ? coffee.prog/brewT : null, '#c98b5a');
   for (let i=0;i<MAX_CUPS;i++) cupMeshes[i].visible = i < G.cups;
 
   const head = queue[0];
@@ -1586,13 +1645,15 @@ function updateRegister(dt){
       else { regIcon = '☕❓'; regText = '要咖啡'; tip('coffee', '客人要咖啡！站到「咖啡」格子沖幾杯，再回收銀台結帳。'); }
     } else {
       head.payT += dt*reg.power;
-      const need = 0.5 + 0.4*head.basket.length + (head.wantsCoffee ? 0.3 : 0);
+      const need = (0.5 + 0.4*head.basket.length + (head.wantsCoffee ? 0.3 : 0)) * upgFx('pos');
       regBar = head.payT/need;
       if (head.payT >= need){
-        const total = head.basket.reduce((t,id)=>t+SHELF[id].price,0) + (head.wantsCoffee ? COFFEE_PRICE : 0);
+        const total = Math.round((head.basket.reduce((t,id)=>t+SHELF[id].price,0) + (head.wantsCoffee ? COFFEE_PRICE : 0)) * ((G.event && G.event.price) || 1) * (head.vip ? VIP_PAY : 1));
         addMoney(total); G.stats.revenue += total; G.stats.served++;
+        if (head.wantsCoffee) G.stats.coffeeSold++;
         addRating(0.025 + 0.04*clamp(head.patience/100,0,1));
-        floatText(CHECKOUT_SPOT.x, 2.2, CHECKOUT_SPOT.z, '+' + fmt(total));
+        if (head.vip){ G.stats.vipServed++; addRating(0.08); }
+        floatText(CHECKOUT_SPOT.x, 2.2, CHECKOUT_SPOT.z, (head.vip ? '👑 +' : '+') + fmt(total));
         SFX.ding();
         juiceCheckout(head, total);
         head.paid = true; emote(head, head.patience > 60 ? '😊' : '🙂', 1.4);
@@ -1798,6 +1859,7 @@ function updateHUD(dt){
     const key = al.map(a=>a[1]).join('|');
     if (_hc.al !== key){ _hc.al = key; hud.alerts.innerHTML = ''; for (const [c,t] of al.slice(0,4)){ const d = document.createElement('div'); d.className = 'al ' + c; d.textContent = t; hud.alerts.appendChild(d); } }
   }
+  updateGoalsHUD(dt);
 }
 
 /* ---------------- panels ---------------- */
@@ -1828,6 +1890,7 @@ function renderTeam(){
     else { b.textContent = '滿級'; b.disabled = true; b.className = 'max'; }
     card.append(av, mid, b); list.appendChild(card);
   }
+  renderStoreUpgrades(list);
 }
 function hire(id){
   const r = ROLE[id]; if (G.clones[id] || G.money < r.cost) return;
@@ -1851,25 +1914,29 @@ function clearDayEntities(){
   queue.length = 0;
   while (messes.length) removeMess(messes[0]);
 }
-function rentFor(day){ return 150 + 50*(day-1); }
+function rentFor(day){ return 150 + 50*(day-1) + 8*(day-1)*(day-1); }   // quadratic term: late days need upgrades, not just clones
 function endDay(){
   G.state = 'summary';
   clearDayEntities();
   SFX.close();
   const wages = ROLES.reduce((s,r)=>s + (G.clones[r.id] ? r.wage : 0), 0);
   const rent = rentFor(G.day);
+  const goalRows = finishGoals();
   addMoney(-(wages + rent));
   const S = G.stats;
-  const profit = S.revenue - S.stockCost - S.coffeeCost - wages - rent;
+  const profit = S.revenue - S.stockCost - S.coffeeCost - wages - rent + S.bonus;
   const stars = '★★★★★'.slice(0, Math.round(G.rating)) + '☆☆☆☆☆'.slice(0, 5-Math.round(G.rating));
   const row = (a,b,cls) => `<div class="r ${cls||''}"><span>${a}</span><span>${b}</span></div>`;
   $('#sumTitle').textContent = '第 ' + G.day + ' 天打烊了！';
   $('#receipt').innerHTML =
-    `<div class="hd">分身便利店 CLONE MART<small>營業日報 · 第 ${G.day} 天 · 07:00–23:00</small></div><hr>` +
+    `<div class="hd">分身便利店 CLONE MART<small>營業日報 · 第 ${G.day} 天 · 07:00–23:00${G.event && G.event.id !== 'normal' ? ' · ' + G.event.icon + ' ' + G.event.name : ''}</small></div><hr>` +
     row('來客數', S.customers + ' 人') + row('結帳完成', S.served + ' 人') + row('賣出商品', S.items + ' 件') +
-    row('氣走客人', S.angry + ' 人', S.angry ? 'neg' : '') + row('抓到小偷', S.caught + ' 人') + row('被偷走', S.stolen + ' 次', S.stolen ? 'neg' : '') + '<hr>' +
+    (S.vip ? row('👑 VIP 結帳', S.vipServed + ' / ' + S.vip + ' 人', S.vipServed < S.vip ? 'neg' : '') : '') +
+    (S.missed ? row('缺貨撲空', S.missed + ' 次', 'neg') : '') +
+    row('氣走客人', S.angry + ' 人', S.angry ? 'neg' : '') + row('抓到小偷', S.caught + ' 人') + row('被偷走', S.stolen + ' 次', S.stolen ? 'neg' : '') + goalRows + '<hr>' +
     row('營業收入', fmt(S.revenue)) + row('進貨成本', '-' + fmt(S.stockCost), 'neg') + row('咖啡豆', '-' + fmt(S.coffeeCost), 'neg') +
-    row('分身薪資', '-' + fmt(wages), wages ? 'neg' : '') + row('店租', '-' + fmt(rent), 'neg') + '<hr>' +
+    row('分身薪資', '-' + fmt(wages), wages ? 'neg' : '') + row('店租', '-' + fmt(rent), 'neg') +
+    (S.bonus ? row('目標獎金', '+' + fmt(S.bonus)) : '') + '<hr>' +
     row('本日淨利', (profit < 0 ? '-' : '') + fmt(Math.abs(profit)), 'tot ' + (profit >= 0 ? 'pos' : 'neg')) +
     row('現金餘額', fmt(G.money), 'tot') + row('顧客評價', stars + ' ' + G.rating.toFixed(1)) +
     `<div class="bar"></div>`;
@@ -1881,11 +1948,14 @@ function endDay(){
 }
 function nextDay(){
   G.day++; G.time = 0; G.spawnT = 2; G.closingT = 0; G.stats = newStats();
+  planDay();
   for (const s of staff){ s.ai = {}; s.carry = false; s.agent.carrying = false; s.agent.path.length = 0; }
   save();
   showScreen(null); G.state = 'play';
   toast('第 ' + G.day + ' 天開店！明天的店租 ' + fmt(rentFor(G.day)), 'good');
+  if (G.event.id !== 'normal'){ toast('今天是' + G.event.icon + ' ' + G.event.name + '：' + G.event.desc, ''); tip('event', '有些日子會有特別活動（' + G.event.icon + ' ' + G.event.name + '：' + G.event.desc + '），右上方的目標欄會標出來。'); }
   if (G.day === 2) showHint('從今天開始會出現小偷 🕶️，記得在他們出門前攔下來。');
+  if (G.day === 3) showHint('從今天開始會有戴金帽的 👑 VIP：付 1.5 倍的錢，但更沒耐心。');
 }
 function gameOver(kind){
   G.state = 'over';
@@ -1896,10 +1966,163 @@ function gameOver(kind){
   showScreen('over');
 }
 
+/* ---------------- goals, events & store upgrades ---------------- */
+// Each day gets 3 goals (one per group: volume / skill / quality) and, from day 4, maybe a day event.
+// Both come from a per-run seed + day number, so reloading a save never rerolls them.
+const GOAL_DEFS = [
+  {id:'serve',   grp:0, from:1, type:'up',   label:t=>`結帳 ${t} 位客人`,  target:d=>Math.min(70, 11+4*d), val:()=>G.stats.served},
+  {id:'revenue', grp:0, from:2, type:'up',   label:t=>`營收 ${fmt(t)}`,    target:d=>Math.min(7000, Math.round((1200+350*d)/50)*50), val:()=>G.stats.revenue, money:true},
+  {id:'coffee',  grp:1, from:1, type:'up',   label:t=>`賣出 ${t} 杯咖啡`,  target:(d,ev)=>Math.min(24, Math.round((3+1.3*d)*(ev.coffee ? Math.min(1.5, ev.coffee/0.28) : 1))), val:()=>G.stats.coffeeSold, ok:ev=>ev.id !== 'heat'},
+  {id:'catch',   grp:1, from:2, type:'up',   label:t=>`抓到 ${t} 個小偷`,  target:d=>Math.min(3, 1+Math.floor(d/6)), val:()=>G.stats.caught},
+  {id:'vip',     grp:1, from:3, type:'up',   label:t=>`服務 ${t} 位 VIP`,  target:d=>Math.min(3, 1+Math.floor(d/5)), val:()=>G.stats.vipServed},
+  {id:'noAngry', grp:2, from:1, type:'zero', label:()=>'零氣走客人',      target:()=>0, val:()=>G.stats.angry},
+  {id:'noTheft', grp:2, from:2, type:'zero', label:()=>'沒有東西被偷',    target:()=>0, val:()=>G.stats.stolen},
+  {id:'rating',  grp:2, from:2, type:'end',  label:t=>`打烊評價 ≥ ${t.toFixed(1)}★`, target:d=>d < 6 ? 3.5 : 4, val:()=>G.rating},
+];
+const goalReward = d => Math.round((40 + 12*d)/10)*10;
+function mulberry32(a){ return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const newUpg = () => Object.fromEntries(STORE_UPG.map(u => [u.id, 0]));
+function upgFx(id){ const u = STORE[id]; return u.fx[clamp((G.upg && G.upg[id]) || 0, 0, u.fx.length-1)]; }
+for (const sh of SHELVES) sh.baseMax = sh.max;
+function applyUpgrades(){ const f = upgFx('shelf'); for (const sh of SHELVES) sh.max = Math.round(sh.baseMax*f); }
+G.upg = newUpg(); G.seed = 1; G.event = DAY_EVENTS[0]; G.goals = []; G.rush = null;
+
+function planDay(){
+  const rng = mulberry32((G.seed|0)*7919 + G.day*104729);
+  let ev = DAY_EVENTS[0];
+  if (G.day >= 4 && rng() < 0.55) ev = DAY_EVENTS[1 + Math.floor(rng()*(DAY_EVENTS.length-1))];
+  G.event = ev; G.rush = null;
+  G.goals = [];
+  for (let grp=0; grp<3; grp++){
+    const pool = GOAL_DEFS.filter(g => g.grp === grp && G.day >= g.from && (!g.ok || g.ok(ev)));
+    if (!pool.length) continue;
+    const def = pool[Math.floor(rng()*pool.length)];
+    G.goals.push({id:def.id, def, target:def.target(G.day, ev), done:false, fail:false, paid:0});
+  }
+  goalsDirty = true; goalsPeekT = 8;
+}
+function demandMult(){
+  return (G.rush && G.state === 'play' ? RUSH_MULT(G.day) : 1) * ((G.event && G.event.spawn) || 1) * upgFx('sign');
+}
+function completeGoal(g){
+  g.done = true; goalsDirty = true;
+  const r = goalReward(G.day); g.paid = r;
+  addMoney(r); G.stats.bonus += r; addRating(0.1);
+  if (G.state === 'play' || G.state === 'closing'){ toast('🎯 目標達成：' + g.def.label(g.target) + ' +' + fmt(r), 'good'); SFX.hire(); }
+}
+function updateGoals(dt){
+  if (G.state === 'play'){
+    const h = hourNow();
+    const r = RUSHES.find(x => h >= x.from && h < x.to) || null;
+    if (r !== G.rush){
+      G.rush = r; goalsDirty = true;
+      if (r){
+        toast(r.icon + ' ' + r.name + '來了！客人變多', 'bad');
+        tip('rush', '尖峰時段客人會一口氣湧進來：先把貨補滿、多沖幾杯咖啡。');
+        G.spawnT = Math.min(G.spawnT, 0.8);   // the rush starts now, not after the slower pre-rush timer
+      }
+    }
+    if (G.time > 4) tip('goals', '右上方是「今日目標」，達成就有獎金和評價加分！');
+  } else if (G.rush){ G.rush = null; goalsDirty = true; }
+  for (const g of G.goals){
+    if (g.done || g.fail) continue;
+    const v = g.def.val();
+    if (g.def.type === 'up' && v >= g.target) completeGoal(g);
+    else if (g.def.type === 'zero' && v > 0){ g.fail = true; goalsDirty = true; toast('✗ 目標失敗：' + g.def.label(g.target), 'bad'); }
+  }
+}
+// called from endDay: settle the remaining goals, pay the all-clear bonus, return receipt rows
+function finishGoals(){
+  for (const g of G.goals){
+    if (g.done || g.fail) continue;
+    const v = g.def.val();
+    if ((g.def.type === 'zero' && v === 0) || (g.def.type === 'end' && v >= g.target - 1e-9)) completeGoal(g);
+    else g.fail = true;
+  }
+  goalsDirty = true;
+  if (!G.goals.length) return '';
+  const row = (a,b,cls) => `<div class="r ${cls||''}"><span>${a}</span><span>${b}</span></div>`;
+  let html = '<hr>' + row('🎯 今日目標', G.goals.filter(g=>g.done).length + ' / ' + G.goals.length, 'tot');
+  for (const g of G.goals) html += row((g.done ? '✓ ' : '✗ ') + g.def.label(g.target), g.done ? '+' + fmt(g.paid) : '未達成', g.done ? '' : 'neg');
+  if (G.goals.every(g => g.done)){
+    const r = goalReward(G.day); addMoney(r); G.stats.bonus += r;
+    html += row('🎉 全部達成獎勵', '+' + fmt(r));
+  }
+  return html;
+}
+
+/* goals HUD (right column, placed under the top bar). On small screens it folds into a one-line
+   chip and only "peeks" open for a few seconds when something changes; tapping it pins it open/closed. */
+const goalsEl = $('#goals');
+let goalsDirty = true, goalsT = 0, goalsRows = [], goalsOpen = null, goalsPeekT = 0, goalsMini = null;
+const shortMoney = n => n >= 1000 ? '$' + (Math.floor(n/100)/10) + 'k' : '$' + Math.round(n);
+goalsEl.addEventListener('click', () => { goalsOpen = goalsEl.classList.contains('mini'); goalsPeekT = 0; goalsT = 0; });
+function updateGoalsHUD(dt){
+  const hide = $('#hud').hidden || G.state === 'title' || !G.goals.length;
+  if (goalsEl.hidden !== hide) goalsEl.hidden = hide;
+  if (hide) return;
+  if (goalsPeekT > 0) goalsPeekT -= dt;
+  goalsT -= dt;
+  if (goalsT > 0 && !goalsDirty) return;
+  goalsT = 0.25;
+  const top = Math.round($('#hud').getBoundingClientRect().bottom + 8) + 'px';
+  if (goalsEl.style.top !== top) goalsEl.style.top = top;
+  if (goalsDirty){
+    goalsDirty = false; goalsPeekT = Math.max(goalsPeekT, 4);
+    const ev = G.event && G.event.id !== 'normal' ? `<div class="ev">${G.event.icon} ${G.event.name}</div>` : '';
+    const rush = G.rush ? `<div class="ev rush">${G.rush.icon} ${G.rush.name}中</div>` : '';
+    goalsEl.innerHTML = `<div class="gh"><span>🎯 今日目標</span><span class="rw">每項 +${fmt(goalReward(G.day))}</span><span class="sm">${G.goals.filter(g => g.done).length}/${G.goals.length} ▾</span></div>` + (ev || rush ? `<div class="evs">${ev}${rush}</div>` : '') +
+      G.goals.map(g => `<div class="g${g.done ? ' done' : g.fail ? ' fail' : ''}"><span class="ck">${g.done ? '✓' : g.fail ? '✗' : '○'}</span><span class="lb">${g.def.label(g.target)}</span><span class="v"></span>${g.def.type === 'up' ? '<i><b></b></i>' : ''}</div>`).join('');
+    const els = goalsEl.querySelectorAll('.g');
+    goalsRows = G.goals.map((g,i) => ({g, v:els[i].querySelector('.v'), b:els[i].querySelector('b'), _v:null, _w:null}));
+  }
+  const small = innerWidth < 600 || innerHeight < 480;
+  const mini = goalsOpen === null ? small && goalsPeekT <= 0 : !goalsOpen;
+  if (mini !== goalsMini){ goalsMini = mini; goalsEl.classList.toggle('mini', mini); goalsEl.setAttribute('aria-expanded', String(!mini)); }
+  for (const r of goalsRows){
+    const g = r.g, d = g.def, val = d.val();
+    let t, w = null;
+    if (d.type === 'zero') t = g.done ? '達成' : g.fail ? '失敗' : '撐到打烊';
+    else if (d.type === 'end') t = (Math.round(val*10)/10).toFixed(1) + '★';
+    else { const v = Math.min(val, g.target); t = d.money ? shortMoney(v) + '/' + shortMoney(g.target) : v + '/' + g.target; w = Math.round(v/g.target*100); }
+    if (t !== r._v){ r._v = t; r.v.textContent = t; }
+    if (r.b && w !== r._w){ r._w = w; r.b.style.width = w + '%'; }
+  }
+}
+
+/* store upgrades (rendered at the bottom of the team panel) */
+function buyUpgrade(id, quiet){
+  const u = STORE[id], lv = (G.upg && G.upg[id]) || 0;
+  if (!u || lv >= u.cost.length || G.money < u.cost[lv]) return false;
+  addMoney(-u.cost[lv]); G.upg[id] = lv+1; applyUpgrades();
+  if (!quiet){ SFX.hire(); toast(u.icon + ' ' + u.name + ' 升到 LV' + (lv+1), 'good'); }
+  if (!screens.team.hidden) renderTeam();
+  save();
+  return true;
+}
+function renderStoreUpgrades(list){
+  let sec = $('#storeUpg');
+  if (!sec){ sec = document.createElement('div'); sec.id = 'storeUpg'; list.after(sec); }
+  sec.innerHTML = '<h3 class="upg-h">店鋪升級</h3><p class="upg-sub">一次付清、永久有效，不用付薪水。</p>';
+  const grid = document.createElement('div'); grid.className = 'team-list'; sec.appendChild(grid);
+  for (const u of STORE_UPG){
+    const lv = G.upg[u.id] || 0, maxLv = u.cost.length;
+    const card = document.createElement('div'); card.className = 'card';
+    const av = document.createElement('div'); av.className = 'av'; av.style.background = '#ffe7a0'; av.textContent = u.icon;
+    const mid = document.createElement('div'); mid.style.minWidth = '0';
+    const eff = lv ? '目前 ' + u.fxText(u.fx[lv]) + (lv < maxLv ? ' → 下一級 ×' + u.fx[lv+1] : '') : '升級後 ' + u.fxText(u.fx[1]);
+    mid.innerHTML = `<div class="nm">${u.name}${lv ? `<span class="lv">LV${lv}</span>` : ''}</div><div class="ds">${u.desc}</div><div class="wg">${eff}</div>`;
+    const b = document.createElement('button'); b.type = 'button';
+    if (lv < maxLv){ const c = u.cost[lv]; b.innerHTML = `${lv ? '升級' : '購買'}<small>${fmt(c)}</small>`; b.disabled = G.money < c; b.onclick = () => buyUpgrade(u.id); }
+    else { b.textContent = '滿級'; b.disabled = true; b.className = 'max'; }
+    card.append(av, mid, b); grid.appendChild(card);
+  }
+}
+
 /* ---------------- save / load ---------------- */
 function getSaveData(){
   return {v:1, day:G.day, money:G.money, rating:G.rating, cups:G.cups, clones:G.clones, tips:[...G.tips], muted,
-    stock:Object.fromEntries(SHELVES.map(s=>[s.id,s.stock]))};
+    stock:Object.fromEntries(SHELVES.map(s=>[s.id,s.stock])), upg:Object.assign({}, G.upg), seed:G.seed};
 }
 function save(){ try { localStorage.setItem(SAVE_KEY, JSON.stringify(getSaveData())); } catch(e){} }
 function loadSave(){ try { const s = localStorage.getItem(SAVE_KEY); return s ? JSON.parse(s) : null; } catch(e){ return null; } }
@@ -1912,10 +2135,13 @@ function resetWorld(data){
   G.day = data ? data.day : 1; G.money = data ? data.money : START_MONEY; G.rating = data ? data.rating : 3;
   G.cups = data ? data.cups : 2; G.clones = data ? Object.assign({}, data.clones) : {};
   G.tips = new Set(data && data.tips ? data.tips : []);
+  G.upg = Object.assign(newUpg(), data && data.upg); applyUpgrades();
+  G.seed = data && data.seed ? data.seed : 1 + Math.floor(Math.random()*1e6);
   if (data && typeof data.muted === 'boolean') muted = data.muted;
   for (const sh of SHELVES) sh.stock = data && data.stock && data.stock[sh.id] !== undefined ? data.stock[sh.id] : sh.max;
   for (const r of ROLES) if (G.clones[r.id]) spawnClone(r.id, G.clones[r.id], true);
   G.time = 0; G.spawnT = 2; G.closingT = 0; G.stats = newStats();
+  planDay();
 }
 function startGame(data){
   initAudio();
@@ -1936,7 +2162,7 @@ function startGame(data){
 /* ---------------- main loop ---------------- */
 function spawnInterval(){
   const base = clamp(7.5 - (G.day-1)*0.7, 2.0, 8);
-  return base * (1.25 - G.rating*0.08);
+  return base * (1.25 - G.rating*0.08) * demandMult();
 }
 function simulate(dt){
   curDt = dt;
@@ -1958,6 +2184,7 @@ function simulate(dt){
   for (const s of staff) staffWork(s, dt);
   for (const c of customers.slice()) updateCustomer(c, dt);
   updateRegister(dt);
+  updateGoals(dt);
   // mess reduces reputation slowly
   if (messes.length) addRating(-0.0025*messes.length*dt);
   // shelf tags
@@ -2071,6 +2298,7 @@ function boot(hotData){
   try { window.claude && window.claude.hot && window.claude.hot.snapshot && window.claude.hot.snapshot(() => Object.assign(getSaveData(), {inGame: G.state !== 'title' && G.state !== 'over'})); } catch(e){}
   // expose a tiny debug/test hook
   window.__cloneMart = {sim(secs){ const n = Math.round(secs*30); for (let i=0;i<n && (G.state==='play'||G.state==='closing');i++) simulate(1/30); return G.state; }, G, SHELVES, customers, queue, messes, staff, startGame, hire, endDay, spawnCustomer, spawnMess};
+  Object.assign(window.__cloneMart, {nextDay, upgrade, buyUpgrade, planDay, rentFor, STORE_UPG, DAY_EVENTS, cloneOf});
 }
 function start(data){
   const fontsReady = (document.fonts && document.fonts.ready) ? Promise.race([document.fonts.ready, new Promise(r=>setTimeout(r,1500))]) : Promise.resolve();
