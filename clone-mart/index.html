@@ -336,9 +336,13 @@ Object.assign(sun.shadow.camera, {left:-17, right:17, top:17, bottom:-17, near:1
 sun.shadow.bias = -0.0006;
 sun.shadow.normalBias = 0.02;
 scene.add(sun); scene.add(sun.target);
-const fill = new THREE.DirectionalLight(0xfff4e0, 0.28);
+const fill = new THREE.DirectionalLight(0xfff4e0, 0.22);
 fill.position.set(8, 12, -6);
 scene.add(fill);
+// warm interior lamp: fades in after dusk so the store glows while the street darkens (no shadows, cheap)
+const storeLight = new THREE.PointLight(0xffc27a, 0, 24, 1.1);
+storeLight.position.set(-0.5, 4.6, 1.8);
+scene.add(storeLight);
 
 /* material cache */
 const _mats = new Map();
@@ -466,6 +470,34 @@ const outdoorMats = [];     // materials that darken at night
 const lampMats = [];        // light bulbs that glow at night
 function outdoorMat(c){ const m = new THREE.MeshLambertMaterial({color:c}); m.userData.base = new THREE.Color(c); outdoorMats.push(m); return m; }
 
+/* night glow: materials whose emissive/opacity ramps from a day value to a night value (driven by applyTimeOfDay) */
+const glowMats = [];
+function nightGlow(m, dayV, nightV, prop){ glowMats.push({m, d:dayV, n:nightV, p:prop || 'emissiveIntensity'}); return m; }
+let _radTex = null, _fadeTex = null;
+function radialTex(){   // soft round light pool (shared)
+  return _radTex || (_radTex = canvasTex(128,128,(g,w,h)=>{
+    const gr = g.createRadialGradient(w/2,h/2,0,w/2,h/2,w/2);
+    gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(0.4,'rgba(255,255,255,0.5)'); gr.addColorStop(1,'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0,0,w,h);
+  }));
+}
+function fadeTex(){     // vertical fade: opaque at the bottom (uv v=0) → clear at the top (shared)
+  return _fadeTex || (_fadeTex = canvasTex(8,128,(g,w,h)=>{
+    const gr = g.createLinearGradient(0,0,0,h);
+    gr.addColorStop(0,'rgba(255,255,255,0)'); gr.addColorStop(0.6,'rgba(255,255,255,0.35)'); gr.addColorStop(1,'rgba(255,255,255,1)');
+    g.fillStyle = gr; g.fillRect(0,0,w,h);
+  }));
+}
+function glowMat(color, tex, dayOp, nightOp){
+  const m = new THREE.MeshBasicMaterial({color, map:tex, transparent:true, opacity:dayOp, blending:THREE.AdditiveBlending, depthWrite:false});
+  return nightGlow(m, dayOp, nightOp, 'opacity');
+}
+const _poolGeo = new THREE.PlaneGeometry(1,1).rotateX(-Math.PI/2);
+function lightPool(m, x, y, z, w, d, ry){
+  const p = new THREE.Mesh(_poolGeo, m); p.scale.set(w,1,d); p.position.set(x,y,z); if (ry) p.rotation.y = ry;
+  p.renderOrder = 2; scene.add(p); return p;
+}
+
 function buildWorld(){
   // ground
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(140,140), outdoorMat(0x5f7d57));
@@ -490,9 +522,9 @@ function buildWorld(){
 
   // store floor
   const floorTex = canvasTex(256,256,(g,w,h)=>{
-    g.fillStyle='#f4efe4'; g.fillRect(0,0,w,h);
-    g.fillStyle='#ebe4d5'; g.fillRect(0,0,w/2,h/2); g.fillRect(w/2,h/2,w/2,h/2);
-    g.strokeStyle='#d7cebb'; g.lineWidth=3;
+    g.fillStyle='#ece5d7'; g.fillRect(0,0,w,h);
+    g.fillStyle='#ddd4c2'; g.fillRect(0,0,w/2,h/2); g.fillRect(w/2,h/2,w/2,h/2);
+    g.strokeStyle='#c4b9a4'; g.lineWidth=3;
     for (let i=0;i<=2;i++){ g.beginPath(); g.moveTo(i*w/2,0); g.lineTo(i*w/2,h); g.stroke(); g.beginPath(); g.moveTo(0,i*h/2); g.lineTo(w,i*h/2); g.stroke(); }
   });
   floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping; floorTex.repeat.set(10,7);
@@ -502,7 +534,7 @@ function buildWorld(){
   const sr = new THREE.Mesh(new THREE.PlaneGeometry(5,4), mat(0xb9bcc2));
   sr.rotation.x = -Math.PI/2; sr.position.set(7.5,0.004,-5); sr.receiveShadow = true; scene.add(sr);
   // entrance mat
-  const emat = new THREE.Mesh(new THREE.PlaneGeometry(2.4,1.2), mat(0x3b4a63));
+  const emat = new THREE.Mesh(new THREE.PlaneGeometry(2.4,1.2), new THREE.MeshLambertMaterial({map:welcomeMatTex()}));
   emat.rotation.x = -Math.PI/2; emat.position.set(1.25,0.006,6.2); emat.receiveShadow = true; scene.add(emat);
 
   // walls
@@ -529,6 +561,7 @@ function buildWorld(){
 
   // front windows + door
   const glassMat = new THREE.MeshPhongMaterial({color:0xcfeaff, transparent:true, opacity:0.14, depthWrite:false, shininess:90, specular:0xffffff});
+  glassMat.emissive = new THREE.Color(0xffc98a); nightGlow(glassMat, 0, 0.55); nightGlow(glassMat, 0.14, 0.2, 'opacity');
   box(10,0.45,0.25, 0x2e3d58, -5,0,7);
   box(7.5,0.45,0.25, 0x2e3d58, 6.25,0,7);
   const g1 = new THREE.Mesh(new THREE.PlaneGeometry(10,1.9), glassMat); g1.position.set(-5,1.4,7); scene.add(g1);
@@ -543,11 +576,12 @@ function buildWorld(){
   // outside props
   // light-box sign pole
   box(0.16,2.6,0.16, outdoorMat(0x5a6476), 3.6,0,8.2);
-  const lb = box(1.1,1.1,0.3, mat(0xffcf3a, 0xffcf3a, 0.15), 3.6,2.6,8.2, scene);
+  const lb = box(1.1,1.1,0.3, nightGlow(mat(0xffcf3a, 0xffcf3a, 0.15), 0.15, 0.85), 3.6,2.6,8.2, scene);
   signPlane(1.0,1.0,(g,w,h)=>{ g.fillStyle='#14233d'; g.font=`${h*0.5}px ${FONT_D}`; g.textAlign='center'; g.textBaseline='middle'; g.fillText('24', w/2, h*0.45); g.font=`900 ${h*0.17}px ${FONT}`; g.fillText('分身便利店', w/2, h*0.82); }, scene, 3.6, 3.15, 8.36);
   void lb;
   // vending machines
-  const vm = (x,c)=>{ box(0.9,1.9,0.75, outdoorMat(c), x,0,7.6); box(0.6,0.9,0.02, mat(0xbfe6ff,0x9fd3ff,0.5), x,0.85,7.99, scene, {cast:false}); };
+  const vmScreen = nightGlow(mat(0xbfe6ff,0x9fd3ff,0.5), 0.5, 1.3);
+  const vm = (x,c)=>{ box(0.9,1.9,0.75, outdoorMat(c), x,0,7.6); box(0.6,0.9,0.02, vmScreen, x,0.85,7.99, scene, {cast:false}); };
   vm(-9.3, 0xd93d4b); vm(-8.3, 0x2f6fd0);
   blockRect(-9.8,7.2,-7.8,8.0);
   // trash bin
@@ -587,6 +621,8 @@ function buildWorld(){
   buildCounter();
   buildStockroom();
   buildDecor();
+  buildLighting();
+  buildStreet();
 }
 const door = {L:null, R:null, open:0};
 
@@ -599,22 +635,36 @@ const PG = {
   tray: new THREE.BoxGeometry(0.34,0.08,0.26),
   lid: new THREE.BoxGeometry(0.34,0.025,0.26),
   pack: new THREE.BoxGeometry(0.16,0.28,0.12),
+  can: new THREE.CylinderGeometry(0.052,0.052,0.14,8),
+  tube: new THREE.CylinderGeometry(0.06,0.06,0.3,8),
+  cereal: new THREE.BoxGeometry(0.22,0.3,0.09),
+  bowl: new THREE.CylinderGeometry(0.14,0.1,0.1,10),
+  roll: new THREE.CylinderGeometry(0.075,0.075,0.13,10),
+  jug: new THREE.BoxGeometry(0.12,0.26,0.12),
 };
 const PCOL = [0xff6058,0xffcf3a,0x4da3ff,0x34d6a6,0xff9f43,0xb57cf0,0xf2f2f2];
 
 function productSlot(kind){
   const g = new THREE.Group();
   const add = (geo,c,x,y,z,ry)=>{ const m = new THREE.Mesh(geo, mat(c)); m.position.set(x,y,z); if(ry) m.rotation.y=ry; g.add(m); return m; };
+  const v = Math.random();   // product variety: each slot picks one of a few packaging styles
   if (kind==='snack'){
-    const c = pick(PCOL); for (let i=0;i<3;i++) add(PG.bag, i===1?pick(PCOL):c, rand(-0.12,0.12), 0.17, 0.25-i*0.22, rand(-0.2,0.2));
+    const c = pick(PCOL);
+    if (v < 0.45) for (let i=0;i<3;i++) add(PG.bag, i===1?pick(PCOL):c, rand(-0.12,0.12), 0.17, 0.25-i*0.22, rand(-0.2,0.2));
+    else if (v < 0.75) for (let i=0;i<4;i++) add(PG.tube, i%2?c:0xf2f2f2, -0.21+i*0.14, 0.15, 0.12);
+    else for (let i=0;i<3;i++) add(PG.cereal, i===2?pick(PCOL):c, -0.12+i*0.12, 0.15, 0.2-i*0.18, 0.15);
   } else if (kind==='noodle'){
-    const c = pick([0xff6058,0xffcf3a,0xff9f43,0xf2f2f2]);
-    for (const x of [-0.13,0.13]) for (const y of [0.075,0.225]) add(PG.cup, c, x, y, 0.15);
-    add(PG.cup, c, 0, 0.075, -0.15);
+    const c = pick([0xff6058,0xffcf3a,0xff9f43,0xf2f2f2,0x34d6a6]);
+    if (v < 0.6){
+      for (const x of [-0.13,0.13]) for (const y of [0.075,0.225]) add(PG.cup, c, x, y, 0.15);
+      add(PG.cup, c, 0, 0.075, -0.15);
+    } else for (const x of [-0.15,0.15]) for (const y of [0.05,0.15,0.25]) add(PG.bowl, y===0.15?0xf2f2f2:c, x, y, 0.08);
   } else if (kind==='daily'){
-    for (let i=0;i<3;i++){ const c=pick([0x4da3ff,0xf2f2f2,0xf7a8c4,0x34d6a6]); add(PG.bottle,c,-0.15+i*0.15,0.15,0.18); add(PG.pack,pick(PCOL),-0.12+i*0.15,0.14,-0.12); }
+    if (v < 0.5) for (let i=0;i<3;i++){ const c=pick([0x4da3ff,0xf2f2f2,0xf7a8c4,0x34d6a6]); add(PG.bottle,c,-0.15+i*0.15,0.15,0.18); add(PG.pack,pick(PCOL),-0.12+i*0.15,0.14,-0.12); }
+    else { const c = pick([0xf7a8c4,0xa9d8ff,0xf2f2f2]); for (const x of [-0.16,0,0.16]) for (const y of [0.065,0.195]) add(PG.roll, 0xfafafa, x, y, 0.12); add(PG.jug, c, -0.1, 0.13, -0.15); add(PG.jug, c, 0.1, 0.13, -0.15); }
   } else if (kind==='drink'){
-    for (let i=0;i<4;i++){ const c=pick([0xff6058,0x4da3ff,0x34d6a6,0xffcf3a,0x8b4a2b,0xf2f2f2]); add(PG.bottle,c,-0.24+i*0.16,0.15,0.18); add(PG.cap,0xffffff,-0.24+i*0.16,0.32,0.18); add(PG.bottle,c,-0.24+i*0.16,0.15,-0.05); }
+    if (v < 0.65) for (let i=0;i<4;i++){ const c=pick([0xff6058,0x4da3ff,0x34d6a6,0xffcf3a,0x8b4a2b,0xf2f2f2]); add(PG.bottle,c,-0.24+i*0.16,0.15,0.18); add(PG.cap,0xffffff,-0.24+i*0.16,0.32,0.18); add(PG.bottle,c,-0.24+i*0.16,0.15,-0.05); }
+    else { const c = pick([0xff6058,0x4da3ff,0x34d6a6,0xb57cf0,0x2b2b2b]); for (let i=0;i<4;i++) for (const y of [0.07,0.21]) add(PG.can, i%2 && y > 0.1 ? 0xd9dde3 : c, -0.24+i*0.16, y, 0.16); }
   } else if (kind==='bento'){
     for (const z of [0.12,-0.16]){ const c=pick([0xff6058,0x34d6a6,0xffcf3a,0xff9f43]); add(PG.tray,0x2b2b2b,0,0.04,z); add(PG.lid,c,0,0.095,z); add(PG.tray,0x2b2b2b,0,0.13,z); add(PG.lid,c,0,0.185,z); }
   }
@@ -627,6 +677,23 @@ function shelfSign(sh, parent, y, z){
     g.fillStyle='#ffcf3a'; g.font=`900 ${h*0.5}px ${FONT}`; g.textBaseline='middle'; g.textAlign='left'; g.fillText(sh.name, 22, h*0.52);
     g.fillStyle='#fff'; g.font=`${h*0.36}px ${FONT_D}`; g.textAlign='right'; g.fillText('$'+sh.price, w-22, h*0.54);
   }, parent, 0, y, z);
+}
+
+/* shelf-edge price strips: yellow tags with the price, one shared texture per shelf */
+function priceRail(sh, parent, ys, z){
+  const L = sh.len;
+  const tex = canvasTex(256,16,(g,w,h)=>{
+    g.fillStyle='#e9edf2'; g.fillRect(0,0,w,h);
+    const n = 3;
+    for (let i=0;i<n;i++){
+      const x = (i+0.5)*w/n - 22;
+      g.fillStyle='#ffcf3a'; g.fillRect(x,1,44,h-2);
+      g.fillStyle='#14233d'; g.font=`900 ${h*0.8}px ${FONT}`; g.textAlign='center'; g.textBaseline='middle'; g.fillText('$'+sh.price, x+22, h*0.55);
+    }
+  });
+  const m = new THREE.MeshLambertMaterial({map:tex});
+  const geo = new THREE.PlaneGeometry(L-0.08, 0.07);
+  for (const y of ys){ const p = new THREE.Mesh(geo, m); p.position.set(0, y, z); parent.add(p); }
 }
 
 function buildShelves(){
@@ -668,6 +735,7 @@ function buildShelves(){
         const s = productSlot('bento'); s.position.set(-L/2+0.55+i*((L-1.1)/(per-1)), t===0?0.8:1.1, t===0?0.18:-0.28); g.add(s); sh.slots.push(s);
       }
       shelfSign(sh, g, 1.98, -0.3);
+      priceRail(sh, g, [0.7], 0.48);
       blockRect(sh.cx-L/2, sh.cz-0.5, sh.cx+L/2, sh.cz+0.5);
     } else {
       // gondola
@@ -681,6 +749,7 @@ function buildShelves(){
         const s = productSlot(sh.id); s.position.set(-L/2+0.7+i*((L-1.4)/(per-1)), tiers[t], 0); g.add(s); sh.slots.push(s);
       }
       shelfSign(sh, g, 1.9, -0.38);
+      priceRail(sh, g, [0.1, 0.6, 1.06], 0.455);
       blockRect(sh.cx-L/2, sh.cz-0.5, sh.cx+L/2, sh.cz+0.5);
     }
     // ordered so that the top tier empties first
@@ -759,7 +828,7 @@ function buildStockroom(){
 }
 function buildDecor(){
   // ATM
-  box(0.8,1.7,0.7, 0x2e3d58, -9.45,0,4.6); box(0.02,0.4,0.5, mat(0x9fe8ff,0x4da3ff,0.5), -9.04,1.1,4.6, scene, {cast:false});
+  box(0.8,1.7,0.7, 0x2e3d58, -9.45,0,4.6); box(0.02,0.4,0.5, nightGlow(mat(0x9fe8ff,0x4da3ff,0.5), 0.5, 1.1), -9.04,1.1,4.6, scene, {cast:false});
   signPlane(0.6,0.2,(g,w,h)=>{ g.fillStyle='#fff'; g.font=`${h*0.7}px ${FONT_D}`; g.textAlign='center'; g.textBaseline='middle'; g.fillText('ATM', w/2, h/2); }, scene, -9.04, 1.55, 4.6, Math.PI/2);
   blockRect(-9.9,4.2,-9.0,5.0);
   // magazine rack under front window
@@ -771,6 +840,131 @@ function buildDecor(){
   const pl = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42,0), mat(0x3f8a4f)); pl.position.set(-0.6,0.85,6.4); pl.castShadow=true; scene.add(pl);
   blockRect(-0.85,6.15,-0.35,6.65,0.25);
   // ceiling lights (floating light panels, no ceiling so the camera can see in)
+  // → see buildLighting()
+  // baseboards along the walls
+  box(20,0.14,0.04, 0x8d7f6a, 0,0,-6.98, scene, {cast:false});
+  box(0.04,0.14,14, 0x8d7f6a, -9.98,0,0, scene, {cast:false});
+  box(0.04,0.14,14, 0x8d7f6a, 9.98,0,0, scene, {cast:false});
+  // queue footprint stickers in front of the checkout
+  const qTex = canvasTex(128,128,(g,w,h)=>{
+    g.beginPath(); g.arc(w/2,h/2,w*0.46,0,Math.PI*2); g.fillStyle='rgba(77,163,255,0.28)'; g.fill();
+    g.lineWidth=5; g.strokeStyle='#4da3ff'; g.stroke();
+    g.fillStyle='#2f6fd0';
+    for (const s of [-1,1]){ g.beginPath(); g.ellipse(w/2+s*14, h/2+6, 9, 18, s*0.12, 0, Math.PI*2); g.fill(); g.beginPath(); g.ellipse(w/2+s*15, h/2-22, 7, 7, 0, 0, Math.PI*2); g.fill(); }
+  });
+  const qMat = new THREE.MeshBasicMaterial({map:qTex, transparent:true, depthWrite:false, opacity:0.75});
+  const qGeo = new THREE.PlaneGeometry(0.5,0.5).rotateX(-Math.PI/2);
+  for (let i=0;i<4;i++){ const q = new THREE.Mesh(qGeo, qMat); q.position.set(CHECKOUT_SPOT.x - i*0.8, 0.012, CHECKOUT_SPOT.z); q.rotation.y = Math.PI/2; scene.add(q); }
+  // wall clock above the posters
+  const clk = signPlane(0.55,0.55,(g,w,h)=>{
+    g.beginPath(); g.arc(w/2,h/2,w*0.46,0,Math.PI*2); g.fillStyle='#fffaf0'; g.fill(); g.lineWidth=6; g.strokeStyle='#14233d'; g.stroke();
+    g.strokeStyle='#14233d'; g.lineCap='round';
+    g.lineWidth=5; g.beginPath(); g.moveTo(w/2,h/2); g.lineTo(w/2+12,h/2-14); g.stroke();
+    g.lineWidth=3; g.beginPath(); g.moveTo(w/2,h/2); g.lineTo(w/2,h/2-24); g.stroke();
+  }, scene, -9.99, 2.55, -1.3, Math.PI/2);
+  void clk;
+}
+
+/* welcome mat texture "歡迎光臨" at the entrance */
+function welcomeMatTex(){
+  return canvasTex(256,128,(g,w,h)=>{
+    g.fillStyle='#3b4a63'; g.fillRect(0,0,w,h);
+    g.strokeStyle='#ffcf3a'; g.lineWidth=5; roundRect(g,9,9,w-18,h-18,14); g.stroke();
+    g.fillStyle='#ffcf3a'; g.font=`900 ${h*0.34}px ${FONT}`; g.textAlign='center'; g.textBaseline='middle'; g.fillText('歡迎光臨', w/2, h*0.42);
+    g.fillStyle='#cfe0ff'; g.font=`${h*0.15}px ${FONT_D}`; g.fillText('WELCOME', w/2, h*0.74);
+  });
+}
+
+/* ceiling light strips + warm light pools inside, window spill outside; the pools fade in at night */
+function buildLighting(){
+  // small floating panels hung over the gaps between shelf columns, so they never hide products from the high camera
+  const panelM = nightGlow(new THREE.MeshLambertMaterial({color:0xf4efe6, emissive:0xfff0d0, emissiveIntensity:0.35}), 0.35, 1.0);
+  const frameM = mat(0x5a6476);
+  const panelGeo = new THREE.BoxGeometry(0.36,0.04,1.05), frameGeo = new THREE.BoxGeometry(0.44,0.05,1.13);
+  const panel = (x,z,y)=>{
+    const f = new THREE.Mesh(frameGeo, frameM); f.position.set(x, y-0.02, z); scene.add(f);
+    const p = new THREE.Mesh(panelGeo, panelM); p.position.set(x, y, z); scene.add(p);
+  };
+  const poolM = glowMat(0xffc983, radialTex(), 0, 0.32);
+  for (const z of [-4.45, -1.2, 2.7]){
+    for (const x of [-8.7, -2.5, 3.8]) panel(x, z, 3.25);
+    for (let x=-7.3; x<3.5; x+=3.6) lightPool(poolM, x, 0.008, z, 4.2, 3.2);
+  }
+  panel(6.2, -5.2, 3.0);
+  lightPool(poolM, 7.6, 0.009, -5.2, 4, 3);
+  lightPool(poolM, 7.9, 0.009, 2.7, 3.6, 5);
+  // fridge glow on the floor in front of the drinks
+  lightPool(glowMat(0x9fd8ff, radialTex(), 0, 0.22), -3, 0.009, -5.6, 8.5, 1.6);
+  // light spilling out of the windows / door onto the sidewalk
+  lightPool(glowMat(0xffb35c, fadeTex(), 0, 0.36), 0, 0.004, 8.6, 20, 3.2, Math.PI);
+  lightPool(glowMat(0xffc070, radialTex(), 0, 0.4), 1.25, 0.005, 7.6, 4.2, 4.4);   // brighter at the open door
+  // street-lamp pools
+  const lampPoolM = glowMat(0xffe0a0, radialTex(), 0, 0.5);
+  for (const x of [-6.5, 7.5]) lightPool(lampPoolM, x+0.8, 0.006, 12.9, 6, 6);
+  // sign glow halo under the 24h light box
+  lightPool(glowMat(0xffd84a, radialTex(), 0, 0.45), 3.6, 0.005, 8.6, 3.2, 2.6);
+}
+
+/* street dressing outside the store: crosswalk, parked car, planters, bollards, bike rack */
+function buildStreet(){
+  // zebra crossing
+  const zebraM = outdoorMat(0xeeeadb);
+  for (let i=0;i<6;i++) box(0.5,0.012,4.4, zebraM, -1.5+i*0.9,-0.006,18.5, scene, {cast:false});
+  // stop line + road edge lines
+  box(60,0.01,0.12, zebraM, 0,-0.006,14.0, scene, {cast:false});
+  box(60,0.01,0.12, zebraM, 0,-0.006,23.0, scene, {cast:false});
+  // parked car
+  const car = new THREE.Group(); car.position.set(-8.5,0,15.6); scene.add(car);
+  box(3.6,0.6,1.6, outdoorMat(0xe85d75), 0,0.3,0, car);
+  box(2.0,0.55,1.45, outdoorMat(0xe85d75), -0.2,0.9,0, car);
+  box(2.04,0.4,1.3, outdoorMat(0x2a3448), -0.2,0.98,0, car, {cast:false});
+  for (const x of [-1.15,1.15]) for (const z of [-0.78,0.78]){ const w = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.22,12), outdoorMat(0x222222)); w.rotation.x = Math.PI/2; w.position.set(x,0.32,z); car.add(w); }
+  const headM = nightGlow(mat(0xfff6d8, 0xfff0b0, 0.2), 0.2, 1.0);
+  for (const z of [-0.55,0.55]) box(0.04,0.14,0.3, headM, 1.8,0.5,z, car, {cast:false});
+  // planters with shrubs flanking the entrance
+  const shrubGeo = new THREE.IcosahedronGeometry(0.38,0);
+  for (const x of [-2.3, 4.9]){
+    box(0.9,0.45,0.6, outdoorMat(0x8d7f6a), x,0,7.55);
+    for (const dx of [-0.2,0.2]){ const s = new THREE.Mesh(shrubGeo, outdoorMat(0x4f9a5a)); s.position.set(x+dx,0.65,7.55); s.castShadow = true; scene.add(s); }
+  }
+  blockRect(-2.75,7.25,-1.85,7.85,0.25);
+  blockRect(4.45,7.25,5.35,7.85,0.25);
+  // bollards along the curb
+  const bolM = outdoorMat(0xffcf3a), bolGeo = new THREE.CylinderGeometry(0.09,0.09,0.7,8);
+  for (const x of [-9,-3,1.25,5.5,9]){ const b = new THREE.Mesh(bolGeo, bolM); b.position.set(x,0.35,13.0); b.castShadow = true; scene.add(b); }
+  // bike rack + bike
+  const rackM = outdoorMat(0x8a94a3);
+  for (let i=0;i<3;i++) box(0.06,0.6,0.7, rackM, -6.6+i*0.5,0,11.7, scene, {cast:false});
+  const bike = new THREE.Group(); bike.position.set(-5.85,0,11.7); bike.rotation.y = Math.PI/2; scene.add(bike);
+  const tyreGeo = new THREE.TorusGeometry(0.28,0.04,6,16), tyreM = outdoorMat(0x222222);
+  for (const x of [-0.45,0.45]){ const t = new THREE.Mesh(tyreGeo, tyreM); t.position.set(x,0.3,0); t.castShadow = true; bike.add(t); }
+  box(0.9,0.06,0.06, outdoorMat(0x3fb8c9), 0,0.48,0, bike); box(0.06,0.4,0.06, outdoorMat(0x3fb8c9), 0.35,0.3,0, bike);
+  // manhole
+  const mh = new THREE.Mesh(new THREE.CircleGeometry(0.45,16), outdoorMat(0x2b2f36)); mh.rotation.x = -Math.PI/2; mh.position.set(4.5,0.002,16.2); scene.add(mh);
+  // brand stripes on the window sills
+  for (const [x,w] of [[-5,10],[6.25,7.5]]){
+    box(w,0.07,0.02, outdoorMat(0xff9f43), x,0.3,7.135, scene, {cast:false});
+    box(w,0.07,0.02, outdoorMat(0x34d6a6), x,0.2,7.135, scene, {cast:false});
+    box(w,0.07,0.02, outdoorMat(0xff6058), x,0.1,7.135, scene, {cast:false});
+  }
+  // A-frame sidewalk sign
+  const af = new THREE.Group(); af.position.set(-4.2,0,7.75); scene.add(af);
+  const legM = outdoorMat(0x2e3d58);
+  for (const s of [-1,1]){ const p = box(0.62,0.85,0.04, legM, 0,0,s*0.12, af); p.rotation.x = -s*0.2; }
+  const afTex = canvasTex(128,160,(g,w,h)=>{
+    g.fillStyle='#14233d'; g.fillRect(0,0,w,h); g.strokeStyle='#fffaf0'; g.lineWidth=4; g.strokeRect(6,6,w-12,h-12);
+    g.fillStyle='#ffcf3a'; g.font=`900 ${h*0.17}px ${FONT}`; g.textAlign='center'; g.textBaseline='middle'; g.fillText('今日推薦', w/2, h*0.24);
+    g.font=`${h*0.3}px sans-serif`; g.fillText('☕', w/2, h*0.52);
+    g.fillStyle='#fffaf0'; g.font=`900 ${h*0.16}px ${FONT}`; g.fillText('$50', w/2, h*0.8);
+  });
+  const afFace = new THREE.Mesh(new THREE.PlaneGeometry(0.54,0.72), outdoorMat(0xffffff)); afFace.material.map = afTex;
+  afFace.position.set(0,0.43,0.15); afFace.rotation.x = -0.2; af.add(afFace);
+  blockRect(-4.55,7.5,-3.85,8.0,0.2);
+  // ice freezer chest by the right window
+  box(1.3,0.8,0.62, outdoorMat(0xf2f6fa), 7.6,0,7.6);
+  box(1.32,0.06,0.64, outdoorMat(0x4da3ff), 7.6,0.8,7.6, scene, {cast:false});
+  signPlane(0.9,0.3,(g,w,h)=>{ roundRect(g,3,3,w-6,h-6,10); g.fillStyle='#4da3ff'; g.fill(); g.fillStyle='#fff'; g.font=`900 ${h*0.55}px ${FONT}`; g.textAlign='center'; g.textBaseline='middle'; g.fillText('冰塊 ICE', w/2, h*0.54); }, scene, 7.6, 0.48, 7.915);
+  blockRect(6.95,7.3,8.25,7.9,0.25);
 }
 function floorMark(p, color, icon, label){
   const tex = canvasTex(256,256,(g,w,h)=>{
@@ -799,7 +993,15 @@ const CG = {
   bag: new THREE.BoxGeometry(0.22,0.28,0.12),
   ring: new THREE.RingGeometry(0.42,0.56,32).rotateX(-Math.PI/2),
   shadow: new THREE.CircleGeometry(0.34,16).rotateX(-Math.PI/2),
+  hand: new THREE.SphereGeometry(0.075,8,6),
+  hairLong: new THREE.BoxGeometry(0.42,0.36,0.1),
+  bun: new THREE.SphereGeometry(0.1,10,8),
+  tail: new THREE.BoxGeometry(0.1,0.28,0.1),
+  mohawk: new THREE.BoxGeometry(0.07,0.12,0.36),
+  glasses: new THREE.BoxGeometry(0.3,0.06,0.02),
+  backpack: new THREE.BoxGeometry(0.34,0.38,0.14),
 };
+const PACKS=[0xe85d75,0x3fb8c9,0xf2b134,0x58c48f,0x444c5c];
 const SHIRTS=[0xe85d75,0x5d8de8,0x58c48f,0xf2b134,0x9b6de0,0xf07b3f,0x3fb8c9,0xeeeeee,0x444c5c,0x8fbf4f];
 const PANTS=[0x2f3b52,0x4a4a4a,0x6b5a45,0x1f2a44,0x8a8f99,0x3d5a80];
 const SKIN=[0xf5d0b0,0xe8b48f,0xc98f6a,0x8d5b3e,0xf9dcc4];
@@ -821,6 +1023,7 @@ function makeChar(o){
   add(CG.eye, mat(0x1a1a1a), -0.075,1.34,0.205, false); add(CG.eye, mat(0x1a1a1a), 0.075,1.34,0.205, false);
   if (o.apron) add(CG.apron, M(o.apron), 0,0.74,0.17);
   if (o.cap){ add(CG.capTop, M(o.cap), 0,1.52,0); add(CG.brim, M(o.cap), 0,1.48,0.2); }
+  charDetails(parts, o, M);
   parts.carry = add(CG.carry, mat(0xc8955a), 0,0.92,0.42); parts.carry.visible = false;
   const tape = new THREE.Mesh(new THREE.BoxGeometry(0.52,0.02,0.12), mat(0xe8d2a9)); tape.position.y = 0.2; parts.carry.add(tape);
   parts.bag = add(CG.bag, mat(0xffffff), 0.4,0.62,0); parts.bag.visible = false;
@@ -835,6 +1038,78 @@ function makeChar(o){
   parts.phase = Math.random()*6;
   return parts;
 }
+/* extra character detail: hands for everyone; hair styles, glasses and backpacks for customers (no apron) */
+function charDetails(parts, o, M){
+  const kid = (par, m, geo, x,y,z) => { const k = new THREE.Mesh(geo, m); k.position.set(x,y,z); par.add(k); return k; };
+  const skin = M(o.skin);
+  kid(parts.armL, skin, CG.hand, 0,-0.48,0); kid(parts.armR, skin, CG.hand, 0,-0.48,0);
+  if (o.apron) return;
+  const hm = M(o.hair), h = parts.head, r = Math.random();
+  const style = o.cap ? (r < 0.4 ? 1 : r < 0.6 ? 3 : 0) : Math.floor(r*5);
+  if (style === 1) kid(h, hm, CG.hairLong, 0,-0.1,-0.15);
+  else if (style === 2) kid(h, hm, CG.bun, 0,0.2,-0.13);
+  else if (style === 3) kid(h, hm, CG.tail, 0,-0.08,-0.25).rotation.x = 0.35;
+  else if (style === 4) kid(h, hm, CG.mohawk, 0,0.23,0);
+  if (Math.random() < 0.16) kid(h, mat(0x1a1a1a), CG.glasses, 0,0.02,0.215);
+  if (Math.random() < 0.14){ const b = kid(parts.torso, M(pick(PACKS)), CG.backpack, 0,0.02,-0.23); b.castShadow = true; }
+}
+
+/* AI-clone hologram look: scanline band + emissive pulse, and the light-beam "materialize" effect while spawnFx > 0 */
+const HOLO = {
+  band: new THREE.CylinderGeometry(0.44,0.44,0.05,20,1,true),
+  beam: new THREE.CylinderGeometry(0.55,0.55,4.2,20,1,true).translate(0,2.1,0),
+  spark: new THREE.BoxGeometry(0.07,0.07,0.07),
+  disc: new THREE.CircleGeometry(0.7,24).rotateX(-Math.PI/2),
+};
+const _holoMats = new Map();
+function holoMatsFor(color){
+  let h = _holoMats.get(color);
+  if (!h){
+    const o = {color, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, side:THREE.DoubleSide};
+    h = {band: new THREE.MeshBasicMaterial(o), beam: new THREE.MeshBasicMaterial(Object.assign({}, o, {map:fadeTex(), blending:THREE.NormalBlending})),
+         spark: new THREE.MeshBasicMaterial(Object.assign({}, o, {blending:THREE.NormalBlending})), disc: new THREE.MeshBasicMaterial(Object.assign({map:radialTex()}, o))};
+    _holoMats.set(color, h);
+  }
+  return h;
+}
+function addHoloFx(ch, color, owner){
+  const hm = holoMatsFor(color);
+  ch.holo = hm; ch.holoT = Math.random()*5; ch.fxOwner = owner;
+  ch.glowMats = [];
+  ch.g.traverse(o => { const m = o.material; if (m && m.emissive && m.emissive.getHex() === color && ch.glowMats.indexOf(m) < 0) ch.glowMats.push(m); });
+  ch.scan = new THREE.Mesh(HOLO.band, hm.band); ch.g.add(ch.scan);
+  const fx = new THREE.Group(); ch.g.add(fx); ch.beam = fx; fx.visible = false;
+  fx.add(new THREE.Mesh(HOLO.beam, hm.beam)); fx.add(new THREE.Mesh(HOLO.disc, hm.disc)); fx.children[1].position.y = 0.03;
+  ch.sparks = [];
+  for (let i=0;i<8;i++){ const s = new THREE.Mesh(HOLO.spark, hm.spark); fx.add(s); ch.sparks.push(s); }
+}
+function animHolo(ch, dt){
+  const t = (ch.holoT += dt), hm = ch.holo;
+  const fx = ch.fxOwner && ch.fxOwner.spawnFx > 0 ? ch.fxOwner.spawnFx : 0;
+  // scanline sweeping up the body
+  const k = (t*0.55) % 1;
+  ch.scan.position.y = 0.05 + k*1.5;
+  hm.band.opacity = Math.sin(k*Math.PI)*0.55 + fx*0.4;
+  // soft pulse + an occasional glitch flicker
+  const glitch = ((t*0.37) % 4 < 0.12 && Math.sin(t*90) > 0) ? 0.35 : 0;
+  const e = 0.2 + Math.sin(t*3.2)*0.08 + glitch + fx*1.4;
+  for (let i=0;i<ch.glowMats.length;i++) ch.glowMats[i].emissiveIntensity = e;
+  // materialize beam (counter-scaled so it stays full size while the body grows in)
+  const on = fx > 0.001;
+  ch.beam.visible = on;
+  if (on){
+    ch.beam.scale.setScalar(1/Math.max(ch.g.scale.x, 0.01));
+    hm.beam.opacity = Math.min(1, fx*1.6)*0.7;
+    hm.disc.opacity = Math.min(1, fx*2);
+    hm.spark.opacity = Math.min(1, fx*2);
+    for (let i=0;i<ch.sparks.length;i++){
+      const s = ch.sparks[i], p = (t*0.9 + i/ch.sparks.length) % 1, a = i*2.4 + t*2.5;
+      s.position.set(Math.cos(a)*0.42, p*2.6, Math.sin(a)*0.42);
+      s.rotation.y = a;
+    }
+  }
+}
+
 function animChar(ch, dt, moving, speed, carrying){
   if (moving) ch.phase += dt*speed*3.4;
   const s = moving ? Math.sin(ch.phase)*0.65 : 0;
@@ -847,6 +1122,7 @@ function animChar(ch, dt, moving, speed, carrying){
   ch.head.position.y = ch.torso.position.y + 0.52;
   ch.carry.visible = !!carrying;
   if (ch.ring) ch.ring.rotation.y += dt*1.5;
+  if (ch.holo) animHolo(ch, dt);
 }
 
 class Agent {
@@ -985,6 +1261,7 @@ function spawnClone(roleId, level, instant){
   a.pos.set(p.x, 0, p.z);
   const s = {role:roleId, level, agent:a, ch, carry:false, work:LV_WORK[level], restockT:0, ai:{}, tag:new Tag(''), spawnFx: instant ? 0 : 1};
   if (!instant){ ch.g.scale.setScalar(0.01); }
+  addHoloFx(ch, r.color, s);   // hologram shimmer + materialize beam
   staff.push(s);
   return s;
 }
@@ -1461,6 +1738,7 @@ function updateCamera(dt, instant){
 /* ---------------- day / night ---------------- */
 const SKY = [[7,0x9fd3ff],[11,0x8ccfff],[15,0x9fd0f5],[17,0xf7c98b],[18.5,0xf08a5d],[19.6,0x3b4f86],[21,0x1a2a4d],[23,0x0f1d33]];
 const _c1 = new THREE.Color(), _c2 = new THREE.Color();
+const _nightTint = new THREE.Color();
 function skyAt(h){
   for (let i=0;i<SKY.length-1;i++){
     if (h <= SKY[i+1][0]){ const t = clamp((h-SKY[i][0])/(SKY[i+1][0]-SKY[i][0]),0,1); return _c1.setHex(SKY[i][1]).lerp(_c2.setHex(SKY[i+1][1]), t); }
@@ -1472,11 +1750,16 @@ function applyTimeOfDay(h){
   scene.background.copy(c); scene.fog.color.copy(c);
   const night = clamp((h-18)/2.2, 0, 1);
   const dusk = clamp(1 - Math.abs(h-18)/1.5, 0, 1);
-  sun.intensity = lerp(0.8, 0.22, night);
+  sun.intensity = lerp(0.68, 0.2, night);
   sun.color.setHex(0xffffff).lerp(_c2.setHex(0xffb070), dusk*0.7).lerp(_c2.setHex(0x8fa8ff), night*0.6);
-  hemi.intensity = lerp(0.62, 0.5, night);
-  for (const m of outdoorMats){ m.color.copy(m.userData.base).multiplyScalar(lerp(1, 0.38, night)); }
+  hemi.intensity = lerp(0.52, 0.44, night);
+  hemi.color.setHex(0xffffff).lerp(_c2.setHex(0xffd6a0), night*0.75);   // interior turns warm after dark
+  // outside sinks into a cool blue night while the store stays lit
+  _nightTint.setRGB(lerp(1, 0.3, night), lerp(1, 0.36, night), lerp(1, 0.52, night));
+  for (const m of outdoorMats){ m.color.copy(m.userData.base).multiply(_nightTint); }
   for (const m of lampMats){ m.emissiveIntensity = night*1.2; }
+  storeLight.intensity = night*0.85;
+  for (const e of glowMats){ const v = lerp(e.d, e.n, night); e.m[e.p] = v; if (e.p === 'opacity') e.m.visible = v > 0.004; }
 }
 
 /* ---------------- HUD ---------------- */
