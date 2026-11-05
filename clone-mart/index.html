@@ -2475,7 +2475,7 @@ function simulate(dt){
   updateRegister(dt);
   updateGoals(dt);
   // mess reduces reputation slowly
-  if (messes.length) addRating(-0.0025*messes.length*dt);
+  if (messes.length) addRating(-0.0015*Math.min(messes.length, 5)*dt);
   // shelf tags
   for (const sh of SHELVES){
     if (sh.shown !== sh.stock){ sh.shown = sh.stock; sh.slots.forEach((s,i)=>{ s.visible = i < sh.stock; }); }
