@@ -1,0 +1,1795 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>分身便利店</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0f1d33">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Noto+Sans+TC:wght@500;700;900&display=swap">
+<style>
+/* Layout: full-bleed 3D store canvas; HUD chips pinned to the top corners; modal "store paper" sheets centered over the scene. Single night-sign look by design. */
+:root{
+  --night:#0f1d33;      /* page + HUD chip ground */
+  --ink:#14233d;        /* text on paper, outlines */
+  --paper:#fffaf0;      /* sheets, receipt */
+  --sign:#ffcf3a;       /* store-sign yellow, primary action */
+  --mint:#34d6a6;       /* good */
+  --coral:#ff6058;      /* bad / alerts */
+  --sky:#4da3ff;        /* register / info */
+  --muted:#6b7890;
+  --chip:rgba(15,29,51,.84);
+  --f-display:'Bungee','Noto Sans TC','PingFang TC','Microsoft JhengHei',system-ui,sans-serif;
+  --f-body:'Noto Sans TC','PingFang TC','Microsoft JhengHei','Heiti TC',system-ui,sans-serif;
+  color-scheme:dark;
+}
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--night);color:var(--paper);font-family:var(--f-body);
+  touch-action:none;overscroll-behavior:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+#game{position:fixed;inset:0;width:100%;height:100%;display:block;outline:none}
+#tags,#fx{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+button{font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+button:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
+
+/* ---------- HUD ---------- */
+#hud{position:fixed;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;
+  padding:calc(env(safe-area-inset-top,0px) + 10px) max(10px,env(safe-area-inset-right,0px)) 0 max(10px,env(safe-area-inset-left,0px));pointer-events:none}
+.hud-l,.hud-r{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap}
+.chip{background:var(--chip);border:2px solid rgba(255,255,255,.12);border-radius:14px;padding:6px 12px;display:flex;align-items:center;gap:8px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.money b{font-family:var(--f-display);font-weight:400;font-size:20px;color:var(--sign);letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.day{flex-direction:column;align-items:stretch;gap:3px;padding:5px 12px;min-width:112px}
+.day .row{display:flex;justify-content:space-between;gap:10px;font-size:13px;font-weight:700}
+#clock{font-family:var(--f-display);font-weight:400;font-variant-numeric:tabular-nums}
+.dayline{height:4px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden}
+.dayline i{display:block;height:100%;width:0;background:linear-gradient(90deg,#9fd3ff,#ffcf3a 60%,#f08a5d 80%,#6a7fd8)}
+.stars{position:relative;font-size:17px;letter-spacing:1px;line-height:1}
+.stars .s-bg{color:rgba(255,255,255,.2)}
+.stars .s-fg{position:absolute;left:0;top:0;color:var(--sign);overflow:hidden;white-space:nowrap;width:60%}
+#ratenum{font-family:var(--f-display);font-size:14px;font-variant-numeric:tabular-nums}
+.hbtn{pointer-events:auto;border:2px solid var(--ink);background:var(--sign);color:var(--ink);font-weight:900;font-size:15px;border-radius:14px;
+  padding:6px 12px;box-shadow:0 3px 0 var(--ink);display:flex;align-items:center;gap:6px}
+.hbtn:active{transform:translateY(2px);box-shadow:0 1px 0 var(--ink)}
+.hbtn.ghost{background:var(--chip);color:var(--paper);border-color:rgba(255,255,255,.25);box-shadow:none;min-width:40px;justify-content:center}
+.hbtn .cnt{font-family:var(--f-display);font-weight:400;font-size:12px;background:var(--ink);color:var(--sign);border-radius:8px;padding:2px 6px}
+.hbtn.pulse{animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 3px 0 var(--ink),0 0 0 0 rgba(255,207,58,.7)}50%{box-shadow:0 3px 0 var(--ink),0 0 0 8px rgba(255,207,58,0)}}
+
+#alerts{position:fixed;left:max(10px,env(safe-area-inset-left,0px));top:calc(env(safe-area-inset-top,0px) + 62px);display:flex;flex-direction:column;gap:6px;pointer-events:none;align-items:flex-start}
+#alerts .al{background:rgba(255,96,88,.92);color:#fff;font-weight:900;font-size:13px;border-radius:10px;padding:4px 10px;border:2px solid rgba(0,0,0,.2)}
+#alerts .al.info{background:rgba(77,163,255,.92)}
+#alerts .al.warn{background:rgba(255,159,67,.95)}
+
+#hint{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);transform:translateX(-50%);max-width:min(560px,calc(100% - 32px));
+  background:var(--paper);color:var(--ink);border:3px solid var(--ink);border-radius:16px;box-shadow:0 4px 0 var(--ink);padding:10px 16px;font-weight:700;font-size:15px;line-height:1.45;text-align:center;
+  pointer-events:none;transition:opacity .3s,transform .3s}
+#hint.off{opacity:0;transform:translate(-50%,12px)}
+#toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 70px);transform:translateX(-50%);pointer-events:none;display:flex;flex-direction:column;gap:6px;align-items:center;width:max-content;max-width:calc(100% - 32px)}
+#toast div{background:var(--ink);color:var(--paper);border:2px solid var(--sign);font-weight:900;padding:7px 14px;border-radius:12px;font-size:15px;animation:toast 2.6s forwards;text-align:center}
+#toast div.bad{border-color:var(--coral)}
+#toast div.good{border-color:var(--mint)}
+@keyframes toast{0%{opacity:0;transform:translateY(-8px)}10%{opacity:1;transform:none}80%{opacity:1}100%{opacity:0;transform:translateY(-6px)}}
+
+/* ---------- world tags ---------- */
+.tag{position:absolute;left:0;top:0;display:flex;flex-direction:column;align-items:center;gap:2px;will-change:transform;white-space:nowrap}
+.tag .ic{font-size:18px;line-height:1;filter:drop-shadow(0 1px 1px rgba(0,0,0,.5))}
+.tag .ic:empty{display:none}
+.tag .tx{font-size:11px;font-weight:900;color:#fff;background:rgba(15,29,51,.85);border-radius:7px;padding:1px 6px}
+.tag .tx:empty{display:none}
+.tag .bar{width:38px;height:6px;border-radius:3px;background:rgba(15,29,51,.75);border:1px solid rgba(255,255,255,.5);overflow:hidden}
+.tag .bar i{display:block;height:100%;width:50%;background:var(--mint)}
+.tag.shelf .tx{background:rgba(255,159,67,.95);color:var(--ink)}
+.tag.shelf.empty .tx{background:var(--coral);color:#fff;animation:blink 1s steps(2) infinite}
+.tag.reg .tx{background:var(--sky)}
+@keyframes blink{50%{opacity:.55}}
+.float{position:absolute;left:0;top:0;font-family:var(--f-display);font-size:18px;color:var(--sign);white-space:nowrap;
+  text-shadow:0 2px 0 var(--ink),2px 0 0 var(--ink),-2px 0 0 var(--ink),0 -2px 0 var(--ink);animation:floatUp 1.2s ease-out forwards}
+.float.bad{color:var(--coral)} .float.good{color:var(--mint)} .float.txt{font-family:var(--f-body);font-weight:900;font-size:16px}
+@keyframes floatUp{0%{opacity:0;margin-top:6px}15%{opacity:1}100%{opacity:0;margin-top:-46px}}
+
+/* ---------- joystick ---------- */
+#joy{position:fixed;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;border:3px solid rgba(255,255,255,.35);background:rgba(15,29,51,.25);pointer-events:none}
+#joyknob{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;border-radius:50%;background:rgba(255,207,58,.85);border:3px solid var(--ink)}
+#tapmark{position:fixed;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;border:3px solid var(--sign);pointer-events:none;animation:tap .5s ease-out forwards}
+@keyframes tap{from{transform:scale(.4);opacity:1}to{transform:scale(1.6);opacity:0}}
+
+/* ---------- sheets / screens ---------- */
+.screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  padding:calc(env(safe-area-inset-top,0px) + 16px) max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 16px) max(16px,env(safe-area-inset-left,0px));
+  background:rgba(10,18,32,.55);touch-action:pan-y}
+.sheet{background:var(--paper);color:var(--ink);border:3px solid var(--ink);border-radius:20px;box-shadow:0 6px 0 var(--ink);width:100%;max-width:440px;max-height:100%;overflow:auto;padding:20px;
+  -webkit-overflow-scrolling:touch;touch-action:pan-y}
+.sheet h2{margin:0 0 4px;font-size:22px;font-weight:900;text-wrap:balance}
+.sheet .sub{margin:0 0 14px;color:var(--muted);font-size:14px;font-weight:500}
+.btn{border:3px solid var(--ink);background:var(--sign);color:var(--ink);font-weight:900;font-size:17px;border-radius:14px;padding:11px 18px;box-shadow:0 4px 0 var(--ink);width:100%}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--ink)}
+.btn.alt{background:#fff}
+.btn.danger{background:var(--coral);color:#fff}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btns{display:flex;flex-direction:column;gap:10px;margin-top:16px}
+
+/* title */
+#title{background:linear-gradient(180deg,rgba(10,18,32,.15) 0%,rgba(10,18,32,.7) 75%)}
+#title .sheet{max-width:420px;text-align:left}
+.signboard{background:var(--sign);border:3px solid var(--ink);border-radius:14px;padding:14px 16px 12px;margin:-4px 0 14px;position:relative;box-shadow:inset 0 -6px 0 rgba(0,0,0,.08)}
+.signboard .zh{font-size:clamp(34px,10vw,44px);font-weight:900;letter-spacing:.06em;line-height:1.05;color:var(--ink)}
+.signboard .en{font-family:var(--f-display);font-size:14px;letter-spacing:.12em;color:var(--ink);margin-top:4px;display:flex;justify-content:space-between}
+.signboard .en span:last-child{background:var(--ink);color:var(--sign);padding:0 6px;border-radius:5px}
+.howto{list-style:none;margin:0;padding:0;display:grid;gap:8px;font-size:14px;line-height:1.5}
+.howto li{display:grid;grid-template-columns:28px 1fr;gap:8px;align-items:start}
+.howto .k{font-size:18px;line-height:1.3;text-align:center}
+.clonerow{display:flex;gap:6px;margin:14px 0 0;flex-wrap:wrap}
+.clonerow span{font-size:12px;font-weight:900;border-radius:999px;padding:3px 9px;color:#fff}
+
+/* team */
+.team-list{display:grid;gap:10px}
+.card{display:grid;grid-template-columns:46px 1fr auto;gap:10px;align-items:center;border:2px solid #e3dccb;border-radius:14px;padding:10px;background:#fff}
+.card .av{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;font-size:24px;border:2px solid var(--ink)}
+.card .nm{font-weight:900;font-size:16px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.card .lv{font-family:var(--f-display);font-size:11px;font-weight:400;background:var(--ink);color:var(--sign);border-radius:6px;padding:1px 6px}
+.card .ds{font-size:12.5px;color:var(--muted);line-height:1.45;margin-top:2px}
+.card .wg{font-size:12px;color:var(--ink);font-weight:700;margin-top:2px}
+.card button{border:2px solid var(--ink);background:var(--sign);color:var(--ink);font-weight:900;border-radius:10px;padding:8px 10px;font-size:14px;box-shadow:0 3px 0 var(--ink);min-width:78px;line-height:1.2}
+.card button small{display:block;font-family:var(--f-display);font-weight:400;font-size:12px}
+.card button:disabled{opacity:.4;cursor:not-allowed;box-shadow:none}
+.card button.max{background:#e8e2d3}
+.walletline{display:flex;justify-content:space-between;align-items:center;margin:0 0 12px;font-weight:900}
+.walletline b{font-family:var(--f-display);font-weight:400;font-size:20px}
+
+/* receipt */
+.receipt{font-variant-numeric:tabular-nums;font-size:15px;line-height:1.75;background:#fff;border:2px dashed #cfc6b2;border-radius:6px;padding:14px 16px;margin-top:6px}
+.receipt .hd{text-align:center;font-weight:900;font-size:16px}
+.receipt .hd small{display:block;font-weight:500;color:var(--muted);font-size:12px;line-height:1.4}
+.receipt hr{border:0;border-top:2px dashed #cfc6b2;margin:8px 0}
+.receipt .r{display:flex;justify-content:space-between;gap:12px}
+.receipt .r.neg span:last-child{color:#c0392b}
+.receipt .r.tot{font-weight:900;font-size:17px}
+.receipt .r.tot.pos span:last-child{color:#11885f}
+.receipt .bar{height:28px;margin-top:10px;background:repeating-linear-gradient(90deg,var(--ink) 0 2px,transparent 2px 4px,var(--ink) 4px 5px,transparent 5px 8px,var(--ink) 8px 11px,transparent 11px 12px)}
+.toggle-row{display:flex;justify-content:space-between;align-items:center;font-weight:700;padding:6px 0}
+.confirm{margin-top:10px;padding:10px;border-radius:12px;background:#ffe9e7;border:2px solid var(--coral);font-weight:700;font-size:14px}
+.confirm .btns{flex-direction:row;margin-top:8px}
+
+@media (max-width:420px){
+  .money b{font-size:17px}
+  .chip{padding:5px 9px}
+  .day{min-width:96px}
+  .hbtn{padding:6px 9px;font-size:14px}
+  #hint{font-size:14px}
+}
+@media (prefers-reduced-motion:reduce){
+  .hbtn.pulse,.tag.shelf.empty .tx{animation:none}
+}
+</style>
+</head>
+<body>
+<canvas id="game" tabindex="0" aria-label="3D 便利商店遊戲畫面"></canvas>
+<div id="tags"></div>
+<div id="fx"></div>
+
+<div id="hud" hidden>
+  <div class="hud-l">
+    <div class="chip money"><b id="money">$0</b></div>
+    <div class="chip day"><div class="row"><span id="day">第 1 天</span><span id="clock">07:00</span></div><div class="dayline"><i id="dayfill"></i></div></div>
+  </div>
+  <div class="hud-r">
+    <div class="chip"><span class="stars" aria-label="評價"><span class="s-bg">★★★★★</span><span class="s-fg" id="starfg">★★★★★</span></span><span id="ratenum">3.0</span></div>
+    <button id="btnTeam" class="hbtn" type="button">分身 <span class="cnt" id="teamCount">0/5</span></button>
+    <button id="btnPause" class="hbtn ghost" type="button" aria-label="暫停">❚❚</button>
+  </div>
+</div>
+<div id="alerts"></div>
+<div id="toast"></div>
+<div id="hint" class="off"></div>
+<div id="joy" hidden><div id="joyknob"></div></div>
+
+<!-- Title -->
+<div id="title" class="screen">
+  <div class="sheet">
+    <div class="signboard">
+      <div class="zh">分身便利店</div>
+      <div class="en"><span>CLONE MART</span><span>24H</span></div>
+    </div>
+    <ul class="howto">
+      <li><span class="k">🕹️</span><span id="howMove">拖曳畫面走動，或點一下地板／貨架直接走過去。</span></li>
+      <li><span class="k">🧾</span><span>站進「收銀」格子幫客人結帳，站到咖啡機前沖咖啡。</span></li>
+      <li><span class="k">📦</span><span>到倉庫「拿貨」，再走到空貨架前補貨。踩到垃圾就會清掉。</span></li>
+      <li><span class="k">🤖</span><span>賺錢僱用 5 個 AI 分身：收銀、補貨、清潔、咖啡、保全，讓店自己轉起來。</span></li>
+    </ul>
+    <div class="clonerow" id="cloneRow"></div>
+    <div class="btns">
+      <button class="btn" id="btnContinue" type="button" hidden>繼續營業</button>
+      <button class="btn" id="btnNew" type="button">開始營業</button>
+    </div>
+  </div>
+</div>
+
+<!-- Team -->
+<div id="team" class="screen" hidden>
+  <div class="sheet">
+    <h2>AI 分身</h2>
+    <p class="sub">分身會自己找事做。僱用後每天打烊要付薪水，升級會讓動作更快。</p>
+    <div class="walletline"><span>現金</span><b id="teamMoney">$0</b></div>
+    <div class="team-list" id="teamList"></div>
+    <div class="btns"><button class="btn alt" id="btnTeamClose" type="button">回到店裡</button></div>
+  </div>
+</div>
+
+<!-- Pause -->
+<div id="pause" class="screen" hidden>
+  <div class="sheet">
+    <h2>暫停中</h2>
+    <p class="sub" id="pauseInfo"></p>
+    <div class="toggle-row"><span>音效</span><button class="hbtn" id="btnSound" type="button">開</button></div>
+    <div class="btns">
+      <button class="btn" id="btnResume" type="button">繼續</button>
+      <button class="btn alt" id="btnRestart" type="button">從第 1 天重新開始</button>
+    </div>
+    <div class="confirm" id="confirmBox" hidden>
+      確定要清除進度重新開始嗎？
+      <div class="btns"><button class="btn danger" id="btnRestartYes" type="button">清除重來</button><button class="btn alt" id="btnRestartNo" type="button">取消</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- Day summary -->
+<div id="summary" class="screen" hidden>
+  <div class="sheet">
+    <h2 id="sumTitle">打烊了！</h2>
+    <div class="receipt" id="receipt"></div>
+    <div class="btns"><button class="btn" id="btnNext" type="button">迎接下一天</button></div>
+  </div>
+</div>
+
+<!-- Game over -->
+<div id="over" class="screen" hidden>
+  <div class="sheet">
+    <h2 id="overTitle">店舖倒閉了</h2>
+    <p class="sub" id="overText"></p>
+    <div class="btns"><button class="btn" id="btnOverRestart" type="button">重新開店</button></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+(function(){
+/* =====================================================================
+   分身便利店 — CLONE MART 24H
+   A 3D convenience-store management game (Three.js). Works with touch,
+   mouse and keyboard. The owner (you) plus up to five AI clones run the store.
+   ===================================================================== */
+const $ = s => document.querySelector(s);
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+const lerp = (a,b,t) => a + (b-a)*t;
+const rand = (a,b) => a + Math.random()*(b-a);
+const pick = a => a[Math.floor(Math.random()*a.length)];
+const dist2 = (a,b) => Math.hypot(a.x-b.x, a.z-b.z);
+const fmt = n => '$' + Math.round(n).toLocaleString('en-US');
+const isTouch = (window.matchMedia && matchMedia('(pointer:coarse)').matches) || ('ontouchstart' in window);
+const LOWQ = isTouch || Math.min(screen.width, screen.height) < 700;
+
+if (!window.THREE) {
+  document.body.innerHTML = '<div style="padding:24px;font:16px sans-serif;color:#fff">3D 引擎載入失敗，請確認網路連線後重新整理。</div>';
+  return;
+}
+
+/* ---------------- game data ---------------- */
+const DAY_LEN = 180;              // seconds per business day (07:00 → 23:00)
+const OPEN_H = 7, CLOSE_H = 23;
+const COFFEE_PRICE = 50, COFFEE_COST = 12, MAX_CUPS = 6, BREW_TIME = 1.8;
+const START_MONEY = 400;
+const SAVE_KEY = 'clonemart-save-v1';
+
+const CASHIER_SPOT  = {x:7.75, z:3.3};
+const CHECKOUT_SPOT = {x:5.3,  z:3.3};
+const COFFEE_SPOT   = {x:8.6,  z:1.5};
+const STOCK_SPOT    = {x:8.6,  z:-4.3};
+const STOCK_IDLE    = {x:6.6,  z:-4.0};
+const GUARD_SPOT    = {x:3.4,  z:5.5};
+const DOOR_OUT      = {x:1.25, z:8.4};
+const STREET_Z = 9.7;
+
+const SHELVES = [
+  {id:'drink',  name:'飲料',   en:'DRINKS', icon:'🥤', price:25, cost:10, max:12, cx:-3,   cz:-6.45, len:8, band:[-6.8,0.8,-5.7,-4.4], spot:{x:-3,  z:-5.0}, weight:5},
+  {id:'snack',  name:'零食',   en:'SNACKS', icon:'🍪', price:35, cost:14, max:9,  cx:-5.5, cz:-2.9,  len:4, band:[-7.4,-3.6,-2.3,-1.2], spot:{x:-5.5,z:-1.75}, weight:4},
+  {id:'noodle', name:'泡麵',   en:'NOODLE', icon:'🍜', price:45, cost:18, max:9,  cx:0.5,  cz:-2.9,  len:4, band:[-1.4,2.4,-2.3,-1.2], spot:{x:0.5, z:-1.75}, weight:3},
+  {id:'daily',  name:'日用品', en:'DAILY',  icon:'🧴', price:60, cost:25, max:9,  cx:-5.5, cz:0.5,   len:4, band:[-7.4,-3.6,1.1,2.3],  spot:{x:-5.5,z:1.75}, weight:2},
+  {id:'bento',  name:'便當',   en:'BENTO',  icon:'🍱', price:85, cost:38, max:8,  cx:0.5,  cz:0.5,   len:4, band:[-1.4,2.4,1.1,2.3],   spot:{x:0.5, z:1.75}, weight:3},
+];
+const SHELF = Object.fromEntries(SHELVES.map(s => [s.id, s]));
+
+const ROLES = [
+  {id:'cashier', name:'收銀分身', icon:'🧾', color:0x4da3ff, css:'#4da3ff', cost:800,  wage:60, desc:'守在收銀台，自動幫客人結帳。'},
+  {id:'stocker', name:'補貨分身', icon:'📦', color:0xff9f43, css:'#ff9f43', cost:900,  wage:70, desc:'貨架快空時，自己去倉庫搬貨上架。'},
+  {id:'cleaner', name:'清潔分身', icon:'🧹', color:0x34d6a6, css:'#34d6a6', cost:500,  wage:40, desc:'看到垃圾或打翻的飲料就去清乾淨。'},
+  {id:'barista', name:'咖啡分身', icon:'☕', color:0xc98b5a, css:'#c98b5a', cost:700,  wage:50, desc:'持續沖咖啡備用，收銀台沒人時會幫忙結帳。'},
+  {id:'guard',   name:'保全分身', icon:'🛡️', color:0xff6058, css:'#ff6058', cost:1000, wage:80, desc:'在門口迎賓讓客人更有耐心，還會追捕小偷。'},
+];
+const ROLE = Object.fromEntries(ROLES.map(r => [r.id, r]));
+const LV_WORK = [0, 0.85, 1.15, 1.5];
+const LV_MOVE = [0, 2.7, 3.3, 4.0];
+const upgradeCost = (r, lv) => lv === 1 ? Math.round(r.cost*0.75) : Math.round(r.cost*1.4);
+
+/* ---------------- renderer / scene ---------------- */
+const canvas = $('#game');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, LOWQ ? 1.75 : 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x8ccfff);
+scene.fog = new THREE.Fog(0x8ccfff, 38, 75);
+const camera = new THREE.PerspectiveCamera(40, 1, 0.5, 200);
+
+const hemi = new THREE.HemisphereLight(0xffffff, 0x8a9bb0, 0.62);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffffff, 0.75);
+sun.position.set(-9, 20, 12);
+sun.castShadow = true;
+sun.shadow.mapSize.set(LOWQ ? 1024 : 2048, LOWQ ? 1024 : 2048);
+Object.assign(sun.shadow.camera, {left:-17, right:17, top:17, bottom:-17, near:1, far:60});
+sun.shadow.bias = -0.0006;
+sun.shadow.normalBias = 0.02;
+scene.add(sun); scene.add(sun.target);
+const fill = new THREE.DirectionalLight(0xfff4e0, 0.28);
+fill.position.set(8, 12, -6);
+scene.add(fill);
+
+/* material cache */
+const _mats = new Map();
+function mat(c, em, emI){
+  const k = c + '|' + (em||0) + '|' + (emI||0);
+  let m = _mats.get(k);
+  if (!m){
+    m = new THREE.MeshLambertMaterial({color:c});
+    if (em){ m.emissive = new THREE.Color(em); m.emissiveIntensity = emI; }
+    _mats.set(k, m);
+  }
+  return m;
+}
+function box(w,h,d,material,x,y,z,parent,opts){
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), typeof material === 'number' ? mat(material) : material);
+  m.position.set(x||0, (y||0)+h/2, z||0);
+  const o = opts || {};
+  m.castShadow = o.cast !== false; m.receiveShadow = o.recv !== false;
+  (parent || scene).add(m);
+  return m;
+}
+function canvasTex(w,h,draw){
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d'); draw(g,w,h);
+  const t = new THREE.CanvasTexture(c);
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy ? Math.min(8, renderer.capabilities.getMaxAnisotropy()) : 1;
+  return t;
+}
+function roundRect(g,x,y,w,h,r){ g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r); g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); }
+const FONT = '"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif';
+const FONT_D = '"Bungee","Noto Sans TC",sans-serif';
+function signPlane(w,h,draw,parent,x,y,z,ry){
+  const tex = canvasTex(Math.round(w*128), Math.round(h*128), draw);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w,h), new THREE.MeshBasicMaterial({map:tex, transparent:true}));
+  m.position.set(x,y,z); if (ry) m.rotation.y = ry;
+  (parent||scene).add(m); return m;
+}
+
+/* ---------------- navigation grid ---------------- */
+const GX0 = -10, GZ0 = -7, CELL = 0.5, GW = 40, GH = 36;
+const NCELL = GW*GH;
+const blocked = new Uint8Array(NCELL);
+const cellC = x => Math.floor((x - GX0)/CELL);
+const cellR = z => Math.floor((z - GZ0)/CELL);
+const inGrid = (c,r) => c>=0 && r>=0 && c<GW && r<GH;
+const walkCR = (c,r) => inGrid(c,r) && !blocked[r*GW+c];
+const walkXZ = (x,z) => walkCR(cellC(x), cellR(z));
+const cx_ = c => GX0 + (c+0.5)*CELL, cz_ = r => GZ0 + (r+0.5)*CELL;
+function blockRect(x0,z0,x1,z1,pad){
+  const p = pad === undefined ? 0.3 : pad;
+  for (let r=0;r<GH;r++) for (let c=0;c<GW;c++){
+    const x = cx_(c), z = cz_(r);
+    if (x > x0-p && x < x1+p && z > z0-p && z < z1+p) blocked[r*GW+c] = 1;
+  }
+}
+function nearestWalkable(c,r){
+  c = clamp(c,0,GW-1); r = clamp(r,0,GH-1);
+  if (walkCR(c,r)) return {c,r,i:r*GW+c};
+  for (let rad=1; rad<14; rad++){
+    let best=null, bd=1e9;
+    for (let dr=-rad; dr<=rad; dr++) for (let dc=-rad; dc<=rad; dc++){
+      if (Math.max(Math.abs(dc),Math.abs(dr)) !== rad) continue;
+      if (walkCR(c+dc,r+dr)){ const d = dc*dc+dr*dr; if (d<bd){bd=d; best={c:c+dc,r:r+dr};} }
+    }
+    if (best){ best.i = best.r*GW+best.c; return best; }
+  }
+  return null;
+}
+const gS = new Float32Array(NCELL), fS = new Float32Array(NCELL), came = new Int32Array(NCELL), st = new Uint8Array(NCELL);
+let heap = [];
+function hpush(i){ heap.push(i); let k=heap.length-1; while(k>0){ const p=(k-1)>>1; if (fS[heap[p]]<=fS[heap[k]]) break; const t=heap[p]; heap[p]=heap[k]; heap[k]=t; k=p; } }
+function hpop(){ const top=heap[0], last=heap.pop(); if (heap.length){ heap[0]=last; let k=0; for(;;){ const l=2*k+1, r=l+1; let m=k; if(l<heap.length&&fS[heap[l]]<fS[heap[m]])m=l; if(r<heap.length&&fS[heap[r]]<fS[heap[m]])m=r; if(m===k)break; const t=heap[m]; heap[m]=heap[k]; heap[k]=t; k=m; } } return top; }
+const DIRS = [[1,0,1],[-1,0,1],[0,1,1],[0,-1,1],[1,1,1.4142],[1,-1,1.4142],[-1,1,1.4142],[-1,-1,1.4142]];
+function octile(c,r,tc,tr){ const dx=Math.abs(c-tc), dy=Math.abs(r-tr); return Math.max(dx,dy) + 0.4142*Math.min(dx,dy); }
+function lineClear(ax,az,bx,bz){
+  const d = Math.hypot(bx-ax, bz-az), n = Math.ceil(d/0.18);
+  for (let k=1;k<=n;k++){ const t=k/n; if (!walkXZ(ax+(bx-ax)*t, az+(bz-az)*t)) return false; }
+  return true;
+}
+function findPath(sx,sz,tx,tz){
+  const s = nearestWalkable(cellC(sx), cellR(sz)), t = nearestWalkable(cellC(tx), cellR(tz));
+  if (!s || !t) return [];
+  const end = (walkXZ(tx,tz) && cellC(tx)===t.c && cellR(tz)===t.r) ? {x:tx,z:tz} : {x:cx_(t.c), z:cz_(t.r)};
+  if (s.i === t.i) return [end];
+  st.fill(0); heap.length = 0;
+  gS[s.i]=0; fS[s.i]=octile(s.c,s.r,t.c,t.r); came[s.i]=-1; st[s.i]=1; hpush(s.i);
+  let found=false;
+  while (heap.length){
+    const cur = hpop();
+    if (st[cur]===2) continue;
+    if (cur===t.i){ found=true; break; }
+    st[cur]=2;
+    const cc=cur%GW, cr=(cur/GW)|0;
+    for (const [dc,dr,cost] of DIRS){
+      const nc=cc+dc, nr=cr+dr;
+      if (!walkCR(nc,nr)) continue;
+      if (dc && dr && (!walkCR(cc+dc,cr) || !walkCR(cc,cr+dr))) continue;
+      const ni=nr*GW+nc; if (st[ni]===2) continue;
+      const g=gS[cur]+cost;
+      if (st[ni]===1 && g>=gS[ni]) continue;
+      gS[ni]=g; fS[ni]=g+octile(nc,nr,t.c,t.r); came[ni]=cur; st[ni]=1; hpush(ni);
+    }
+  }
+  if (!found) return [end];
+  const cells=[]; for (let k=t.i; k!==-1; k=came[k]) cells.push(k);
+  cells.reverse();
+  const pts = cells.map(i => ({x:cx_(i%GW), z:cz_((i/GW)|0)}));
+  pts[pts.length-1] = end;
+  const out=[]; let ax=sx, az=sz, i=0;
+  while (i < pts.length){
+    let j = pts.length-1;
+    while (j > i && !lineClear(ax,az,pts[j].x,pts[j].z)) j--;
+    out.push(pts[j]); ax=pts[j].x; az=pts[j].z; i=j+1;
+  }
+  return out;
+}
+function randomInside(){
+  for (let k=0;k<40;k++){ const x=rand(-9,4.5), z=rand(-5,6); if (walkXZ(x,z)) return {x,z}; }
+  return {x:0,z:4};
+}
+
+/* ---------------- world building ---------------- */
+const pickables = [];       // meshes the pointer can tap
+const outdoorMats = [];     // materials that darken at night
+const lampMats = [];        // light bulbs that glow at night
+function outdoorMat(c){ const m = new THREE.MeshLambertMaterial({color:c}); m.userData.base = new THREE.Color(c); outdoorMats.push(m); return m; }
+
+function buildWorld(){
+  // ground
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(140,140), outdoorMat(0x5f7d57));
+  ground.rotation.x = -Math.PI/2; ground.position.y = -0.02; ground.receiveShadow = true; scene.add(ground);
+
+  // sidewalk
+  const swTex = canvasTex(256,256,(g,w,h)=>{
+    g.fillStyle='#c9c4ba'; g.fillRect(0,0,w,h);
+    g.strokeStyle='#aaa498'; g.lineWidth=4;
+    for (let y=0;y<4;y++) for (let x=0;x<4;x++){ const off = (y%2)*32; g.strokeRect(x*64+off-32, y*64, 64, 64); }
+  });
+  swTex.wrapS = swTex.wrapT = THREE.RepeatWrapping; swTex.repeat.set(16,3.2);
+  const swMat = outdoorMat(0xffffff); swMat.map = swTex;
+  const sidewalk = new THREE.Mesh(new THREE.PlaneGeometry(36,6.4), swMat);
+  sidewalk.rotation.x = -Math.PI/2; sidewalk.position.set(0,0,10.2); sidewalk.receiveShadow = true; scene.add(sidewalk);
+  const curb = box(36,0.12,0.3, outdoorMat(0xdedad2), 0,0,13.4, scene, {cast:false});
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(60,10), outdoorMat(0x3a3f47));
+  road.rotation.x = -Math.PI/2; road.position.set(0,-0.01,18.5); road.receiveShadow = true; scene.add(road);
+  for (let x=-28; x<30; x+=4){ const d=new THREE.Mesh(new THREE.PlaneGeometry(2,0.2), outdoorMat(0xe9e3c8)); d.rotation.x=-Math.PI/2; d.position.set(x,0,18.5); scene.add(d); }
+  // parking stripes in front of road side
+  void curb;
+
+  // store floor
+  const floorTex = canvasTex(256,256,(g,w,h)=>{
+    g.fillStyle='#f4efe4'; g.fillRect(0,0,w,h);
+    g.fillStyle='#ebe4d5'; g.fillRect(0,0,w/2,h/2); g.fillRect(w/2,h/2,w/2,h/2);
+    g.strokeStyle='#d7cebb'; g.lineWidth=3;
+    for (let i=0;i<=2;i++){ g.beginPath(); g.moveTo(i*w/2,0); g.lineTo(i*w/2,h); g.stroke(); g.beginPath(); g.moveTo(0,i*h/2); g.lineTo(w,i*h/2); g.stroke(); }
+  });
+  floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping; floorTex.repeat.set(10,7);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(20,14), new THREE.MeshLambertMaterial({map:floorTex}));
+  floor.rotation.x = -Math.PI/2; floor.position.set(0,0.001,0); floor.receiveShadow = true; scene.add(floor);
+  // stockroom concrete
+  const sr = new THREE.Mesh(new THREE.PlaneGeometry(5,4), mat(0xb9bcc2));
+  sr.rotation.x = -Math.PI/2; sr.position.set(7.5,0.004,-5); sr.receiveShadow = true; scene.add(sr);
+  // entrance mat
+  const emat = new THREE.Mesh(new THREE.PlaneGeometry(2.4,1.2), mat(0x3b4a63));
+  emat.rotation.x = -Math.PI/2; emat.position.set(1.25,0.006,6.2); emat.receiveShadow = true; scene.add(emat);
+
+  // walls
+  const wallC = 0xf3eee3;
+  box(20.6,3,0.3, wallC, 0,0,-7.15);
+  box(0.3,3,14.3, wallC, -10.15,0,0);
+  box(0.3,3,14.3, wallC, 10.15,0,0);
+  // signage band on back wall
+  box(20,0.7,0.06, 0xffcf3a, 0,2.25,-6.98, scene, {cast:false});
+  signPlane(10,0.62,(g,w,h)=>{
+    g.fillStyle='#14233d'; g.font=`900 ${h*0.72}px ${FONT}`; g.textBaseline='middle'; g.textAlign='left';
+    g.fillText('分身便利店', 20, h*0.54);
+    g.font=`${h*0.42}px ${FONT_D}`; g.textAlign='right'; g.fillText('CLONE MART · 24H', w-20, h*0.56);
+  }, scene, -3, 2.6, -6.94);
+  // posters on left wall
+  const posters = [['新品上市','抹茶布丁','#34d6a6'],['第二件','6折','#ff6058'],['熱咖啡','$50','#c98b5a']];
+  posters.forEach((p,i)=>{
+    signPlane(1.1,1.5,(g,w,h)=>{
+      g.fillStyle='#fffaf0'; g.fillRect(0,0,w,h); g.fillStyle=p[2]; g.fillRect(0,0,w,h*0.42);
+      g.fillStyle='#fff'; g.font=`900 ${w*0.17}px ${FONT}`; g.textAlign='center'; g.textBaseline='middle'; g.fillText(p[0], w/2, h*0.22);
+      g.fillStyle='#14233d'; g.font=`900 ${w*0.22}px ${FONT}`; g.fillText(p[1], w/2, h*0.66);
+    }, scene, -9.99, 1.5, -4.5+i*1.6, Math.PI/2);
+  });
+
+  // front windows + door
+  const glassMat = new THREE.MeshPhongMaterial({color:0xcfeaff, transparent:true, opacity:0.14, depthWrite:false, shininess:90, specular:0xffffff});
+  box(10,0.45,0.25, 0x2e3d58, -5,0,7);
+  box(7.5,0.45,0.25, 0x2e3d58, 6.25,0,7);
+  const g1 = new THREE.Mesh(new THREE.PlaneGeometry(10,1.9), glassMat); g1.position.set(-5,1.4,7); scene.add(g1);
+  const g2 = new THREE.Mesh(new THREE.PlaneGeometry(7.5,1.9), glassMat); g2.position.set(6.25,1.4,7); scene.add(g2);
+  for (const x of [-10,-7.5,-5,-2.5,0,2.5,5,7.5,10]) box(0.1,2.4,0.14, 0x2e3d58, x,0,7, scene, {cast:false});
+  box(10,0.08,0.14, 0x2e3d58, -5,2.35,7, scene, {cast:false});
+  box(7.5,0.08,0.14, 0x2e3d58, 6.25,2.35,7, scene, {cast:false});
+  door.L = new THREE.Mesh(new THREE.BoxGeometry(1.25,2.2,0.06), glassMat); door.L.position.set(0.625,1.12,7); scene.add(door.L);
+  door.R = new THREE.Mesh(new THREE.BoxGeometry(1.25,2.2,0.06), glassMat); door.R.position.set(1.875,1.12,7); scene.add(door.R);
+  for (const d of [door.L, door.R]){ const fr = new THREE.Mesh(new THREE.BoxGeometry(1.25,0.08,0.08), mat(0x2e3d58)); fr.position.y = -1.06; d.add(fr); }
+
+  // outside props
+  // light-box sign pole
+  box(0.16,2.6,0.16, outdoorMat(0x5a6476), 3.6,0,8.2);
+  const lb = box(1.1,1.1,0.3, mat(0xffcf3a, 0xffcf3a, 0.15), 3.6,2.6,8.2, scene);
+  signPlane(1.0,1.0,(g,w,h)=>{ g.fillStyle='#14233d'; g.font=`${h*0.5}px ${FONT_D}`; g.textAlign='center'; g.textBaseline='middle'; g.fillText('24', w/2, h*0.45); g.font=`900 ${h*0.17}px ${FONT}`; g.fillText('分身便利店', w/2, h*0.82); }, scene, 3.6, 3.15, 8.36);
+  void lb;
+  // vending machines
+  const vm = (x,c)=>{ box(0.9,1.9,0.75, outdoorMat(c), x,0,7.6); box(0.6,0.9,0.02, mat(0xbfe6ff,0x9fd3ff,0.5), x,0.85,7.99, scene, {cast:false}); };
+  vm(-9.3, 0xd93d4b); vm(-8.3, 0x2f6fd0);
+  blockRect(-9.8,7.2,-7.8,8.0);
+  // trash bin
+  box(0.5,0.8,0.5, outdoorMat(0x56606f), -1.2,0,7.75); blockRect(-1.45,7.5,-0.95,8.0,0.25);
+  blockRect(3.45,8.05,3.75,8.35,0.25);
+  // street lamps
+  for (const x of [-6.5, 7.5]){
+    box(0.14,4.2,0.14, outdoorMat(0x44505f), x,0,12.9);
+    box(0.9,0.1,0.14, outdoorMat(0x44505f), x+0.4,4.1,12.9);
+    const bm = new THREE.MeshLambertMaterial({color:0xfff2c4, emissive:0xffe08a, emissiveIntensity:0}); lampMats.push(bm);
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.22,12,8), bm); b.position.set(x+0.8,4.05,12.9); scene.add(b);
+  }
+  // trees
+  const tree = (x,z,s)=>{
+    box(0.25*s,1.2*s,0.25*s, outdoorMat(0x6b4b33), x,0,z);
+    const f = new THREE.Mesh(new THREE.IcosahedronGeometry(1.0*s,0), outdoorMat(0x3f8a4f)); f.position.set(x,1.9*s,z); f.castShadow = true; scene.add(f);
+    const f2 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.7*s,0), outdoorMat(0x4fa35f)); f2.position.set(x+0.3*s,2.6*s,z-0.2*s); f2.castShadow = true; scene.add(f2);
+  };
+  tree(-13,9.5,1.2); tree(13.2,9.2,1.1); tree(-13.5,1,1.3); tree(13.5,-2,1.25); tree(-12,-8,1.4); tree(12.5,-9,1.2);
+  // bench
+  box(1.8,0.08,0.5, outdoorMat(0x9a6b45), -4,0.42,11.6); box(0.1,0.42,0.45, outdoorMat(0x44505f), -4.8,0,11.6); box(0.1,0.42,0.45, outdoorMat(0x44505f), -3.2,0,11.6);
+  // a parked scooter (simple)
+  const sc = new THREE.Group(); sc.position.set(6,0,11.3); scene.add(sc);
+  box(1.2,0.35,0.35, outdoorMat(0x7bc5c1), 0,0.25,0, sc); box(0.3,0.6,0.3, outdoorMat(0x7bc5c1), 0.45,0.4,0, sc);
+  for (const x of [-0.45,0.5]){ const w = new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.22,0.12,14), outdoorMat(0x222222)); w.rotation.x = Math.PI/2; w.position.set(x,0.22,0); w.castShadow=true; sc.add(w); }
+
+  // world bounds / walls in nav grid
+  blockRect(-11,-7.4,11,-7.0);            // back wall
+  blockRect(-10.4,-7.4,-10.0,7.2);        // left wall
+  blockRect(10.0,-7.4,10.4,7.2);          // right wall
+  blockRect(-10,6.88,0,7.12);             // front wall left of door
+  blockRect(2.5,6.88,10,7.12);            // front wall right of door
+  blockRect(-10.4,7.0,-10.0,11.2,0.3);    // keep outside within grid band
+  blockRect(10.0,7.0,10.4,11.2,0.3);
+
+  buildShelves();
+  buildCounter();
+  buildStockroom();
+  buildDecor();
+}
+const door = {L:null, R:null, open:0};
+
+/* product geometry per kind */
+const PG = {
+  bag: new THREE.BoxGeometry(0.26,0.34,0.08),
+  cup: new THREE.CylinderGeometry(0.11,0.085,0.15,10),
+  bottle: new THREE.CylinderGeometry(0.055,0.06,0.3,8),
+  cap: new THREE.CylinderGeometry(0.03,0.03,0.05,6),
+  tray: new THREE.BoxGeometry(0.34,0.08,0.26),
+  lid: new THREE.BoxGeometry(0.34,0.025,0.26),
+  pack: new THREE.BoxGeometry(0.16,0.28,0.12),
+};
+const PCOL = [0xff6058,0xffcf3a,0x4da3ff,0x34d6a6,0xff9f43,0xb57cf0,0xf2f2f2];
+
+function productSlot(kind){
+  const g = new THREE.Group();
+  const add = (geo,c,x,y,z,ry)=>{ const m = new THREE.Mesh(geo, mat(c)); m.position.set(x,y,z); if(ry) m.rotation.y=ry; g.add(m); return m; };
+  if (kind==='snack'){
+    const c = pick(PCOL); for (let i=0;i<3;i++) add(PG.bag, i===1?pick(PCOL):c, rand(-0.12,0.12), 0.17, 0.25-i*0.22, rand(-0.2,0.2));
+  } else if (kind==='noodle'){
+    const c = pick([0xff6058,0xffcf3a,0xff9f43,0xf2f2f2]);
+    for (const x of [-0.13,0.13]) for (const y of [0.075,0.225]) add(PG.cup, c, x, y, 0.15);
+    add(PG.cup, c, 0, 0.075, -0.15);
+  } else if (kind==='daily'){
+    for (let i=0;i<3;i++){ const c=pick([0x4da3ff,0xf2f2f2,0xf7a8c4,0x34d6a6]); add(PG.bottle,c,-0.15+i*0.15,0.15,0.18); add(PG.pack,pick(PCOL),-0.12+i*0.15,0.14,-0.12); }
+  } else if (kind==='drink'){
+    for (let i=0;i<4;i++){ const c=pick([0xff6058,0x4da3ff,0x34d6a6,0xffcf3a,0x8b4a2b,0xf2f2f2]); add(PG.bottle,c,-0.24+i*0.16,0.15,0.18); add(PG.cap,0xffffff,-0.24+i*0.16,0.32,0.18); add(PG.bottle,c,-0.24+i*0.16,0.15,-0.05); }
+  } else if (kind==='bento'){
+    for (const z of [0.12,-0.16]){ const c=pick([0xff6058,0x34d6a6,0xffcf3a,0xff9f43]); add(PG.tray,0x2b2b2b,0,0.04,z); add(PG.lid,c,0,0.095,z); add(PG.tray,0x2b2b2b,0,0.13,z); add(PG.lid,c,0,0.185,z); }
+  }
+  return g;
+}
+
+function shelfSign(sh, parent, y, z){
+  signPlane(1.6,0.5,(g,w,h)=>{
+    roundRect(g,4,4,w-8,h-8,18); g.fillStyle='#14233d'; g.fill();
+    g.fillStyle='#ffcf3a'; g.font=`900 ${h*0.5}px ${FONT}`; g.textBaseline='middle'; g.textAlign='left'; g.fillText(sh.name, 22, h*0.52);
+    g.fillStyle='#fff'; g.font=`${h*0.36}px ${FONT_D}`; g.textAlign='right'; g.fillText('$'+sh.price, w-22, h*0.54);
+  }, parent, 0, y, z);
+}
+
+function buildShelves(){
+  for (const sh of SHELVES){
+    const g = new THREE.Group(); g.position.set(sh.cx,0,sh.cz); scene.add(g);
+    g.userData.station = sh; pickables.push(g);
+    sh.group = g; sh.slots = []; sh.stock = sh.max; sh.shown = -1;
+    const L = sh.len;
+    if (sh.id==='drink'){
+      // walk-in fridge with glass doors
+      box(L,2.3,0.1, 0x24324a, 0,0,-0.5, g);
+      box(0.1,2.3,1.0, 0xd5dce6, -L/2,0,0, g); box(0.1,2.3,1.0, 0xd5dce6, L/2,0,0, g);
+      box(L,0.4,1.0, 0xd5dce6, 0,1.9,0, g);
+      box(L-0.2,0.04,0.8, mat(0xffffff,0xffffff,0.6), 0,1.86,0, g, {cast:false});
+      const tiers=[0.32,0.92,1.52]; const per=4;
+      for (const y of tiers){ box(L-0.2,0.04,0.86, 0xb6c2d1, 0,y-0.04,0.02, g, {cast:false}); }
+      for (let t=0;t<3;t++) for (let i=0;i<per;i++){
+        const s = productSlot('drink'); s.position.set(-L/2+0.6+i*((L-1.2)/(per-1)), tiers[t], 0.12); g.add(s); sh.slots.push(s);
+      }
+      // doors
+      const gm = new THREE.MeshPhongMaterial({color:0xd8f0ff, transparent:true, opacity:0.2, depthWrite:false, shininess:100, specular:0xffffff});
+      for (let i=0;i<4;i++){
+        const d = new THREE.Mesh(new THREE.PlaneGeometry(L/4-0.08,1.58), gm); d.position.set(-L/2+L/8+i*L/4, 1.09, 0.49); g.add(d);
+        box(0.06,1.6,0.06, 0x9aa7b8, -L/2+i*L/4+0.03, 0.3, 0.47, g, {cast:false});
+        box(0.04,0.6,0.06, 0xe0e6ee, -L/2+L/4*(i+1)-0.18, 0.9, 0.52, g, {cast:false});
+      }
+      // front lip so the bottom tier sits inside
+      box(L,0.3,1.0, 0xb6c2d1, 0,0,0, g);
+      signPlane(2.6,0.36,(gg,w,h)=>{ roundRect(gg,4,4,w-8,h-8,20); gg.fillStyle='#4da3ff'; gg.fill(); gg.fillStyle='#fff'; gg.font=`900 ${h*0.5}px ${FONT}`; gg.textBaseline='middle'; gg.textAlign='left'; gg.fillText('冷藏飲料', 26, h*0.52); gg.font=`${h*0.36}px ${FONT_D}`; gg.textAlign='right'; gg.fillText('$25', w-26, h*0.55); }, g, 0, 2.1, 0.51);
+      blockRect(sh.cx-L/2, sh.cz-0.55, sh.cx+L/2, sh.cz+0.55);
+    } else if (sh.id==='bento'){
+      box(L,0.78,0.95, 0xe6ecf2, 0,0,0, g);
+      box(L-0.1,0.04,0.8, 0x24324a, 0,0.78,0.02, g, {cast:false});
+      box(L,0.32,0.4, 0xd5dce6, 0,0.78,-0.28, g);
+      box(L,0.06,0.95, mat(0xffffff,0xa9e7ff,0.25), 0,1.65,0, g, {cast:false});
+      box(0.06,0.9,0.06, 0x9aa7b8, -L/2+0.05,0.78,-0.4, g); box(0.06,0.9,0.06, 0x9aa7b8, L/2-0.05,0.78,-0.4, g);
+      const per=4;
+      for (let t=0;t<2;t++) for (let i=0;i<per;i++){
+        const s = productSlot('bento'); s.position.set(-L/2+0.55+i*((L-1.1)/(per-1)), t===0?0.8:1.1, t===0?0.18:-0.28); g.add(s); sh.slots.push(s);
+      }
+      shelfSign(sh, g, 1.98, -0.3);
+      blockRect(sh.cx-L/2, sh.cz-0.5, sh.cx+L/2, sh.cz+0.5);
+    } else {
+      // gondola
+      const colBase = 0xe9edf2;
+      box(L,0.16,0.9, colBase, 0,0,0, g);
+      box(L,1.6,0.06, 0xdfe5ec, 0,0,-0.42, g);
+      box(0.05,1.6,0.9, 0xc9d1dc, -L/2,0,0, g); box(0.05,1.6,0.9, 0xc9d1dc, L/2,0,0, g);
+      const tiers=[0.16,0.62,1.08]; const per=3;
+      for (const y of tiers.slice(1)) box(L,0.04,0.84, 0xc9d1dc, 0,y-0.04,0.02, g, {cast:false});
+      for (let t=0;t<3;t++) for (let i=0;i<per;i++){
+        const s = productSlot(sh.id); s.position.set(-L/2+0.7+i*((L-1.4)/(per-1)), tiers[t], 0); g.add(s); sh.slots.push(s);
+      }
+      shelfSign(sh, g, 1.9, -0.38);
+      blockRect(sh.cx-L/2, sh.cz-0.5, sh.cx+L/2, sh.cz+0.5);
+    }
+    // ordered so that the top tier empties first
+    sh.slots.sort((a,b)=>a.position.y-b.position.y);
+    sh.tag = new Tag('shelf');
+    sh.tagPos = new THREE.Vector3(sh.cx + sh.len*0.32, sh.id==='drink'?2.9:2.7, sh.cz);
+  }
+}
+
+const cupMeshes = [];
+const reg = {power:0, payT:0};
+const coffee = {prog:0, power:0};
+let regTag, coffeeTag, stockTag;
+function buildCounter(){
+  // main checkout counter
+  const g = new THREE.Group(); scene.add(g); g.userData.station = {id:'register'}; pickables.push(g);
+  box(1.0,0.98,4.7, 0xffffff, 6.5,0,2.85, g);
+  box(1.1,0.06,4.8, 0xc49a6c, 6.5,0.98,2.85, g);
+  box(0.04,0.3,4.7, 0xffcf3a, 5.98,0.45,2.85, g, {cast:false});
+  // register
+  box(0.5,0.18,0.45, 0x2e3d58, 6.6,1.04,3.3, g);
+  const scr = box(0.42,0.3,0.05, mat(0x9fe8ff,0x4da3ff,0.6), 6.75,1.22,3.3, g); scr.rotation.y = -Math.PI/2; scr.rotation.z = 0.25;
+  box(0.25,0.12,0.25, 0x14233d, 6.25,1.04,3.3, g);
+  // hot food case
+  box(0.8,0.5,0.9, mat(0xffe2b0,0xff9f43,0.35), 6.5,1.04,1.3, g);
+  for (let i=0;i<3;i++){ const m = new THREE.Mesh(new THREE.SphereGeometry(0.09,8,6), mat(0xd89a52)); m.position.set(6.5-0.2+i*0.2,1.2,1.3); g.add(m); }
+  // impulse snacks rack on counter
+  box(0.4,0.35,0.5, 0xff6058, 6.3,1.04,4.4, g);
+  blockRect(6.0,0.5,7.0,5.2);
+  // back counter + coffee
+  const g2 = new THREE.Group(); scene.add(g2); g2.userData.station = {id:'coffee'}; pickables.push(g2);
+  box(0.8,0.95,4.7, 0xe7e1d4, 9.6,0,2.85, g2);
+  box(0.85,0.05,4.75, 0x4a5a74, 9.6,0.95,2.85, g2);
+  box(0.6,0.85,0.55, 0x2b2f38, 9.62,1.0,1.5, g2);
+  box(0.45,0.15,0.04, mat(0x9fe8ff,0x34d6a6,0.8), 9.33,1.6,1.5, g2, {cast:false}).rotation.y = -Math.PI/2;
+  box(0.12,0.08,0.12, 0x888888, 9.35,1.2,1.5, g2);
+  box(0.3,0.02,0.3, 0x555555, 9.4,1.0,1.5, g2, {cast:false});
+  for (let i=0;i<MAX_CUPS;i++){
+    const cg = new THREE.Group(); cg.position.set(9.55 - (i%2)*0.22, 1.0, 2.2 + Math.floor(i/2)*0.24); g2.add(cg);
+    const c = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.06,0.18,10), mat(0xffffff)); c.position.y=0.09; cg.add(c);
+    const l = new THREE.Mesh(new THREE.CylinderGeometry(0.085,0.085,0.03,10), mat(0xc98b5a)); l.position.y=0.19; cg.add(l);
+    cupMeshes.push(cg);
+  }
+  // cigarette-style wall rack (decor) above back counter
+  box(0.3,1.0,4.4, 0xd5dce6, 9.85,1.5,3.0, g2);
+  for (let r=0;r<3;r++) for (let k=0;k<10;k++) box(0.1,0.22,0.3, PCOL[(r*3+k)%PCOL.length], 9.68,1.58+r*0.3,1.15+k*0.42+0.4, g2, {cast:false});
+  blockRect(9.2,0.5,10,5.2);
+  // half wall closing the staff area at the front
+  box(3.0,1.0,0.2, 0xe7e1d4, 8.55,0,5.35);
+  blockRect(7.0,5.25,10,5.45);
+
+  regTag = new Tag('reg'); coffeeTag = new Tag('reg');
+  floorMark(CASHIER_SPOT, '#4da3ff', '🧾', '收銀');
+  floorMark(COFFEE_SPOT, '#c98b5a', '☕', '咖啡');
+}
+function buildStockroom(){
+  box(0.2,2.6,3.6, 0xe7e1d4, 5.0,0,-5.2);
+  blockRect(4.9,-7,5.1,-3.4);
+  signPlane(1.4,0.45,(g,w,h)=>{ roundRect(g,4,4,w-8,h-8,14); g.fillStyle='#ff9f43'; g.fill(); g.fillStyle='#14233d'; g.font=`900 ${h*0.5}px ${FONT}`; g.textAlign='center'; g.textBaseline='middle'; g.fillText('倉庫 STOCK', w/2, h*0.53); }, scene, 5.11, 2.1, -4.2, Math.PI/2);
+  const g = new THREE.Group(); scene.add(g); g.userData.station = {id:'stock'}; pickables.push(g);
+  // metal rack
+  for (const x of [7.6,9.9]) for (const z of [-6.9,-5.4]) box(0.06,2.0,0.06, 0x6c7686, x,0,z, g);
+  for (const y of [0.05,1.0,1.95]) box(2.4,0.05,1.6, 0x8a94a3, 8.75,y,-6.15, g);
+  const boxColors=[0xc8955a,0xb88445,0xd6a46a];
+  for (const y of [0.1,1.05]) for (let i=0;i<3;i++) for (let j=0;j<2;j++){
+    if (Math.random()<0.15) continue;
+    const b = box(0.62,0.5+Math.random()*0.15,0.6, boxColors[(i+j)%3], 7.95+i*0.75, y, -6.55+j*0.75, g);
+    const tape = new THREE.Mesh(new THREE.BoxGeometry(0.64,0.02,0.12), mat(0xe8d2a9)); tape.position.y = b.geometry.parameters.height/2+0.005; b.add(tape);
+  }
+  // loose boxes on floor
+  box(0.6,0.5,0.6, 0xc8955a, 6.1,0,-6.4); box(0.55,0.45,0.55, 0xb88445, 6.15,0.5,-6.35);
+  blockRect(5.8,-6.75,6.45,-6.05);
+  blockRect(7.5,-7,10,-5.3);
+  stockTag = new Tag('reg');
+  floorMark(STOCK_SPOT, '#ff9f43', '📦', '拿貨');
+}
+function buildDecor(){
+  // ATM
+  box(0.8,1.7,0.7, 0x2e3d58, -9.45,0,4.6); box(0.02,0.4,0.5, mat(0x9fe8ff,0x4da3ff,0.5), -9.04,1.1,4.6, scene, {cast:false});
+  signPlane(0.6,0.2,(g,w,h)=>{ g.fillStyle='#fff'; g.font=`${h*0.7}px ${FONT_D}`; g.textAlign='center'; g.textBaseline='middle'; g.fillText('ATM', w/2, h/2); }, scene, -9.04, 1.55, 4.6, Math.PI/2);
+  blockRect(-9.9,4.2,-9.0,5.0);
+  // magazine rack under front window
+  box(4,0.9,0.4, 0xd5dce6, -6,0,6.5);
+  for (let i=0;i<12;i++){ const m = box(0.28,0.38,0.03, PCOL[i%PCOL.length], -7.8+i*0.33,0.75,6.33, scene, {cast:false}); m.rotation.x = -0.25; }
+  blockRect(-8,6.3,-4,6.7);
+  // plant by the door
+  box(0.45,0.45,0.45, 0x9a6b45, -0.6,0,6.4);
+  const pl = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42,0), mat(0x3f8a4f)); pl.position.set(-0.6,0.85,6.4); pl.castShadow=true; scene.add(pl);
+  blockRect(-0.85,6.15,-0.35,6.65,0.25);
+  // ceiling lights (floating light panels, no ceiling so the camera can see in)
+}
+function floorMark(p, color, icon, label){
+  const tex = canvasTex(256,256,(g,w,h)=>{
+    roundRect(g,10,10,w-20,h-20,40); g.fillStyle = color+'40'; g.fill();
+    g.setLineDash([22,14]); g.lineWidth = 10; g.strokeStyle = color; g.stroke();
+    g.font = `${h*0.3}px sans-serif`; g.textAlign='center'; g.textBaseline='middle'; g.fillText(icon, w/2, h*0.4);
+    g.font = `900 ${h*0.18}px ${FONT}`; g.fillStyle = '#14233d'; g.fillText(label, w/2, h*0.74);
+  });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(1.3,1.3), new THREE.MeshBasicMaterial({map:tex, transparent:true, depthWrite:false}));
+  m.rotation.x = -Math.PI/2; m.position.set(p.x, 0.015, p.z); scene.add(m);
+  return m;
+}
+
+/* ---------------- characters ---------------- */
+const CG = {
+  leg: new THREE.BoxGeometry(0.17,0.5,0.19).translate(0,-0.25,0),
+  arm: new THREE.BoxGeometry(0.13,0.48,0.14).translate(0,-0.22,0),
+  torso: new THREE.BoxGeometry(0.52,0.56,0.32),
+  head: new THREE.SphereGeometry(0.22,16,12),
+  hair: new THREE.SphereGeometry(0.235,16,8,0,Math.PI*2,0,Math.PI*0.55),
+  eye: new THREE.BoxGeometry(0.045,0.065,0.02),
+  apron: new THREE.BoxGeometry(0.46,0.5,0.03),
+  capTop: new THREE.CylinderGeometry(0.2,0.24,0.12,16),
+  brim: new THREE.BoxGeometry(0.32,0.03,0.2),
+  carry: new THREE.BoxGeometry(0.5,0.38,0.42),
+  bag: new THREE.BoxGeometry(0.22,0.28,0.12),
+  ring: new THREE.RingGeometry(0.42,0.56,32).rotateX(-Math.PI/2),
+  shadow: new THREE.CircleGeometry(0.34,16).rotateX(-Math.PI/2),
+};
+const SHIRTS=[0xe85d75,0x5d8de8,0x58c48f,0xf2b134,0x9b6de0,0xf07b3f,0x3fb8c9,0xeeeeee,0x444c5c,0x8fbf4f];
+const PANTS=[0x2f3b52,0x4a4a4a,0x6b5a45,0x1f2a44,0x8a8f99,0x3d5a80];
+const SKIN=[0xf5d0b0,0xe8b48f,0xc98f6a,0x8d5b3e,0xf9dcc4];
+const HAIR=[0x2b1d14,0x4a3020,0x111111,0x8b5a2b,0xd9b26f,0x7a7a7a,0xb5562e];
+
+function makeChar(o){
+  const g = new THREE.Group();
+  const em = o.glow || 0, emI = o.glow ? 0.22 : 0;
+  const M = c => mat(c, em, emI);
+  const parts = {g};
+  const add = (geo, m, x,y,z, cast) => { const mesh = new THREE.Mesh(geo, m); mesh.position.set(x,y,z); mesh.castShadow = cast !== false; g.add(mesh); return mesh; };
+  parts.legL = add(CG.leg, M(o.pants), -0.11,0.52,0);
+  parts.legR = add(CG.leg, M(o.pants),  0.11,0.52,0);
+  parts.torso = add(CG.torso, M(o.shirt), 0,0.8,0);
+  parts.armL = add(CG.arm, M(o.shirt), -0.33,1.03,0);
+  parts.armR = add(CG.arm, M(o.shirt),  0.33,1.03,0);
+  parts.head = add(CG.head, M(o.skin), 0,1.32,0);
+  const hair = add(CG.hair, M(o.hair), 0,1.34,-0.01); hair.rotation.x = -0.35;
+  add(CG.eye, mat(0x1a1a1a), -0.075,1.34,0.205, false); add(CG.eye, mat(0x1a1a1a), 0.075,1.34,0.205, false);
+  if (o.apron) add(CG.apron, M(o.apron), 0,0.74,0.17);
+  if (o.cap){ add(CG.capTop, M(o.cap), 0,1.52,0); add(CG.brim, M(o.cap), 0,1.48,0.2); }
+  parts.carry = add(CG.carry, mat(0xc8955a), 0,0.92,0.42); parts.carry.visible = false;
+  const tape = new THREE.Mesh(new THREE.BoxGeometry(0.52,0.02,0.12), mat(0xe8d2a9)); tape.position.y = 0.2; parts.carry.add(tape);
+  parts.bag = add(CG.bag, mat(0xffffff), 0.4,0.62,0); parts.bag.visible = false;
+  const sh = new THREE.Mesh(CG.shadow, new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:0.18, depthWrite:false}));
+  sh.position.y = 0.02; g.add(sh);
+  if (o.ring){
+    parts.ring = new THREE.Mesh(CG.ring, new THREE.MeshBasicMaterial({color:o.ring, transparent:true, opacity:0.85, depthWrite:false, side:THREE.DoubleSide}));
+    parts.ring.position.y = 0.03; g.add(parts.ring);
+  }
+  g.scale.setScalar(o.scale || 1.1);
+  scene.add(g);
+  parts.phase = Math.random()*6;
+  return parts;
+}
+function animChar(ch, dt, moving, speed, carrying){
+  if (moving) ch.phase += dt*speed*3.4;
+  const s = moving ? Math.sin(ch.phase)*0.65 : 0;
+  ch.legL.rotation.x = lerp(ch.legL.rotation.x, s, Math.min(1,dt*15));
+  ch.legR.rotation.x = lerp(ch.legR.rotation.x, -s, Math.min(1,dt*15));
+  const aL = carrying ? -1.25 : -s*0.8, aR = carrying ? -1.25 : s*0.8;
+  ch.armL.rotation.x = lerp(ch.armL.rotation.x, aL, Math.min(1,dt*15));
+  ch.armR.rotation.x = lerp(ch.armR.rotation.x, aR, Math.min(1,dt*15));
+  ch.torso.position.y = 0.8 + (moving ? Math.abs(Math.cos(ch.phase))*0.035 : 0);
+  ch.head.position.y = ch.torso.position.y + 0.52;
+  ch.carry.visible = !!carrying;
+  if (ch.ring) ch.ring.rotation.y += dt*1.5;
+}
+
+class Agent {
+  constructor(ch, speed){ this.ch=ch; this.g=ch.g; this.pos=ch.g.position; this.path=[]; this.speed=speed; this.moving=false; this.rot=0; this.carrying=false; }
+  goTo(x,z){ this.path = findPath(this.pos.x, this.pos.z, x, z); }
+  face(r){ this.rot = r; }
+  step(dt, manual){
+    let moved = !!manual, rem = this.speed*dt;
+    while (rem > 0 && this.path.length){
+      const p = this.path[0], dx = p.x-this.pos.x, dz = p.z-this.pos.z, d = Math.hypot(dx,dz);
+      if (d > 0.001) this.rot = Math.atan2(dx,dz);
+      if (d <= rem){ this.pos.x = p.x; this.pos.z = p.z; rem -= d; this.path.shift(); }
+      else { this.pos.x += dx/d*rem; this.pos.z += dz/d*rem; rem = 0; }
+      moved = true;
+    }
+    this.moving = moved;
+    let diff = this.rot - this.g.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+    this.g.rotation.y += diff*Math.min(1, dt*12);
+    animChar(this.ch, dt, moved, this.speed, this.carrying);
+    return this.path.length === 0;
+  }
+}
+
+/* ---------------- DOM tags ---------------- */
+const tagLayer = $('#tags'), fxLayer = $('#fx');
+const _v = new THREE.Vector3();
+let VW = innerWidth, VH = innerHeight;
+class Tag {
+  constructor(cls){
+    this.el = document.createElement('div'); this.el.className = 'tag ' + (cls||'');
+    this.ic = document.createElement('div'); this.ic.className = 'ic';
+    this.tx = document.createElement('div'); this.tx.className = 'tx';
+    this.bar = document.createElement('div'); this.bar.className = 'bar'; this.fillEl = document.createElement('i'); this.bar.appendChild(this.fillEl);
+    this.el.append(this.ic, this.tx, this.bar); tagLayer.appendChild(this.el);
+    this._ic = null; this._tx = null; this._bw = null; this._bc = null; this._vis = true; this.setBar(null);
+  }
+  icon(s){ s = s || ''; if (s !== this._ic){ this._ic = s; this.ic.textContent = s; } return this; }
+  text(s){ s = s || ''; if (s !== this._tx){ this._tx = s; this.tx.textContent = s; } return this; }
+  setBar(f, color){
+    if (f === null || f === undefined){ if (this._bw !== -1){ this._bw = -1; this.bar.style.display = 'none'; } return this; }
+    if (this._bw === -1) this.bar.style.display = '';
+    const w = Math.round(clamp(f,0,1)*100);
+    if (w !== this._bw){ this._bw = w; this.fillEl.style.width = w + '%'; }
+    color = color || '#34d6a6';
+    if (color !== this._bc){ this._bc = color; this.fillEl.style.background = color; }
+    return this;
+  }
+  cls(name, on){ this.el.classList.toggle(name, !!on); return this; }
+  place(x,y,z){
+    _v.set(x,y,z).project(camera);
+    const vis = _v.z < 1 && Math.abs(_v.x) < 1.2 && Math.abs(_v.y) < 1.2 && (this._ic || this._tx || this._bw !== -1);
+    if (vis !== this._vis){ this._vis = vis; this.el.style.display = vis ? '' : 'none'; }
+    if (vis) this.el.style.transform = `translate(${((_v.x+1)/2*VW).toFixed(1)}px,${((1-_v.y)/2*VH).toFixed(1)}px) translate(-50%,-100%)`;
+  }
+  remove(){ this.el.remove(); }
+}
+function floatText(x,y,z,text,cls){
+  _v.set(x,y,z).project(camera);
+  if (_v.z > 1) return;
+  const d = document.createElement('div'); d.className = 'float ' + (cls||''); d.textContent = text;
+  d.style.transform = `translate(${((_v.x+1)/2*VW).toFixed(1)}px,${((1-_v.y)/2*VH).toFixed(1)}px) translate(-50%,-100%)`;
+  fxLayer.appendChild(d); setTimeout(()=>d.remove(), 1250);
+}
+function toast(text, cls){
+  const d = document.createElement('div'); d.textContent = text; if (cls) d.className = cls;
+  const box = $('#toast'); box.appendChild(d); while (box.children.length > 3) box.firstChild.remove();
+  setTimeout(()=>d.remove(), 2700);
+}
+const hintQ = []; let hintT = 0;
+function showHint(t, valid){ hintQ.push({t, valid}); }
+function updateHint(dt){
+  const el = $('#hint');
+  if (hintT > 0){ hintT -= dt; if (hintT <= 0) el.classList.add('off'); return; }
+  while (hintQ.length && hintQ[0].valid && !hintQ[0].valid()) hintQ.shift();
+  if (hintQ.length && hintT <= 0){ el.textContent = hintQ.shift().t; el.classList.remove('off'); hintT = 6; }
+}
+
+/* ---------------- audio ---------------- */
+let actx = null, muted = false;
+function initAudio(){ try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch(e){ actx = null; } }
+function tone(f, dur, type, vol, when, slideTo){
+  if (!actx || muted) return;
+  try {
+    const t0 = actx.currentTime + (when||0);
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type || 'sine'; o.frequency.setValueAtTime(f, t0);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0+dur);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol||0.12, t0+0.012); g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+    o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0+dur+0.02);
+  } catch(e){}
+}
+const SFX = {
+  ding(){ tone(1318,0.14,'sine',0.12); tone(1760,0.3,'sine',0.1,0.09); },
+  chime(){ tone(784,0.22,'triangle',0.08); tone(988,0.22,'triangle',0.08,0.16); tone(1175,0.35,'triangle',0.07,0.32); },
+  pick(){ tone(520,0.07,'square',0.05); tone(780,0.08,'square',0.04,0.05); },
+  stock(){ tone(660,0.08,'triangle',0.1); tone(880,0.08,'triangle',0.1,0.07); tone(1100,0.12,'triangle',0.09,0.14); },
+  bad(){ tone(220,0.25,'sawtooth',0.06); tone(160,0.3,'sawtooth',0.05,0.12); },
+  clean(){ tone(1400,0.12,'sine',0.05,0,2400); },
+  brew(){ tone(300,0.18,'sine',0.06,0,520); },
+  hire(){ [523,659,784,1047].forEach((f,i)=>tone(f,0.18,'triangle',0.09,i*0.08)); },
+  catch(){ tone(880,0.1,'square',0.06); tone(660,0.1,'square',0.06,0.1); tone(990,0.2,'square',0.06,0.2); },
+  close(){ [784,659,523].forEach((f,i)=>tone(f,0.3,'triangle',0.08,i*0.18)); },
+};
+
+/* ---------------- game state ---------------- */
+const G = {
+  state:'title', prevState:'play', day:1, time:0, money:START_MONEY, rating:3, cups:2,
+  spawnT:2, closingT:0, tips:new Set(), clones:{}, stats:null,
+};
+function newStats(){ return {customers:0, served:0, angry:0, stolen:0, caught:0, revenue:0, stockCost:0, coffeeCost:0, items:0}; }
+G.stats = newStats();
+const customers = [], queue = [], messes = [], staff = [];
+let player = null;
+
+function addMoney(n){ G.money += n; }
+function addRating(d){ G.rating = clamp(G.rating + d, 0, 5); }
+function tip(key, text, valid){ if (G.state === 'title' || G.tips.has(key)) return; G.tips.add(key); showHint(text, valid); }
+
+/* ----- staff ----- */
+function makeStaffChar(roleColor){
+  return makeChar({shirt:0x22345a, pants:0x2f3b52, skin:0xf2c9a5, hair:0x2b1d14, apron: roleColor || 0xffcf3a, cap: roleColor || 0xffcf3a,
+    glow: roleColor || 0, ring: roleColor || 0xffcf3a, scale:1.12});
+}
+function createPlayer(){
+  const ch = makeStaffChar(0);
+  const a = new Agent(ch, 4.4);
+  a.pos.set(CASHIER_SPOT.x, 0, CASHIER_SPOT.z - 1.2);
+  player = {role:'owner', agent:a, ch, carry:false, work:1, restockT:0, tag:new Tag('')};
+  staff.push(player);
+}
+function spawnClone(roleId, level, instant){
+  const r = ROLE[roleId];
+  const ch = makeStaffChar(r.color);
+  const a = new Agent(ch, LV_MOVE[level]);
+  const p = randomNear(STOCK_IDLE);
+  a.pos.set(p.x, 0, p.z);
+  const s = {role:roleId, level, agent:a, ch, carry:false, work:LV_WORK[level], restockT:0, ai:{}, tag:new Tag(''), spawnFx: instant ? 0 : 1};
+  if (!instant){ ch.g.scale.setScalar(0.01); }
+  staff.push(s);
+  return s;
+}
+function randomNear(p){ for (let k=0;k<20;k++){ const x=p.x+rand(-0.8,0.8), z=p.z+rand(-0.8,0.8); if (walkXZ(x,z)) return {x,z}; } return {x:p.x,z:p.z}; }
+function cloneOf(roleId){ return staff.find(s => s.role === roleId); }
+function setCloneLevel(s, lv){ s.level = lv; s.work = LV_WORK[lv]; s.agent.speed = LV_MOVE[lv]; }
+
+/* ----- customers ----- */
+function spawnCustomer(){
+  const side = Math.random() < 0.5 ? -1 : 1;
+  const kid = Math.random() < 0.12;
+  const hasHat = Math.random() < 0.2;
+  const ch = makeChar({shirt:pick(SHIRTS), pants:pick(PANTS), skin:pick(SKIN), hair:pick(HAIR), cap: hasHat ? pick([0x2f3b52,0xe85d75,0x58c48f,0xf2f2f2]) : 0, scale: kid ? 0.82 : rand(1.0,1.12)});
+  const a = new Agent(ch, rand(1.9,2.5) * (kid ? 1.1 : 1));
+  a.pos.set(side*13.5, 0, STREET_Z + rand(-0.4,0.4));
+  // shopping list
+  const n = Math.random() < 0.5 ? 1 : (Math.random() < 0.7 ? 2 : 3);
+  const pool = SHELVES.slice(); const list = [];
+  for (let i=0;i<n;i++){
+    const tot = pool.reduce((s,x)=>s+x.weight,0); let r = Math.random()*tot, k = 0;
+    while (r > pool[k].weight){ r -= pool[k].weight; k++; }
+    list.push(pool[k].id); pool.splice(k,1);
+  }
+  const thiefChance = G.day >= 2 ? Math.min(0.14, 0.05 + G.day*0.012) : 0;
+  const c = {agent:a, ch, side, list, li:0, basket:[], patience:100, wantsCoffee: Math.random() < 0.28, gotCoffee:false,
+    thief: Math.random() < thiefChance, state:'arrive', timer:0, qi:-1, tag:new Tag(''), emoteT:0, emote:'', greeted:false, entered:false, payT:0, dirtT:rand(4,12)};
+  a.path = [{x:side*9.3, z:STREET_Z}, {x:DOOR_OUT.x + rand(-0.3,0.3), z:DOOR_OUT.z}];
+  customers.push(c);
+  G.stats.customers++;
+}
+function emote(c, e, t){ c.emote = e; c.emoteT = t || 1.4; }
+function goNextShelf(c){
+  if (c.li < c.list.length){
+    const sh = SHELF[c.list[c.li]];
+    const off = sh.id === 'drink' ? rand(-2.6,2.6) : rand(-1.1,1.1);
+    c.agent.goTo(sh.spot.x + off, sh.spot.z);
+    c.state = 'toShelf';
+  } else if (!c.basket.length){
+    leaveStore(c, true);
+  } else if (c.thief){
+    c.state = 'escape'; c.agent.speed = 2.9;
+    c.agent.goTo(DOOR_OUT.x, DOOR_OUT.z + 0.4);
+    tip('thief', '有人沒結帳就往外跑！快追上去攔住（保全分身也會幫忙抓）');
+    toast('🕶️ 有小偷！', 'bad');
+  } else {
+    queue.push(c); c.state = 'queue'; c.qi = -1; refreshQueue();
+  }
+}
+function queueSpot(i){ return i < 7 ? {x:CHECKOUT_SPOT.x - i*0.8, z:CHECKOUT_SPOT.z} : {x:0.6 + (i-7)*0.8, z:4.4}; }
+function refreshQueue(){
+  queue.forEach((c,i)=>{ if (c.qi !== i){ c.qi = i; const s = queueSpot(i); c.agent.goTo(s.x, s.z); } });
+}
+function leaveStore(c, unhappy){
+  const qi = queue.indexOf(c); if (qi >= 0){ queue.splice(qi,1); refreshQueue(); }
+  c.state = 'leave'; c.leaveStage = 0; c.agent.speed = Math.max(c.agent.speed, 2.2);
+  c.agent.goTo(DOOR_OUT.x + rand(-0.3,0.3), DOOR_OUT.z);
+  if (unhappy) emote(c, '😞', 2);
+}
+function removeCustomer(c){
+  const i = customers.indexOf(c); if (i >= 0) customers.splice(i,1);
+  const qi = queue.indexOf(c); if (qi >= 0){ queue.splice(qi,1); refreshQueue(); }
+  scene.remove(c.ch.g); c.tag.remove();
+}
+function angryLeave(c){
+  emote(c, '💢', 2.2); SFX.bad();
+  G.stats.angry++; addRating(-0.22);
+  floatText(c.agent.pos.x, 2.3, c.agent.pos.z, '評價 ↓', 'bad txt');
+  if (c.basket.length && Math.random() < 0.6) spawnMess(c.agent.pos.x, c.agent.pos.z, 'drop');
+  c.basket.length = 0;
+  leaveStore(c, false);
+}
+
+function updateCustomer(c, dt){
+  const a = c.agent;
+  const arrived = a.step(dt);
+  const p = a.pos;
+  if (!c.entered && p.z < 6.6){
+    c.entered = true; SFX.chime();
+    const gd = cloneOf('guard');
+    if (gd && dist2(gd.agent.pos, GUARD_SPOT) < 1.5){ c.patience = 125; emote(c, '😊', 1.2); gd.greetT = 1.2; }
+  }
+  // mess generation while inside
+  if (c.entered && p.z < 6.4 && c.state !== 'leave'){
+    c.dirtT -= dt;
+    if (c.dirtT <= 0){ c.dirtT = rand(10,22); if (Math.random() < 0.35 + G.day*0.03) spawnMess(p.x, p.z, Math.random()<0.5?'spill':'trash'); }
+  }
+  switch (c.state){
+    case 'arrive': if (arrived) goNextShelf(c); break;
+    case 'toShelf':
+      if (arrived){ c.state = 'browse'; c.timer = rand(0.6,1.3); a.face(Math.PI); }
+      break;
+    case 'browse':
+      c.timer -= dt;
+      if (c.timer <= 0){
+        const sh = SHELF[c.list[c.li]];
+        if (sh.stock > 0){ sh.stock--; c.basket.push(sh.id); emote(c, sh.icon, 0.9); G.stats.items++; }
+        else { c.patience -= 30; emote(c, '😡', 1.6); addRating(-0.06); SFX.bad(); tip('restock', '貨架空了！先到倉庫「拿貨」格子拿箱子，再走到貨架前就會自動補滿。'); }
+        c.li++;
+        if (c.patience <= 0){ angryLeave(c); break; }
+        goNextShelf(c);
+      }
+      break;
+    case 'queue': {
+      let drain = 1.9 + Math.min(1.2, G.day*0.08);
+      for (const m of messes) if (dist2(m, p) < 3) drain += 0.7;
+      c.patience -= drain*dt;
+      if (arrived && c.qi >= 0) a.face(c.qi < 7 ? Math.PI/2 : -Math.PI/2);
+      if (c.patience <= 0) angryLeave(c);
+      break;
+    }
+    case 'escape':
+      if (p.z > 7.9){
+        G.stats.stolen++; addRating(-0.15);
+        const loss = c.basket.reduce((s,id)=>s+SHELF[id].price,0);
+        floatText(p.x, 2.3, p.z, '-' + fmt(loss) + ' 被偷了', 'bad txt');
+        toast('小偷跑掉了…', 'bad'); SFX.bad();
+        c.thief = false; c.basket.length = 0; c.state = 'leave'; c.leaveStage = 1;
+        a.path = [{x:c.side*9.3, z:STREET_Z}, {x:c.side*14, z:STREET_Z}];
+      } else if (arrived){ a.goTo(DOOR_OUT.x, DOOR_OUT.z + 0.4); }
+      break;
+    case 'leave':
+      if (arrived){
+        if (c.leaveStage === 0){ c.leaveStage = 1; a.path = [{x:c.side*9.3, z:STREET_Z + rand(-0.3,0.3)}, {x:c.side*14, z:STREET_Z}]; }
+        else { removeCustomer(c); return; }
+      }
+      break;
+  }
+  // tag
+  if (c.emoteT > 0){ c.emoteT -= dt; c.tag.icon(c.emote); }
+  else if (c.state === 'escape') c.tag.icon('🕶️❗');
+  else if (c.state === 'queue') c.tag.icon(c.wantsCoffee && !c.gotCoffee ? '☕' : (c.qi === 0 ? '💳' : ''));
+  else if (c.state === 'toShelf' || c.state === 'browse') c.tag.icon(SHELF[c.list[c.li]] ? SHELF[c.list[c.li]].icon : '');
+  else c.tag.icon('');
+  if (c.state === 'queue' || (c.patience < 100 && c.state !== 'leave' && c.state !== 'escape')){
+    const f = c.patience/100;
+    c.tag.setBar(f, f > 0.5 ? '#34d6a6' : f > 0.25 ? '#ffcf3a' : '#ff6058');
+  } else c.tag.setBar(null);
+  c.ch.bag.visible = c.state === 'leave' && c.paid;
+}
+
+/* ----- messes ----- */
+const MESS_GEO = { spill: new THREE.CircleGeometry(0.42,18).rotateX(-Math.PI/2), trash: new THREE.IcosahedronGeometry(0.13,0), can: new THREE.CylinderGeometry(0.06,0.06,0.16,8) };
+function spawnMess(x,z,type){
+  if (messes.length >= 10) return;
+  if (!walkXZ(x,z) || z > 6.6 || (x > 7 && z > -0.5 && z < 5.5)) return;
+  const g = new THREE.Group(); g.position.set(x,0,z); scene.add(g);
+  if (type === 'spill'){
+    const m = new THREE.Mesh(MESS_GEO.spill, new THREE.MeshLambertMaterial({color:pick([0x8b5a2b,0xff9f43,0x6b3d1f]), transparent:true, opacity:0.75, depthWrite:false}));
+    m.position.y = 0.012; m.scale.set(rand(0.8,1.2),1,rand(0.7,1.1)); g.add(m);
+    const cup = new THREE.Mesh(MESS_GEO.can, mat(0xffffff)); cup.rotation.z = Math.PI/2; cup.position.set(0.2,0.06,0.05); g.add(cup);
+  } else {
+    for (let i=0;i<(type==='drop'?4:3);i++){
+      const m = new THREE.Mesh(i%2 ? MESS_GEO.can : MESS_GEO.trash, mat(type==='drop' ? pick(PCOL) : pick([0xf2f2f2,0xe0d6c0,0xff6058,0x4da3ff])));
+      m.position.set(rand(-0.25,0.25), 0.07, rand(-0.25,0.25)); m.rotation.set(rand(0,3),rand(0,3),i%2?Math.PI/2:0); m.castShadow = true; g.add(m);
+    }
+  }
+  const ms = {x, z, g, prog:0, tag:new Tag('')};
+  ms.tag.icon('🗑️');
+  messes.push(ms);
+  tip('mess', '地上髒了！走過去站一下就能清乾淨。髒亂會讓客人更沒耐心。');
+}
+function removeMess(m){ const i = messes.indexOf(m); if (i >= 0) messes.splice(i,1); scene.remove(m.g); m.tag.remove(); }
+
+/* ----- staff work zones ----- */
+function shelfAt(p){
+  for (const sh of SHELVES){ const b = sh.band; if (p.x > b[0] && p.x < b[1] && p.z > b[2] && p.z < b[3]) return sh; }
+  return null;
+}
+function doRestock(s, sh){
+  const need = sh.max - sh.stock;
+  const afford = Math.min(need, Math.floor(G.money / sh.cost));
+  if (afford <= 0){
+    const now = performance.now();
+    if (s === player && !(s.noMoneyAt > now - 3000)){ s.noMoneyAt = now; toast('現金不夠進貨了！', 'bad'); }
+    return false;
+  }
+  const cost = afford*sh.cost;
+  addMoney(-cost); G.stats.stockCost += cost;
+  sh.stock += afford;
+  s.carry = false; s.agent.carrying = false;
+  SFX.stock();
+  floatText(sh.spot.x, 2.0, sh.spot.z, '補貨 -' + fmt(cost), 'good txt');
+  return true;
+}
+function staffWork(s, dt){
+  const p = s.agent.pos;
+  const canCarry = s === player || s.role === 'stocker';
+  const canClean = s === player || s.role === 'cleaner';
+  const canChase = s === player || s.role === 'guard';
+  if (dist2(p, CASHIER_SPOT) < 0.75) reg.power = Math.max(reg.power, s.work);
+  if (dist2(p, COFFEE_SPOT) < 0.75) coffee.power = Math.max(coffee.power, s.work);
+  if (canCarry && !s.carry && dist2(p, STOCK_SPOT) < 0.85){
+    s.carry = true; s.agent.carrying = true; SFX.pick();
+    if (s === player) tip('carry', '拿到貨了！走到任何一個不滿的貨架前就會補貨。');
+  }
+  let prog = null;
+  if (canCarry && s.carry){
+    const sh = shelfAt(p);
+    if (sh && sh.stock < sh.max){
+      s.restockT += dt * s.work;
+      prog = s.restockT / 0.7;
+      if (s.restockT >= 0.7){ s.restockT = 0; doRestock(s, sh); prog = null; }
+    } else s.restockT = 0;
+  }
+  if (canClean){
+    for (const m of messes){
+      if (dist2(m, p) < 0.85){
+        m.prog += dt * s.work; prog = m.prog / 1.0;
+        if (m.prog >= 1.0){ removeMess(m); SFX.clean(); addRating(0.02); floatText(p.x, 2.2, p.z, '乾淨！', 'good txt'); prog = null; }
+        break;
+      }
+    }
+  }
+  if (canChase){
+    for (const c of customers){
+      if (c.state === 'escape' && dist2(c.agent.pos, p) < 1.3){
+        const total = c.basket.reduce((t,id)=>t+SHELF[id].price,0);
+        addMoney(total); G.stats.revenue += total; G.stats.caught++; addRating(0.03);
+        floatText(c.agent.pos.x, 2.4, c.agent.pos.z, '抓到了！+' + fmt(total), 'good txt');
+        SFX.catch(); emote(c, '😰', 2);
+        c.thief = false; c.paid = true; c.basket.length = 0; c.agent.speed = 2.2;
+        leaveStore(c, false);
+      }
+    }
+  }
+  s.prog = prog;
+}
+
+/* ----- clone AI ----- */
+let curDt = 1/60;
+function ensureAt(s, spot, faceRot){
+  const a = s.agent, d = dist2(a.pos, spot);
+  if (d > 0.35){
+    if (s.ai.dest !== spot){ s.ai.dest = spot; s.ai.retry = 0.6; a.goTo(spot.x, spot.z); }
+    else if (!a.path.length){ s.ai.retry = (s.ai.retry || 0) - curDt; if (s.ai.retry <= 0){ s.ai.retry = 0.6; a.goTo(spot.x, spot.z); } }
+  } else { s.ai.dest = spot; if (faceRot !== undefined && !a.path.length) a.face(faceRot); }
+}
+function someoneAtRegister(except){ return staff.some(o => o !== except && dist2(o.agent.pos, CASHIER_SPOT) < 0.8); }
+function pickRestockTarget(carrying){
+  let best = null, br = carrying ? 1 : 0.5;
+  for (const sh of SHELVES){ const r = sh.stock/sh.max; if (r < br){ br = r; best = sh; } }
+  return best;
+}
+function updateClone(s, dt){
+  if (s.spawnFx > 0){ s.spawnFx = Math.max(0, s.spawnFx - dt*1.8); s.ch.g.scale.setScalar(1.12*(1 - s.spawnFx*s.spawnFx)); }
+  const ai = s.ai;
+  switch (s.role){
+    case 'cashier': ensureAt(s, CASHIER_SPOT, -Math.PI/2); break;
+    case 'barista':
+      if (queue.length > 0 && G.cups >= 2 && !someoneAtRegister(s)) ensureAt(s, CASHIER_SPOT, -Math.PI/2);
+      else ensureAt(s, COFFEE_SPOT, Math.PI/2);
+      break;
+    case 'stocker':
+      if (!s.carry){
+        const t = pickRestockTarget(false);
+        if (t) ensureAt(s, STOCK_SPOT); else ensureAt(s, STOCK_IDLE);
+      } else {
+        if (!ai.shelf || ai.shelf.stock >= ai.shelf.max) ai.shelf = pickRestockTarget(true);
+        if (ai.shelf){
+          if (G.money < ai.shelf.cost){ ensureAt(s, STOCK_IDLE); }
+          else ensureAt(s, ai.shelf.spot, Math.PI);
+        } else ensureAt(s, STOCK_IDLE);
+      }
+      break;
+    case 'cleaner':
+      if (ai.mess && messes.indexOf(ai.mess) < 0) ai.mess = null;
+      if (!ai.mess && messes.length){
+        let bd = 1e9; for (const m of messes){ const d = dist2(m, s.agent.pos); if (d < bd){ bd = d; ai.mess = m; } }
+      }
+      if (ai.mess) ensureAt(s, ai.mess);
+      else {
+        ai.wander = (ai.wander || 0) - dt;
+        if (ai.wander <= 0){ ai.wander = rand(4,7); ai.wp = randomInside(); }
+        if (ai.wp) ensureAt(s, ai.wp);
+      }
+      break;
+    case 'guard': {
+      let target = null, bd = 1e9;
+      for (const c of customers) if (c.state === 'escape'){ const d = dist2(c.agent.pos, s.agent.pos); if (d < bd){ bd = d; target = c; } }
+      if (target){
+        s.agent.speed = LV_MOVE[s.level]*1.3;
+        ai.repath = (ai.repath||0) - dt;
+        if (ai.repath <= 0){ ai.repath = 0.25; s.agent.goTo(target.agent.pos.x, target.agent.pos.z); ai.dest = null; }
+      } else { s.agent.speed = LV_MOVE[s.level]; ensureAt(s, GUARD_SPOT, Math.PI*0.75); }
+      if (s.greetT > 0) s.greetT -= dt;
+      break;
+    }
+  }
+  s.agent.step(dt);
+}
+
+/* ----- register & coffee ----- */
+function updateRegister(dt){
+  // coffee machine
+  if (coffee.power > 0 && G.cups < MAX_CUPS){
+    if (G.money >= COFFEE_COST){
+      coffee.prog += dt*coffee.power;
+      if (coffee.prog >= BREW_TIME){ coffee.prog = 0; G.cups++; addMoney(-COFFEE_COST); G.stats.coffeeCost += COFFEE_COST; SFX.brew(); }
+    }
+  }
+  coffeeTag.icon(G.cups === 0 ? '☕❗' : '☕').text(G.cups + '/' + MAX_CUPS).setBar(coffee.power > 0 && G.cups < MAX_CUPS ? coffee.prog/BREW_TIME : null, '#c98b5a');
+  for (let i=0;i<MAX_CUPS;i++) cupMeshes[i].visible = i < G.cups;
+
+  const head = queue[0];
+  const atCounter = head && head.qi === 0 && !head.agent.path.length && dist2(head.agent.pos, CHECKOUT_SPOT) < 0.4;
+  let regIcon = '', regText = '', regBar = null;
+  if (head && atCounter){
+    if (reg.power === 0){
+      regIcon = '🔔'; regText = queue.length + ' 人排隊';
+      tip('register', '有客人排隊了！走進藍色「收銀」格子就會自動結帳。', () => queue.length > 0 && reg.power === 0);
+    } else if (head.wantsCoffee && !head.gotCoffee){
+      if (G.cups > 0){ G.cups--; head.gotCoffee = true; SFX.pick(); }
+      else { regIcon = '☕❓'; regText = '要咖啡'; tip('coffee', '客人要咖啡！站到「咖啡」格子沖幾杯，再回收銀台結帳。'); }
+    } else {
+      head.payT += dt*reg.power;
+      const need = 0.5 + 0.4*head.basket.length + (head.wantsCoffee ? 0.3 : 0);
+      regBar = head.payT/need;
+      if (head.payT >= need){
+        const total = head.basket.reduce((t,id)=>t+SHELF[id].price,0) + (head.wantsCoffee ? COFFEE_PRICE : 0);
+        addMoney(total); G.stats.revenue += total; G.stats.served++;
+        addRating(0.025 + 0.04*clamp(head.patience/100,0,1));
+        floatText(CHECKOUT_SPOT.x, 2.2, CHECKOUT_SPOT.z, '+' + fmt(total));
+        SFX.ding();
+        head.paid = true; emote(head, head.patience > 60 ? '😊' : '🙂', 1.4);
+        queue.shift(); head.qi = -1; refreshQueue();
+        leaveStore(head, false);
+        regBar = null;
+      }
+    }
+  } else if (queue.length && reg.power === 0){ regIcon = '🔔'; regText = queue.length + ' 人排隊'; }
+  regTag.icon(regIcon).text(regText).setBar(regBar, '#4da3ff');
+}
+
+/* ---------------- input ---------------- */
+const keys = {};
+const joy = {active:false, id:null, sx:0, sy:0, dx:0, dy:0};
+const pointers = new Map();
+let pinch = null, camZoom = 1;
+const joyEl = $('#joy'), knob = $('#joyknob');
+addEventListener('keydown', e => {
+  if (e.repeat && keys[e.code]) return;
+  keys[e.code] = true;
+  if (e.code === 'Escape' || e.code === 'KeyP'){ if (G.state === 'play' || G.state === 'closing') openPanel('pause'); else if (G.state === 'paused') closePanels(); }
+  if (e.code === 'KeyT' && (G.state === 'play' || G.state === 'closing')) openPanel('team');
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code) && (G.state==='play'||G.state==='closing')) e.preventDefault();
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+canvas.addEventListener('pointerdown', e => {
+  initAudio();
+  canvas.focus({preventScroll:true});
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY, sx:e.clientX, sy:e.clientY, t:performance.now()});
+  try { canvas.setPointerCapture(e.pointerId); } catch(_){}
+  if (pointers.size === 2){
+    const [a,b] = [...pointers.values()];
+    pinch = {d:Math.hypot(a.x-b.x,a.y-b.y), z:camZoom};
+    joy.active = false; joyEl.hidden = true;
+  } else if (pointers.size === 1){ joy.id = e.pointerId; joy.sx = e.clientX; joy.sy = e.clientY; joy.dx = joy.dy = 0; }
+});
+canvas.addEventListener('pointermove', e => {
+  const p = pointers.get(e.pointerId); if (!p) return;
+  p.x = e.clientX; p.y = e.clientY;
+  if (pinch && pointers.size >= 2){
+    const [a,b] = [...pointers.values()];
+    const d = Math.hypot(a.x-b.x,a.y-b.y);
+    camZoom = clamp(pinch.z * pinch.d / Math.max(20,d), 0.55, 1.5);
+    return;
+  }
+  if (e.pointerId === joy.id && (G.state === 'play' || G.state === 'closing')){
+    const dx = e.clientX - joy.sx, dy = e.clientY - joy.sy;
+    if (!joy.active && Math.hypot(dx,dy) > 12){ joy.active = true; joyEl.hidden = false; joyEl.style.left = joy.sx+'px'; joyEl.style.top = joy.sy+'px'; player.agent.path.length = 0; }
+    if (joy.active){
+      const R = 55, L = Math.hypot(dx,dy), k = L > R ? R/L : 1;
+      joy.dx = dx*k/R; joy.dy = dy*k/R;
+      knob.style.transform = `translate(${dx*k}px,${dy*k}px)`;
+    }
+  }
+});
+function endPointer(e){
+  const p = pointers.get(e.pointerId); if (!p) return;
+  pointers.delete(e.pointerId);
+  if (pinch){ if (pointers.size < 2) pinch = null; if (e.pointerId === joy.id){ joy.id = null; } return; }
+  if (e.pointerId === joy.id){
+    const wasJoy = joy.active;
+    joy.active = false; joy.id = null; joy.dx = joy.dy = 0; joyEl.hidden = true; knob.style.transform = '';
+    if (!wasJoy && performance.now() - p.t < 450 && Math.hypot(p.x-p.sx, p.y-p.sy) < 14 && e.type === 'pointerup') tapAt(e.clientX, e.clientY);
+  }
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('wheel', e => { e.preventDefault(); camZoom = clamp(camZoom * (e.deltaY > 0 ? 1.08 : 0.93), 0.55, 1.5); }, {passive:false});
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+const raycaster = new THREE.Raycaster();
+const groundPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
+function tapAt(cx, cy){
+  if (!(G.state === 'play' || G.state === 'closing')) return;
+  const ndc = new THREE.Vector2(cx/VW*2-1, -(cy/VH)*2+1);
+  raycaster.setFromCamera(ndc, camera);
+  const hits = raycaster.intersectObjects(pickables, true);
+  let target = null;
+  if (hits.length){
+    let o = hits[0].object; while (o && !o.userData.station) o = o.parent;
+    const stn = o && o.userData.station;
+    if (stn){
+      if (stn.id === 'register') target = CASHIER_SPOT;
+      else if (stn.id === 'coffee') target = COFFEE_SPOT;
+      else if (stn.id === 'stock') target = STOCK_SPOT;
+      else if (stn.band) target = {x: clamp(hits[0].point.x, stn.band[0]+0.4, stn.band[1]-0.4), z: stn.spot.z};
+    }
+  }
+  if (!target){
+    const pt = new THREE.Vector3();
+    if (!raycaster.ray.intersectPlane(groundPlane, pt)) return;
+    target = {x: clamp(pt.x,-9.7,9.7), z: clamp(pt.z,-6.7,11)};
+  }
+  player.agent.goTo(target.x, target.z);
+  const m = document.createElement('div'); m.id = 'tapmark'; m.style.left = cx+'px'; m.style.top = cy+'px';
+  fxLayer.appendChild(m); setTimeout(()=>m.remove(), 520);
+}
+
+function updatePlayer(dt){
+  const a = player.agent;
+  let ix = 0, iz = 0;
+  if (keys.KeyW || keys.ArrowUp) iz -= 1;
+  if (keys.KeyS || keys.ArrowDown) iz += 1;
+  if (keys.KeyA || keys.ArrowLeft) ix -= 1;
+  if (keys.KeyD || keys.ArrowRight) ix += 1;
+  if (joy.active){ ix += joy.dx; iz += joy.dy; }
+  const len = Math.hypot(ix,iz);
+  let manual = false;
+  if (len > 0.15){
+    a.path.length = 0;
+    const m = Math.min(1,len), nx = ix/len, nz = iz/len, sp = a.speed*m*dt;
+    const px = a.pos.x + nx*sp, pz = a.pos.z + nz*sp;
+    if (walkXZ(px,pz)){ a.pos.x = px; a.pos.z = pz; }
+    else if (walkXZ(px,a.pos.z)) a.pos.x = px;
+    else if (walkXZ(a.pos.x,pz)) a.pos.z = pz;
+    a.rot = Math.atan2(nx,nz); manual = true;
+  }
+  a.step(dt, manual);
+}
+
+/* ---------------- camera ---------------- */
+const ELEV = 56*Math.PI/180;
+const camTarget = new THREE.Vector3(0,0,1.5);
+let orbit = 0;
+function updateCamera(dt, instant){
+  camera.aspect = VW/VH;
+  const tv = Math.tan(camera.fov*Math.PI/360), th = tv*camera.aspect;
+  const Dw = 11/th, Dd = (17*Math.sin(ELEV)/2)/tv;
+  let D = Math.min(Math.max(Dw, Dd), 30);
+  if (G.state === 'title'){
+    orbit += dt*0.12;
+    const Dt = Math.min(D*0.85, 26);
+    camera.position.set(Math.sin(orbit)*Dt*Math.cos(ELEV*0.85), Dt*Math.sin(ELEV*0.85), 1 + Math.cos(orbit)*Dt*Math.cos(ELEV*0.85));
+    camera.lookAt(0,0.5,-0.5);
+  } else {
+    D *= camZoom;
+    const hw = D*th, hd = D*tv/Math.sin(ELEV);
+    const sx = Math.max(0, 10.8 - hw), sz = Math.max(0, 9 - hd);
+    const p = player.agent.pos;
+    const tx = clamp(p.x, -sx, sx), tz = 1.5 + clamp(p.z - 1.5, -sz, sz);
+    const k = instant ? 1 : Math.min(1, dt*4);
+    camTarget.x = lerp(camTarget.x, tx, k); camTarget.z = lerp(camTarget.z, tz, k);
+    camera.position.set(camTarget.x, D*Math.sin(ELEV), camTarget.z + D*Math.cos(ELEV));
+    camera.lookAt(camTarget);
+  }
+  camera.updateProjectionMatrix();
+  camera.updateMatrixWorld();
+}
+
+/* ---------------- day / night ---------------- */
+const SKY = [[7,0x9fd3ff],[11,0x8ccfff],[15,0x9fd0f5],[17,0xf7c98b],[18.5,0xf08a5d],[19.6,0x3b4f86],[21,0x1a2a4d],[23,0x0f1d33]];
+const _c1 = new THREE.Color(), _c2 = new THREE.Color();
+function skyAt(h){
+  for (let i=0;i<SKY.length-1;i++){
+    if (h <= SKY[i+1][0]){ const t = clamp((h-SKY[i][0])/(SKY[i+1][0]-SKY[i][0]),0,1); return _c1.setHex(SKY[i][1]).lerp(_c2.setHex(SKY[i+1][1]), t); }
+  }
+  return _c1.setHex(SKY[SKY.length-1][1]);
+}
+function applyTimeOfDay(h){
+  const c = skyAt(h);
+  scene.background.copy(c); scene.fog.color.copy(c);
+  const night = clamp((h-18)/2.2, 0, 1);
+  const dusk = clamp(1 - Math.abs(h-18)/1.5, 0, 1);
+  sun.intensity = lerp(0.8, 0.22, night);
+  sun.color.setHex(0xffffff).lerp(_c2.setHex(0xffb070), dusk*0.7).lerp(_c2.setHex(0x8fa8ff), night*0.6);
+  hemi.intensity = lerp(0.62, 0.5, night);
+  for (const m of outdoorMats){ m.color.copy(m.userData.base).multiplyScalar(lerp(1, 0.38, night)); }
+  for (const m of lampMats){ m.emissiveIntensity = night*1.2; }
+}
+
+/* ---------------- HUD ---------------- */
+const hud = {money:$('#money'), day:$('#day'), clock:$('#clock'), fill:$('#dayfill'), star:$('#starfg'), rate:$('#ratenum'), team:$('#teamCount'), btnTeam:$('#btnTeam'), alerts:$('#alerts')};
+const _hc = {};
+function setText(el, key, v){ if (_hc[key] !== v){ _hc[key] = v; el.textContent = v; } }
+let alertT = 0;
+function hourNow(){ return OPEN_H + clamp(G.time/DAY_LEN,0,1)*(CLOSE_H-OPEN_H); }
+function updateHUD(dt){
+  setText(hud.money, 'm', fmt(G.money));
+  setText(hud.day, 'd', '第 ' + G.day + ' 天');
+  const h = hourNow(); const hh = Math.floor(h), mm = Math.floor((h-hh)*60/10)*10;
+  setText(hud.clock, 'c', G.state === 'closing' ? '打烊' : String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0'));
+  const f = Math.round(clamp(G.time/DAY_LEN,0,1)*200)/2;
+  if (_hc.f !== f){ _hc.f = f; hud.fill.style.width = f + '%'; }
+  const r = Math.round(G.rating*10)/10;
+  if (_hc.r !== r){ _hc.r = r; hud.star.style.width = (G.rating/5*100) + '%'; hud.rate.textContent = r.toFixed(1); }
+  const hired = ROLES.filter(x => G.clones[x.id]).length;
+  setText(hud.team, 't', hired + '/5');
+  const canBuy = ROLES.some(x => !G.clones[x.id] && G.money >= x.cost);
+  if (_hc.pulse !== canBuy){ _hc.pulse = canBuy; hud.btnTeam.classList.toggle('pulse', canBuy); }
+  if (canBuy && hired === 0) tip('hire', '錢夠了！按右上角「分身」僱用第一個 AI 分身幫你顧店。', () => !ROLES.some(x => G.clones[x.id]));
+  alertT -= dt;
+  if (alertT <= 0){
+    alertT = 0.3;
+    const al = [];
+    for (const sh of SHELVES) if (sh.stock === 0) al.push(['', sh.icon + ' ' + sh.name + '缺貨']);
+    if (queue.length && reg.power === 0) al.push(['info', '🔔 收銀台 ' + queue.length + ' 人排隊']);
+    if (G.cups === 0 && queue.some(c => c.wantsCoffee && !c.gotCoffee)) al.push(['warn', '☕ 咖啡沒了']);
+    if (messes.length >= 3) al.push(['warn', '🗑️ 店裡髒亂 ×' + messes.length]);
+    const key = al.map(a=>a[1]).join('|');
+    if (_hc.al !== key){ _hc.al = key; hud.alerts.innerHTML = ''; for (const [c,t] of al.slice(0,4)){ const d = document.createElement('div'); d.className = 'al ' + c; d.textContent = t; hud.alerts.appendChild(d); } }
+  }
+}
+
+/* ---------------- panels ---------------- */
+const screens = {title:$('#title'), team:$('#team'), pause:$('#pause'), summary:$('#summary'), over:$('#over')};
+function showScreen(name){ for (const k in screens) screens[k].hidden = k !== name; }
+function openPanel(name){
+  if (G.state === 'play' || G.state === 'closing') G.prevState = G.state;
+  G.state = 'paused';
+  for (const k in keys) keys[k] = false;
+  joy.active = false; joyEl.hidden = true;
+  if (name === 'team') renderTeam();
+  if (name === 'pause'){ $('#pauseInfo').textContent = '第 ' + G.day + ' 天 · ' + $('#clock').textContent + ' · 現金 ' + fmt(G.money); $('#confirmBox').hidden = true; $('#btnSound').textContent = muted ? '關' : '開'; }
+  showScreen(name);
+}
+function closePanels(){ showScreen(null); if (G.state === 'paused') G.state = G.prevState || 'play'; canvas.focus({preventScroll:true}); }
+function renderTeam(){
+  $('#teamMoney').textContent = fmt(G.money);
+  const list = $('#teamList'); list.innerHTML = '';
+  for (const r of ROLES){
+    const lv = G.clones[r.id] || 0;
+    const card = document.createElement('div'); card.className = 'card';
+    const av = document.createElement('div'); av.className = 'av'; av.style.background = r.css; av.textContent = r.icon;
+    const mid = document.createElement('div'); mid.style.minWidth = '0';
+    mid.innerHTML = `<div class="nm">${r.name}${lv ? `<span class="lv">LV${lv}</span>` : ''}</div><div class="ds">${r.desc}</div><div class="wg">日薪 ${fmt(r.wage)}${lv ? ' · 速度 ×' + LV_WORK[lv].toFixed(2) : ''}</div>`;
+    const b = document.createElement('button'); b.type = 'button';
+    if (!lv){ b.innerHTML = `僱用<small>${fmt(r.cost)}</small>`; b.disabled = G.money < r.cost; b.onclick = () => hire(r.id); }
+    else if (lv < 3){ const c = upgradeCost(r, lv); b.innerHTML = `升級<small>${fmt(c)}</small>`; b.disabled = G.money < c; b.onclick = () => upgrade(r.id); }
+    else { b.textContent = '滿級'; b.disabled = true; b.className = 'max'; }
+    card.append(av, mid, b); list.appendChild(card);
+  }
+}
+function hire(id){
+  const r = ROLE[id]; if (G.clones[id] || G.money < r.cost) return;
+  addMoney(-r.cost); G.clones[id] = 1;
+  spawnClone(id, 1, false);
+  SFX.hire(); toast(r.icon + ' ' + r.name + ' 上工了！', 'good');
+  renderTeam(); save();
+}
+function upgrade(id){
+  const r = ROLE[id], lv = G.clones[id]; if (!lv || lv >= 3) return;
+  const c = upgradeCost(r, lv); if (G.money < c) return;
+  addMoney(-c); G.clones[id] = lv+1;
+  const s = cloneOf(id); if (s){ setCloneLevel(s, lv+1); s.spawnFx = 0.6; }
+  SFX.hire(); toast(r.name + ' 升到 LV' + (lv+1), 'good');
+  renderTeam(); save();
+}
+
+/* ---------------- day flow ---------------- */
+function clearDayEntities(){
+  while (customers.length) removeCustomer(customers[0]);
+  queue.length = 0;
+  while (messes.length) removeMess(messes[0]);
+}
+function rentFor(day){ return 150 + 50*(day-1); }
+function endDay(){
+  G.state = 'summary';
+  clearDayEntities();
+  SFX.close();
+  const wages = ROLES.reduce((s,r)=>s + (G.clones[r.id] ? r.wage : 0), 0);
+  const rent = rentFor(G.day);
+  addMoney(-(wages + rent));
+  const S = G.stats;
+  const profit = S.revenue - S.stockCost - S.coffeeCost - wages - rent;
+  const stars = '★★★★★'.slice(0, Math.round(G.rating)) + '☆☆☆☆☆'.slice(0, 5-Math.round(G.rating));
+  const row = (a,b,cls) => `<div class="r ${cls||''}"><span>${a}</span><span>${b}</span></div>`;
+  $('#sumTitle').textContent = '第 ' + G.day + ' 天打烊了！';
+  $('#receipt').innerHTML =
+    `<div class="hd">分身便利店 CLONE MART<small>營業日報 · 第 ${G.day} 天 · 07:00–23:00</small></div><hr>` +
+    row('來客數', S.customers + ' 人') + row('結帳完成', S.served + ' 人') + row('賣出商品', S.items + ' 件') +
+    row('氣走客人', S.angry + ' 人', S.angry ? 'neg' : '') + row('抓到小偷', S.caught + ' 人') + row('被偷走', S.stolen + ' 次', S.stolen ? 'neg' : '') + '<hr>' +
+    row('營業收入', fmt(S.revenue)) + row('進貨成本', '-' + fmt(S.stockCost), 'neg') + row('咖啡豆', '-' + fmt(S.coffeeCost), 'neg') +
+    row('分身薪資', '-' + fmt(wages), wages ? 'neg' : '') + row('店租', '-' + fmt(rent), 'neg') + '<hr>' +
+    row('本日淨利', (profit < 0 ? '-' : '') + fmt(Math.abs(profit)), 'tot ' + (profit >= 0 ? 'pos' : 'neg')) +
+    row('現金餘額', fmt(G.money), 'tot') + row('顧客評價', stars + ' ' + G.rating.toFixed(1)) +
+    `<div class="bar"></div>`;
+  const broke = G.money < 0, hated = G.rating < 0.5;
+  $('#btnNext').textContent = broke ? '付不出錢了…' : hated ? '沒有客人想再來了…' : '迎接第 ' + (G.day+1) + ' 天';
+  $('#btnNext').onclick = () => { if (broke) gameOver('bankrupt'); else if (hated) gameOver('rating'); else nextDay(); };
+  if (!broke && !hated){ G.day++; G.time = 0; save(); G.day--; }
+  showScreen('summary');
+}
+function nextDay(){
+  G.day++; G.time = 0; G.spawnT = 2; G.closingT = 0; G.stats = newStats();
+  for (const s of staff){ s.ai = {}; s.carry = false; s.agent.carrying = false; s.agent.path.length = 0; }
+  save();
+  showScreen(null); G.state = 'play';
+  toast('第 ' + G.day + ' 天開店！明天的店租 ' + fmt(rentFor(G.day)), 'good');
+  if (G.day === 2) showHint('從今天開始會出現小偷 🕶️，記得在他們出門前攔下來。');
+}
+function gameOver(kind){
+  G.state = 'over';
+  clearDayEntities();
+  try { localStorage.removeItem(SAVE_KEY); } catch(e){}
+  $('#overTitle').textContent = kind === 'bankrupt' ? '付不出店租，店舖倒閉了' : '評價跌到谷底，店舖倒閉了';
+  $('#overText').textContent = `你撐了 ${G.day} 天，僱用了 ${ROLES.filter(r=>G.clones[r.id]).length} 個 AI 分身。再來一次，試著早點讓分身幫忙！`;
+  showScreen('over');
+}
+
+/* ---------------- save / load ---------------- */
+function getSaveData(){
+  return {v:1, day:G.day, money:G.money, rating:G.rating, cups:G.cups, clones:G.clones, tips:[...G.tips], muted,
+    stock:Object.fromEntries(SHELVES.map(s=>[s.id,s.stock]))};
+}
+function save(){ try { localStorage.setItem(SAVE_KEY, JSON.stringify(getSaveData())); } catch(e){} }
+function loadSave(){ try { const s = localStorage.getItem(SAVE_KEY); return s ? JSON.parse(s) : null; } catch(e){ return null; } }
+function resetWorld(data){
+  clearDayEntities();
+  for (const s of staff.slice()){ if (s !== player){ scene.remove(s.ch.g); s.tag.remove(); } }
+  staff.length = 0; staff.push(player);
+  player.carry = false; player.agent.carrying = false; player.agent.path.length = 0;
+  player.agent.pos.set(CASHIER_SPOT.x, 0, CASHIER_SPOT.z - 1.2);
+  G.day = data ? data.day : 1; G.money = data ? data.money : START_MONEY; G.rating = data ? data.rating : 3;
+  G.cups = data ? data.cups : 2; G.clones = data ? Object.assign({}, data.clones) : {};
+  G.tips = new Set(data && data.tips ? data.tips : []);
+  if (data && typeof data.muted === 'boolean') muted = data.muted;
+  for (const sh of SHELVES) sh.stock = data && data.stock && data.stock[sh.id] !== undefined ? data.stock[sh.id] : sh.max;
+  for (const r of ROLES) if (G.clones[r.id]) spawnClone(r.id, G.clones[r.id], true);
+  G.time = 0; G.spawnT = 2; G.closingT = 0; G.stats = newStats();
+}
+function startGame(data){
+  initAudio();
+  hintQ.length = 0; hintT = 0; $('#hint').classList.add('off');
+  resetWorld(data);
+  $('#hud').hidden = false;
+  showScreen(null);
+  G.state = 'play';
+  updateCamera(0, true);
+  if (G.day === 1 && !G.tips.has('move')){
+    G.tips.add('move');
+    showHint(isTouch ? '在畫面上拖曳就能走動，或點一下地板、貨架直接走過去。' : '用 WASD／方向鍵走動，或點地板、貨架直接走過去。滾輪可以縮放。');
+  }
+  toast('第 ' + G.day + ' 天開店！', 'good');
+  canvas.focus({preventScroll:true});
+}
+
+/* ---------------- main loop ---------------- */
+function spawnInterval(){
+  const base = clamp(7.5 - (G.day-1)*0.7, 2.0, 8);
+  return base * (1.25 - G.rating*0.08);
+}
+function simulate(dt){
+  curDt = dt;
+  G.time += dt;
+  if (G.state === 'play'){
+    G.spawnT -= dt;
+    if (G.spawnT <= 0 && G.time < DAY_LEN - 4){
+      G.spawnT = spawnInterval()*rand(0.6,1.4);
+      if (customers.length < 16) spawnCustomer();
+    }
+    if (G.time >= DAY_LEN){ G.state = 'closing'; G.closingT = 0; toast('23:00 打烊囉！服務完店內的客人', ''); }
+  } else if (G.state === 'closing'){
+    G.closingT += dt;
+    if (customers.length === 0 || G.closingT > 30){ endDay(); return; }
+  }
+  reg.power = 0; coffee.power = 0;
+  updatePlayer(dt);
+  for (const s of staff) if (s !== player) updateClone(s, dt);
+  for (const s of staff) staffWork(s, dt);
+  for (const c of customers.slice()) updateCustomer(c, dt);
+  updateRegister(dt);
+  // mess reduces reputation slowly
+  if (messes.length) addRating(-0.0025*messes.length*dt);
+  // shelf tags
+  for (const sh of SHELVES){
+    if (sh.shown !== sh.stock){ sh.shown = sh.stock; sh.slots.forEach((s,i)=>{ s.visible = i < sh.stock; }); }
+    if (sh.stock === 0) sh.tag.text('缺貨！').icon(sh.icon).cls('empty', true);
+    else if (sh.stock <= Math.ceil(sh.max*0.34)) sh.tag.text(sh.stock + '/' + sh.max).icon('').cls('empty', false);
+    else sh.tag.text('').icon('').cls('empty', false);
+    if (sh.stock <= 2) tip('restock', '貨架快空了！先到倉庫「拿貨」格子拿箱子，再走到貨架前就會自動補滿。');
+  }
+  stockTag.icon(SHELVES.some(s=>s.stock <= Math.ceil(s.max*0.34)) && !player.carry ? '📦' : '').text('');
+  // door
+  let near = false;
+  for (const c of customers) if (Math.abs(c.agent.pos.x-1.25) < 2 && Math.abs(c.agent.pos.z-7) < 1.8){ near = true; break; }
+  if (!near) for (const s of staff) if (Math.abs(s.agent.pos.x-1.25) < 2 && Math.abs(s.agent.pos.z-7) < 1.8){ near = true; break; }
+  door.open = clamp(door.open + (near ? dt*3 : -dt*2), 0, 1);
+  door.L.position.x = 0.625 - door.open*1.1; door.R.position.x = 1.875 + door.open*1.1;
+  // staff tags
+  for (const s of staff){
+    if (s === player){
+      s.tag.icon(s.carry ? '📦' : '').text('你').setBar(s.prog, '#34d6a6');
+    } else {
+      const r = ROLE[s.role];
+      s.tag.icon(s.greetT > 0 ? '👋' : r.icon).text('').setBar(s.prog, '#34d6a6');
+    }
+  }
+  for (const m of messes) m.tag.setBar(m.prog > 0 ? m.prog : null, '#34d6a6');
+}
+function placeTags(){
+  for (const sh of SHELVES) sh.tag.place(sh.tagPos.x, sh.tagPos.y, sh.tagPos.z);
+  regTag.place(6.5, 1.9, 3.3);
+  coffeeTag.place(9.6, 2.2, 1.5);
+  stockTag.place(8.75, 2.4, -6.1);
+  for (const s of staff){ const p = s.agent.pos; s.tag.place(p.x, 2.15, p.z); }
+  for (const c of customers){ const p = c.agent.pos; c.tag.place(p.x, 1.95*c.ch.g.scale.y/1.06, p.z); }
+  for (const m of messes) m.tag.place(m.x, 0.6, m.z);
+}
+
+let last = performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  let dt = (now - last)/1000; last = now;
+  if (dt > 0.1) dt = 0.1;
+  if (dt <= 0) return;
+  if (G.state === 'play' || G.state === 'closing'){
+    // sub-step for stability on slow devices
+    const n = dt > 0.05 ? 2 : 1;
+    for (let i=0;i<n;i++) if (G.state === 'play' || G.state === 'closing') simulate(dt/n);
+    applyTimeOfDay(hourNow());
+  } else if (G.state === 'title'){
+    applyTimeOfDay(19.2);
+    // idle shoppers wander on the title screen for life
+    for (const c of customers.slice()) updateCustomer(c, dt);
+    G.spawnT -= dt; if (G.spawnT <= 0 && customers.length < 6){ G.spawnT = 3; spawnCustomer(); G.stats.customers = 0; }
+    reg.power = 0; coffee.power = 0;
+    for (const s of staff) if (s !== player) updateClone(s, dt);
+    G.cups = MAX_CUPS;
+    staffWork(player, 0); updateRegister(dt);
+    player.agent.step(dt);
+  }
+  const hideTags = G.state === 'title';
+  if (tagLayer._hidden !== hideTags){ tagLayer._hidden = hideTags; tagLayer.style.visibility = hideTags ? 'hidden' : ''; }
+  updateCamera(dt);
+  if (G.state !== 'title') placeTags();
+  updateHUD(dt); updateHint(dt);
+  renderer.render(scene, camera);
+}
+
+function resize(){
+  VW = innerWidth; VH = innerHeight;
+  renderer.setSize(VW, VH, false);
+  updateCamera(0, true);
+}
+addEventListener('resize', resize);
+addEventListener('orientationchange', () => setTimeout(resize, 200));
+document.addEventListener('visibilitychange', () => { if (document.hidden && (G.state === 'play' || G.state === 'closing')) openPanel('pause'); });
+
+/* ---------------- buttons ---------------- */
+$('#btnTeam').onclick = () => { initAudio(); if (G.state === 'play' || G.state === 'closing') openPanel('team'); };
+$('#btnPause').onclick = () => { if (G.state === 'play' || G.state === 'closing') openPanel('pause'); };
+$('#btnTeamClose').onclick = closePanels;
+$('#btnResume').onclick = closePanels;
+$('#btnSound').onclick = () => { muted = !muted; $('#btnSound').textContent = muted ? '關' : '開'; save(); initAudio(); SFX.pick(); };
+$('#btnRestart').onclick = () => { $('#confirmBox').hidden = false; };
+$('#btnRestartNo').onclick = () => { $('#confirmBox').hidden = true; };
+$('#btnRestartYes').onclick = () => { try { localStorage.removeItem(SAVE_KEY); } catch(e){} startGame(null); };
+$('#btnOverRestart').onclick = () => startGame(null);
+$('#btnNew').onclick = () => startGame(null);
+$('#btnContinue').onclick = () => startGame(loadSave());
+for (const id of ['team','pause']) screens[id].addEventListener('pointerdown', e => { if (e.target === screens[id]) closePanels(); });
+
+/* ---------------- boot ---------------- */
+function boot(hotData){
+  const cr = $('#cloneRow');
+  for (const r of ROLES){ const s = document.createElement('span'); s.style.background = r.css; s.textContent = r.icon + ' ' + r.name; cr.appendChild(s); }
+  if (!isTouch) $('#howMove').textContent = 'WASD／方向鍵走動，或用滑鼠點地板、貨架直接走過去。';
+  buildWorld();
+  createPlayer();
+  player.agent.pos.set(CASHIER_SPOT.x, 0, CASHIER_SPOT.z); player.agent.face(-Math.PI/2);
+  const saved = (hotData && hotData.day) ? hotData : loadSave();
+  if (saved && saved.day){
+    $('#btnContinue').hidden = false; $('#btnContinue').textContent = '繼續第 ' + saved.day + ' 天';
+    $('#btnContinue').onclick = () => startGame(saved);
+    $('#btnNew').textContent = '新的店（重新開始）';
+  }
+  if (saved && typeof saved.muted === 'boolean') muted = saved.muted;
+  resize();
+  requestAnimationFrame(t => { last = t; frame(t); });
+  if (hotData && hotData.day && hotData.inGame) startGame(hotData);
+  try { window.claude && window.claude.hot && window.claude.hot.snapshot && window.claude.hot.snapshot(() => Object.assign(getSaveData(), {inGame: G.state !== 'title' && G.state !== 'over'})); } catch(e){}
+  // expose a tiny debug/test hook
+  window.__cloneMart = {sim(secs){ const n = Math.round(secs*30); for (let i=0;i<n && (G.state==='play'||G.state==='closing');i++) simulate(1/30); return G.state; }, G, SHELVES, customers, queue, messes, staff, startGame, hire, endDay, spawnCustomer, spawnMess};
+}
+function start(data){
+  const fontsReady = (document.fonts && document.fonts.ready) ? Promise.race([document.fonts.ready, new Promise(r=>setTimeout(r,1500))]) : Promise.resolve();
+  fontsReady.then(() => boot(data || {}));
+}
+const hot = window.claude && window.claude.hot;
+if (hot && hot.ready) hot.ready(start); else start(hot && hot.data ? hot.data : {});
+})();
+</script>
+</body>
+</html>
