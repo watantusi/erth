@@ -558,17 +558,20 @@ async function mobileTrack(order, label, deviceName, opts) {
         await touch('touchStart', x0, y0);
         for (let i = 1; i <= 6; i++) { await touch('touchMove', x0 + i * 12, y0); await sleep(30); }
         let joyShown = false, k = 0;
-        const p1 = await pollMoved(page, p0, p => p.x > p0.x + 0.3, 10000, async () => {
+        // "Right" on screen depends on the camera yaw (portrait devices use a rotated view), so measure along the camera's screen-right axis.
+        const R = await page.evaluate(() => { const ux = window.__cloneMartUX; if (!ux || !ux.camera) return {x:1, z:0}; const e = ux.camera.matrixWorld.elements; const l = Math.hypot(e[0], e[2]) || 1; return {x:e[0]/l, z:e[2]/l}; });
+        const along = p => (p.x - p0.x)*R.x + (p.z - p0.z)*R.z;
+        const p1 = await pollMoved(page, p0, p => along(p) > 0.3, 10000, async () => {
           await touch('touchMove', x0 + 72 + (k++ % 2), y0); await sleep(100);
           if (!joyShown) joyShown = await page.locator('#joy').isVisible();
         });
         await touch('touchEnd');
         await page.waitForFunction(() => document.querySelector('#joy').hidden, null, { timeout: 5000 }).catch(() => {});
         const joyHidden = await page.locator('#joy').isHidden();
-        assert(p1.x > p0.x + 0.3, `drag right did not move player: x ${p0.x.toFixed(2)} -> ${p1.x.toFixed(2)}`);
+        assert(along(p1) > 0.3, `drag right did not move player right on screen: moved ${along(p1).toFixed(2)} along screen-right (${p0.x.toFixed(2)},${p0.z.toFixed(2)}) -> (${p1.x.toFixed(2)},${p1.z.toFixed(2)})`);
         assert(joyShown, 'joystick never shown during drag');
         assert(joyHidden, 'joystick still visible after release');
-        return `dx=${(p1.x - p0.x).toFixed(2)}`;
+        return `screen-right ${along(p1).toFixed(2)}m (dx=${(p1.x - p0.x).toFixed(2)} dz=${(p1.z - p0.z).toFixed(2)})`;
       });
     }
     await test('input', `${deviceName} tap-to-move creates a path`, () => tapMoveTest(P, opts.tap[0], opts.tap[1]));
