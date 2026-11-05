@@ -152,6 +152,13 @@ button:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
 .toggle-row{display:flex;justify-content:space-between;align-items:center;font-weight:700;padding:6px 0}
 .confirm{margin-top:10px;padding:10px;border-radius:12px;background:#ffe9e7;border:2px solid var(--coral);font-weight:700;font-size:14px}
 .confirm .btns{flex-direction:row;margin-top:8px}
+/* ---------- audio toggles (pause panel) + juice fx (coin pops) ---------- */
+#pause .toggle-row .hbtn{min-width:68px;justify-content:center}
+#pause .toggle-row .hbtn[aria-pressed="false"]{background:#e8e2d3;color:var(--muted);box-shadow:0 3px 0 #b9b2a2;border-color:#b9b2a2}
+#pause .toggle-row + .toggle-row{border-top:2px dashed #e3dccb}
+.coinfx{position:absolute;left:0;top:0;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;pointer-events:none;will-change:transform,opacity;
+  background:radial-gradient(circle at 35% 30%,#fff6c4 0 18%,#ffd84d 42%,#e6a817 100%);border:2px solid var(--ink);
+  font:400 11px/16px var(--f-display);color:var(--ink);text-align:center}
 
 @media (max-width:420px){
   .money b{font-size:17px}
@@ -223,7 +230,8 @@ button:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
   <div class="sheet">
     <h2>暫停中</h2>
     <p class="sub" id="pauseInfo"></p>
-    <div class="toggle-row"><span>音效</span><button class="hbtn" id="btnSound" type="button">開</button></div>
+    <div class="toggle-row"><span>🎵 音樂</span><button class="hbtn" id="btnMusic" type="button" aria-pressed="true">開</button></div>
+    <div class="toggle-row"><span>🔊 音效</span><button class="hbtn" id="btnSound" type="button" aria-pressed="true">開</button></div>
     <div class="btns">
       <button class="btn" id="btnResume" type="button">繼續</button>
       <button class="btn alt" id="btnRestart" type="button">從第 1 天重新開始</button>
@@ -926,7 +934,7 @@ function updateHint(dt){
 
 /* ---------------- audio ---------------- */
 let actx = null, muted = false;
-function initAudio(){ try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch(e){ actx = null; } }
+function initAudio(){ try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch(e){ actx = null; } if (actx){ audioBuses(); musicBoot(); } }
 function tone(f, dur, type, vol, when, slideTo){
   if (!actx || muted) return;
   try {
@@ -935,21 +943,297 @@ function tone(f, dur, type, vol, when, slideTo){
     o.type = type || 'sine'; o.frequency.setValueAtTime(f, t0);
     if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0+dur);
     g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol||0.12, t0+0.012); g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
-    o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0+dur+0.02);
+    o.connect(g); g.connect(audioOut()); o.start(t0); o.stop(t0+dur+0.02);
   } catch(e){}
 }
 const SFX = {
-  ding(){ tone(1318,0.14,'sine',0.12); tone(1760,0.3,'sine',0.1,0.09); },
-  chime(){ tone(784,0.22,'triangle',0.08); tone(988,0.22,'triangle',0.08,0.16); tone(1175,0.35,'triangle',0.07,0.32); },
+  // register: drawer click + two bright bell strikes (rising fourth)
+  ding(){ sfxNoise(0, 0.03, 0.05, 'hp'); bell(1568, 0.015, 0.55, 0.07); bell(2093, 0.1, 0.7, 0.055); },
+  // door: soft three-note wind-chime figure (original), throttled so a crowd doesn't stack it
+  chime(){ if (!sfxGate('chime', 0.45)) return; bell(1047, 0, 0.55, 0.032); bell(1397, 0.12, 0.55, 0.028); bell(1175, 0.24, 0.8, 0.03); },
+  // coin landing in the till: tiny metallic tink with pitch jitter
+  coin(){ if (!sfxGate('coin', 0.045)) return; bell(2349*rand(0.97,1.04), 0, 0.16, 0.035); sfxVoice('square', 4699, 0, 0.025, 0.006, 0.002); },
   pick(){ tone(520,0.07,'square',0.05); tone(780,0.08,'square',0.04,0.05); },
-  stock(){ tone(660,0.08,'triangle',0.1); tone(880,0.08,'triangle',0.1,0.07); tone(1100,0.12,'triangle',0.09,0.14); },
+  stock(){ sfxNoise(0, 0.07, 0.07, 'lp'); tone(660,0.08,'triangle',0.08,0.02); tone(880,0.08,'triangle',0.08,0.09); tone(1100,0.12,'triangle',0.07,0.16); },
   bad(){ tone(220,0.25,'sawtooth',0.06); tone(160,0.3,'sawtooth',0.05,0.12); },
-  clean(){ tone(1400,0.12,'sine',0.05,0,2400); },
+  clean(){ sfxNoise(0, 0.16, 0.05, 'bp'); tone(1400,0.12,'sine',0.04,0.05,2400); },
   brew(){ tone(300,0.18,'sine',0.06,0,520); },
   hire(){ [523,659,784,1047].forEach((f,i)=>tone(f,0.18,'triangle',0.09,i*0.08)); },
-  catch(){ tone(880,0.1,'square',0.06); tone(660,0.1,'square',0.06,0.1); tone(990,0.2,'square',0.06,0.2); },
+  catch(){ tone(150,0.16,'sine',0.16,0,55); tone(880,0.1,'square',0.05); tone(660,0.1,'square',0.05,0.1); tone(990,0.2,'square',0.05,0.2); },
   close(){ [784,659,523].forEach((f,i)=>tone(f,0.3,'triangle',0.08,i*0.18)); },
 };
+
+/* ---------------- audio buses + SFX helpers ----------------
+   master compressor ← sfx bus (all SFX)  ← music bus ← music lowpass ← drum filters.
+   AUD.live counts audio sources that are scheduled/playing (debug: must stay bounded). */
+let musicOn = true;
+const SETTINGS_KEY = 'clonemart-settings-v1';   // audio prefs survive game over / restart; old saves simply lack it
+const MUSIC_VOL = 0.6;
+const AUD = {master:null, sfx:null, music:null, mfilter:null, hp:null, bp:null, sfxF:null, noise:null,
+  live:0, made:0, steps:0, timer:0, level:-1, stopAt:0, next:0, step:0, mode:'day', phrase:0, mel:null, gate:{}};
+(function loadAudioSettings(){
+  try { const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
+    if (s && typeof s.music === 'boolean') musicOn = s.music;
+    if (s && typeof s.muted === 'boolean') muted = s.muted; } catch(e){}
+})();
+function saveAudioSettings(){ try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({music:musicOn, muted})); } catch(e){} }
+function audioBuses(){
+  if (!actx) return false;
+  if (AUD.master) return true;
+  try {
+    const comp = actx.createDynamicsCompressor();
+    comp.threshold.value = -16; comp.knee.value = 10; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.2;
+    comp.connect(actx.destination);
+    const filt = (type, f, q, dest) => { const b = actx.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; b.connect(dest); return b; };
+    AUD.sfx = actx.createGain(); AUD.sfx.connect(comp);
+    AUD.music = actx.createGain(); AUD.music.gain.value = 0.0001; AUD.music.connect(comp);
+    AUD.mfilter = filt('lowpass', 2600, 0.6, AUD.music);
+    AUD.hp = filt('highpass', 7000, 0.7, AUD.mfilter);      // hats / vinyl crackle
+    AUD.bp = filt('bandpass', 1900, 1.4, AUD.mfilter);      // rim click
+    AUD.sfxF = {hp: filt('highpass', 3500, 0.7, AUD.sfx), lp: filt('lowpass', 520, 0.8, AUD.sfx), bp: filt('bandpass', 2600, 0.9, AUD.sfx)};
+    const len = Math.floor(actx.sampleRate*1.0), buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
+    for (let i=0;i<len;i++) d[i] = Math.random()*2-1;
+    AUD.noise = buf;
+    AUD.master = comp;
+  } catch(e){ AUD.master = null; return false; }
+  return true;
+}
+function audioOut(){ return audioBuses() ? AUD.sfx : actx.destination; }
+/* every scheduled source goes through here so the debug counter stays honest and nodes get released */
+function audTrack(src, g){
+  AUD.live++; AUD.made++;
+  src.onended = () => { AUD.live--; try { src.disconnect(); g.disconnect(); } catch(e){} };
+}
+function audVoice(type, f, t, dur, vol, atk, dest, detune){
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t); if (detune) o.detune.setValueAtTime(detune, t);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + atk); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(dest); o.start(t); o.stop(t + dur + 0.03); audTrack(o, g);
+  return o;
+}
+function audNoise(t, dur, vol, dest, rate){
+  const s = actx.createBufferSource(), g = actx.createGain();
+  s.buffer = AUD.noise; s.playbackRate.value = rate || 1;
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  s.connect(g); g.connect(dest); s.start(t, Math.random()*0.8, dur + 0.02); audTrack(s, g);
+}
+const sfxOK = () => actx && !muted && audioBuses();
+function sfxGate(key, gap){ if (!actx) return false; const now = actx.currentTime; if (AUD.gate[key] > now - gap) return false; AUD.gate[key] = now; return true; }
+function sfxVoice(type, f, when, dur, vol, atk){ if (!sfxOK()) return; try { audVoice(type, f, actx.currentTime + (when||0), dur, vol, atk || 0.005, AUD.sfx); } catch(e){} }
+function sfxNoise(when, dur, vol, filter){ if (!sfxOK()) return; try { audNoise(actx.currentTime + (when||0), dur, vol, AUD.sfxF[filter] || AUD.sfx); } catch(e){} }
+/* small-bell timbre: inharmonic partials (1 : 2.76 : 5.4) that decay faster as they go up */
+function bell(f, when, dur, vol){
+  sfxVoice('sine', f, when, dur, vol, 0.003);
+  sfxVoice('sine', f*2.76, when, dur*0.45, vol*0.3, 0.002);
+  sfxVoice('sine', f*5.4, when, dur*0.2, vol*0.12, 0.002);
+}
+
+/* ---------------- music engine: procedural lo-fi "store radio" loop ----------------
+   Original material: 4-bar progressions, swung 8th-note grid, seeded pentatonic melody that
+   regenerates every two phrases. Lookahead scheduler (setInterval 50 ms, 0.3 s ahead).
+   Day: 86 BPM with soft boom-bap kit. Night (>=19:00 / closing): 70 BPM, darker filter, pad-like
+   chords, almost no drums. Plays only in play/closing, ducks while paused, fades out elsewhere. */
+const MUSIC = {
+  day:  {bpm:86, cut:2600, swing:0.17, vol:1,
+    prog:[[41,[53,57,60,64]], [45,[55,60,64,69]], [46,[57,62,65,69]], [48,[55,58,62,65]]],   // Fmaj7 Am7 Bbmaj7 C9sus4
+    scale:[65,67,69,72,74,77,79], dens:0.34,
+    kick:[1,0,0,0.6,0,0.45,0,0], rim:[0,0,1,0,0,0,1,0.3], hat:[0.7,0.35,0.6,0.35,0.7,0.35,0.6,0.45]},
+  night:{bpm:70, cut:1300, swing:0.12, vol:0.8,
+    prog:[[38,[53,57,60,64]], [34,[57,62,65,69]], [43,[53,58,62,69]], [45,[55,62,64,69]]],   // Dm9 Bbmaj7 Gm9 A7sus4
+    scale:[62,65,67,69,72,74], dens:0.15,
+    kick:[0.7,0,0,0,0,0,0,0], rim:[0,0,0,0,0,0,0.45,0], hat:[0,0.25,0,0.2,0,0.25,0,0.3]},
+};
+const midiHz = m => 440*Math.pow(2, (m-69)/12);
+function mulberry(a){ return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function musicMelody(M, seed){
+  const r = mulberry(seed), n = M.scale.length, out = new Array(32).fill(-1);
+  let idx = n >> 1;
+  for (let i=0;i<16;i++){
+    const dens = (i%2 ? M.dens*0.45 : M.dens) * (i%8 === 0 ? 1.5 : 1);
+    if (r() < dens){ idx = clamp(idx + Math.round((r()-0.5)*4.2), 0, n-1); out[i] = idx; }
+  }
+  for (let i=16;i<24;i++) out[i] = out[i-16];                                    // bar 3 answers bar 1
+  for (let i=24;i<32;i+=2) if (r() < M.dens*0.7){ idx = clamp(idx - 1 + Math.round(r()), 0, n-1); out[i] = idx; }
+  return out;
+}
+function musicIsNight(){ return G.state === 'closing' || hourNow() >= 19; }
+function musicTarget(){
+  if (!musicOn || document.hidden) return 0;
+  if (G.state === 'play' || G.state === 'closing') return 1;
+  if (G.state === 'paused') return 0.28;            // duck under the pause / team sheets
+  return 0;                                         // title, summary, game over: silence
+}
+function musicStep(step, t){
+  const i = step & 31, bar = i >> 3, s8 = i & 7;
+  if (i === 0){
+    AUD.mode = musicIsNight() ? 'night' : 'day';
+    if (AUD.phrase % 2 === 0 || !AUD.mel) AUD.mel = musicMelody(MUSIC[AUD.mode], 1013 + AUD.phrase*7919 + (AUD.mode === 'night' ? 31 : 0));
+    AUD.phrase++;
+    AUD.mfilter.frequency.setTargetAtTime(MUSIC[AUD.mode].cut, t, 1.5);
+  }
+  const M = MUSIC[AUD.mode], beat = 60/M.bpm, sd = beat/2, v = M.vol;
+  if (s8 % 2) t += M.swing*sd;
+  const [root, chord] = M.prog[bar], night = AUD.mode === 'night';
+  const out = AUD.mfilter;
+  // chords: soft electric-piano strike (day re-strikes on the "and" of 2)
+  if (s8 === 0 || (!night && s8 === 3)){
+    const strong = s8 === 0, len = strong ? (night ? beat*4.2 : beat*2.8) : beat*0.9;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime((strong ? 0.042 : 0.024)*v, t + (night ? 0.35 : 0.02));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+    g.connect(out);
+    chord.forEach((m, k) => {
+      const o = actx.createOscillator(); o.type = night ? 'sine' : 'triangle';
+      o.frequency.setValueAtTime(midiHz(m), t); o.detune.setValueAtTime((k%2 ? 6 : -5) + rand(-3,3), t);
+      o.connect(g); const st = t + (strong && !night ? k*0.012 : 0);
+      o.start(st); o.stop(t + len + 0.05); audTrack(o, g);
+    });
+  }
+  // bass
+  if (night){
+    if (s8 === 0) audVoice('sine', midiHz(root), t, beat*3.6, 0.11*v, 0.05, out);
+    if (s8 === 6) audVoice('sine', midiHz(root + 7), t, beat*0.9, 0.06*v, 0.03, out);
+  } else {
+    const bn = s8 === 0 ? root : s8 === 3 ? root : s8 === 4 ? root + 7 : s8 === 6 ? root + 12 : 0;
+    if (bn) audVoice('triangle', midiHz(bn), t, s8 === 0 ? beat*1.3 : beat*0.45, (s8 === 0 ? 0.13 : 0.085)*v, 0.012, out);
+  }
+  // drums
+  const kv = M.kick[s8], rv = M.rim[s8], hv = M.hat[s8];
+  if (kv){
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.frequency.setValueAtTime(115, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.13);
+    g.gain.setValueAtTime(0.15*kv*v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
+    o.connect(g); g.connect(out); o.start(t); o.stop(t + 0.26); audTrack(o, g);
+  }
+  if (rv) audNoise(t, 0.06, 0.09*rv*v, AUD.bp, 0.8);
+  if (hv) audNoise(t, s8 === 7 && !night ? 0.07 : 0.03, 0.035*hv*v, AUD.hp, 1);
+  if (Math.random() < 0.22) audNoise(t + Math.random()*sd, 0.006, 0.03, AUD.hp, 0.5);    // vinyl dust
+  // melody
+  const mi = AUD.mel[i];
+  if (mi >= 0){
+    let len = 1; while (len < 3 && AUD.mel[(i + len) & 31] < 0) len++;
+    audVoice(night ? 'sine' : 'triangle', midiHz(M.scale[mi]), t, sd*len*0.95 + 0.08, (night ? 0.03 : 0.026)*v, 0.015, out, rand(-4,4));
+  }
+  AUD.steps++;
+}
+function musicTick(){
+  if (!actx || !AUD.master) return;
+  const now = actx.currentTime, want = musicTarget();
+  if (want !== AUD.level){
+    const wasSilent = AUD.level <= 0;
+    AUD.level = want;
+    AUD.music.gain.setTargetAtTime(want ? want*MUSIC_VOL : 0.0001, now, want ? (wasSilent ? 0.6 : 0.25) : 0.3);
+    if (!want) AUD.stopAt = now + 1.4;
+  }
+  if (actx.state !== 'running') return;
+  if (!want && now > AUD.stopAt){ AUD.next = 0; AUD.step = 0; return; }   // fully faded: stop scheduling
+  if (AUD.next < now){ if (AUD.next) AUD.step = (AUD.step + 31) & ~31; AUD.next = now + 0.08; }    // (re)start on a phrase boundary
+  try {
+    while (AUD.next < now + 0.3){
+      musicStep(AUD.step, AUD.next);
+      AUD.next += 30/MUSIC[AUD.mode].bpm; AUD.step++;
+    }
+  } catch(e){ AUD.next = now + 0.5; }
+}
+function musicBoot(){ if (!AUD.timer && AUD.master) AUD.timer = setInterval(musicTick, 50); }
+function syncAudioToggles(){
+  const m = $('#btnMusic'), s = $('#btnSound');
+  m.textContent = musicOn ? '開' : '關'; m.setAttribute('aria-pressed', String(musicOn));
+  s.textContent = muted ? '關' : '開'; s.setAttribute('aria-pressed', String(!muted));
+}
+
+/* ---------------- juice: coin pops, squash & stretch, camera shake, money counter ----------------
+   All visual-only (never touches simulation). Disabled under prefers-reduced-motion except the
+   counter tick-up, which then just flashes instead of popping. */
+const RMQ = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+const reducedMotion = () => !!(RMQ && RMQ.matches);
+const camShake = new THREE.Vector3();            // additive camera offset, applied at the end of updateCamera
+const JUICE = {trauma:0, t:0, squash:[], coins:0, pending:0, shown:null, lastTarget:null, popAt:0, raf:0, last:0};
+const _jv = new THREE.Vector3();
+let moneyB = null, moneyChip = null;
+function juiceKick(){ if (!JUICE.raf){ JUICE.last = performance.now(); JUICE.raf = requestAnimationFrame(juiceLoop); } }
+function juiceLoop(now){
+  const dt = clamp((now - JUICE.last)/1000, 0, 0.05); JUICE.last = now; JUICE.raf = 0;
+  if (JUICE.trauma > 0){
+    // trauma model: shake = trauma², smooth layered sines, always decays to rest
+    JUICE.trauma = Math.max(0, JUICE.trauma - dt*1.7); JUICE.t += dt*26;
+    const k = JUICE.trauma*JUICE.trauma*0.34, t = JUICE.t;
+    camShake.set(k*(0.6*Math.sin(t*1.7) + 0.4*Math.sin(t*3.1 + 1)), k*0.5*Math.sin(t*2.3 + 2), k*(0.6*Math.sin(t*1.3 + 4) + 0.4*Math.sin(t*2.9)));
+  } else camShake.set(0,0,0);
+  for (let i = JUICE.squash.length - 1; i >= 0; i--){
+    const q = JUICE.squash[i]; q.t += dt;
+    const k = q.t/0.42;
+    if (k >= 1){ q.g.scale.setScalar(q.base); JUICE.squash.splice(i, 1); continue; }
+    const s = 1 + q.amt*(1-k)*(1-k)*Math.cos(k*Math.PI*3);      // stretch → squash → settle
+    q.g.scale.set(q.base/Math.sqrt(s), q.base*s, q.base/Math.sqrt(s));
+  }
+  if (JUICE.trauma > 0 || JUICE.squash.length) JUICE.raf = requestAnimationFrame(juiceLoop);
+}
+/* squash & stretch on a character (staff member or customer); volume-preserving, returns to rest */
+function squash(who, amt){
+  if (!who || !who.ch || who.spawnFx > 0 || reducedMotion()) return;
+  const g = who.ch.g;
+  let q = JUICE.squash.find(e => e.g === g);
+  if (!q){ q = {g, base:g.scale.y}; JUICE.squash.push(q); }
+  q.t = 0; q.amt = amt || 0.14;
+  juiceKick();
+}
+function camShakeAdd(amount){ if (reducedMotion()) return; JUICE.trauma = Math.min(1, JUICE.trauma + amount); juiceKick(); }
+/* coins burst from a world point and fly into the HUD money chip; the counter holds the amount
+   until each coin lands, then ticks up with a tink */
+function coinBurst(x, y, z, total){
+  if (reducedMotion() || !(total > 0)) return;
+  if (!moneyB){ moneyB = $('#money'); moneyChip = moneyB.parentElement; }
+  const r = moneyB.getBoundingClientRect();
+  if (!r.width) return;
+  _jv.set(x, y, z).project(camera);
+  if (_jv.z > 1) return;
+  const sx = (_jv.x+1)/2*VW, sy = (1-_jv.y)/2*VH, tx = r.left + r.width*0.5, ty = r.top + r.height*0.5;
+  const n = Math.min(clamp(Math.round(total/35), 2, 7), 28 - JUICE.coins);
+  if (n <= 0) return;
+  const share = total/n;
+  JUICE.pending += total;
+  for (let i=0;i<n;i++){
+    const c = document.createElement('div'); c.className = 'coinfx'; c.textContent = '$';
+    const mx = sx + rand(-70, 70), my = sy - rand(40, 110), delay = i*55 + rand(0, 30), dur = rand(620, 820);
+    const tr = (px, py, sc) => `translate(${px.toFixed(1)}px,${py.toFixed(1)}px) scale(${sc})`;
+    c.style.transform = tr(sx, sy, 0.4); c.style.opacity = '0';
+    fxLayer.appendChild(c); JUICE.coins++;
+    try {
+      c.animate([
+        {transform:tr(sx, sy, 0.4), opacity:0, easing:'cubic-bezier(.2,.7,.4,1)'},
+        {transform:tr(mx, my, 1.15), opacity:1, offset:0.38, easing:'cubic-bezier(.55,0,.85,.45)'},
+        {transform:tr(tx, ty, 0.55), opacity:0.9}
+      ], {duration:dur, delay, fill:'both'});
+    } catch(e){}
+    setTimeout(() => { c.remove(); JUICE.coins--; JUICE.pending = Math.max(0, JUICE.pending - share); if (JUICE.pending < 0.5) JUICE.pending = 0; SFX.coin(); }, delay + dur);
+  }
+}
+/* HUD money: eased tick toward the real value (minus coins still in flight) + pop on every change */
+function moneyDisplay(dt){
+  if (!moneyB){ moneyB = $('#money'); moneyChip = moneyB.parentElement; }
+  const target = G.money - JUICE.pending;
+  if (JUICE.shown === null || G.state === 'title'){ JUICE.shown = target; JUICE.lastTarget = target; }
+  if (target !== JUICE.lastTarget){ moneyPop(target > JUICE.lastTarget ? 1 : -1); JUICE.lastTarget = target; }
+  const d = target - JUICE.shown;
+  JUICE.shown = Math.abs(d) < 0.5 ? target : JUICE.shown + d*Math.min(1, (dt || 0)*9);
+  return JUICE.shown;
+}
+function moneyPop(sign){
+  const now = performance.now();
+  if (now - JUICE.popAt < 90 || !moneyChip.animate) return;
+  JUICE.popAt = now;
+  try {
+    moneyB.animate([{color: sign > 0 ? '#fffbe0' : '#ff6058'}, {color:'#ffcf3a'}], {duration: sign > 0 ? 300 : 500, easing:'ease-out'});
+    if (!reducedMotion()) moneyChip.animate([{transform:'scale(1)'}, {transform: sign > 0 ? 'scale(1.14)' : 'scale(0.94)', offset:0.3}, {transform:'scale(1)'}],
+      {duration:260, easing:'ease-out'});
+  } catch(e){}
+}
+/* event bundles (one-line hooks at the event sites) */
+function juiceCheckout(who, total){ squash(who, 0.2); coinBurst(CHECKOUT_SPOT.x + 0.7, 1.5, CHECKOUT_SPOT.z, total); }
+function juiceCatch(staffer, thief, total){ squash(thief, 0.26); squash(staffer, 0.14); camShakeAdd(0.55); coinBurst(thief.agent.pos.x, 1.6, thief.agent.pos.z, total); }
+window.__cloneMartAudio = {AUD, JUICE, camShake, musicTick, get musicOn(){ return musicOn; }, get muted(){ return muted; }};
 
 /* ---------------- game state ---------------- */
 const G = {
@@ -1166,6 +1450,7 @@ function doRestock(s, sh){
   sh.stock += afford;
   s.carry = false; s.agent.carrying = false;
   SFX.stock();
+  squash(s, 0.12);
   floatText(sh.spot.x, 2.0, sh.spot.z, '補貨 -' + fmt(cost), 'good txt');
   return true;
 }
@@ -1193,7 +1478,7 @@ function staffWork(s, dt){
     for (const m of messes){
       if (dist2(m, p) < 0.85){
         m.prog += dt * s.work; prog = m.prog / 1.0;
-        if (m.prog >= 1.0){ removeMess(m); SFX.clean(); addRating(0.02); floatText(p.x, 2.2, p.z, '乾淨！', 'good txt'); prog = null; }
+        if (m.prog >= 1.0){ removeMess(m); SFX.clean(); squash(s, 0.12); addRating(0.02); floatText(p.x, 2.2, p.z, '乾淨！', 'good txt'); prog = null; }
         break;
       }
     }
@@ -1205,6 +1490,7 @@ function staffWork(s, dt){
         addMoney(total); G.stats.revenue += total; G.stats.caught++; addRating(0.03);
         floatText(c.agent.pos.x, 2.4, c.agent.pos.z, '抓到了！+' + fmt(total), 'good txt');
         SFX.catch(); emote(c, '😰', 2);
+        juiceCatch(s, c, total);
         c.thief = false; c.paid = true; c.basket.length = 0; c.agent.speed = 2.2;
         leaveStore(c, false);
       }
@@ -1308,6 +1594,7 @@ function updateRegister(dt){
         addRating(0.025 + 0.04*clamp(head.patience/100,0,1));
         floatText(CHECKOUT_SPOT.x, 2.2, CHECKOUT_SPOT.z, '+' + fmt(total));
         SFX.ding();
+        juiceCheckout(head, total);
         head.paid = true; emote(head, head.patience > 60 ? '😊' : '🙂', 1.4);
         queue.shift(); head.qi = -1; refreshQueue();
         leaveStore(head, false);
@@ -1456,6 +1743,7 @@ function updateCamera(dt, instant){
   }
   camera.updateProjectionMatrix();
   camera.updateMatrixWorld();
+  if (camShake.x || camShake.y || camShake.z){ camera.position.add(camShake); camera.updateMatrixWorld(); }   // juice: additive shake offset
 }
 
 /* ---------------- day / night ---------------- */
@@ -1486,7 +1774,7 @@ function setText(el, key, v){ if (_hc[key] !== v){ _hc[key] = v; el.textContent 
 let alertT = 0;
 function hourNow(){ return OPEN_H + clamp(G.time/DAY_LEN,0,1)*(CLOSE_H-OPEN_H); }
 function updateHUD(dt){
-  setText(hud.money, 'm', fmt(G.money));
+  setText(hud.money, 'm', fmt(moneyDisplay(dt)));
   setText(hud.day, 'd', '第 ' + G.day + ' 天');
   const h = hourNow(); const hh = Math.floor(h), mm = Math.floor((h-hh)*60/10)*10;
   setText(hud.clock, 'c', G.state === 'closing' ? '打烊' : String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0'));
@@ -1521,7 +1809,7 @@ function openPanel(name){
   for (const k in keys) keys[k] = false;
   joy.active = false; joyEl.hidden = true;
   if (name === 'team') renderTeam();
-  if (name === 'pause'){ $('#pauseInfo').textContent = '第 ' + G.day + ' 天 · ' + $('#clock').textContent + ' · 現金 ' + fmt(G.money); $('#confirmBox').hidden = true; $('#btnSound').textContent = muted ? '關' : '開'; }
+  if (name === 'pause'){ $('#pauseInfo').textContent = '第 ' + G.day + ' 天 · ' + $('#clock').textContent + ' · 現金 ' + fmt(G.money); $('#confirmBox').hidden = true; syncAudioToggles(); }
   showScreen(name);
 }
 function closePanels(){ showScreen(null); if (G.state === 'paused') G.state = G.prevState || 'play'; canvas.focus({preventScroll:true}); }
@@ -1752,7 +2040,8 @@ $('#btnTeam').onclick = () => { initAudio(); if (G.state === 'play' || G.state =
 $('#btnPause').onclick = () => { if (G.state === 'play' || G.state === 'closing') openPanel('pause'); };
 $('#btnTeamClose').onclick = closePanels;
 $('#btnResume').onclick = closePanels;
-$('#btnSound').onclick = () => { muted = !muted; $('#btnSound').textContent = muted ? '關' : '開'; save(); initAudio(); SFX.pick(); };
+$('#btnSound').onclick = () => { muted = !muted; syncAudioToggles(); save(); saveAudioSettings(); initAudio(); SFX.pick(); };
+$('#btnMusic').onclick = () => { musicOn = !musicOn; syncAudioToggles(); saveAudioSettings(); initAudio(); SFX.pick(); };
 $('#btnRestart').onclick = () => { $('#confirmBox').hidden = false; };
 $('#btnRestartNo').onclick = () => { $('#confirmBox').hidden = true; };
 $('#btnRestartYes').onclick = () => { try { localStorage.removeItem(SAVE_KEY); } catch(e){} startGame(null); };
