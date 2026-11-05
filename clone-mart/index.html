@@ -510,6 +510,7 @@ function findPath(sx,sz,tx,tz){
   }
   return out;
 }
+window.__cloneMartNav = {findPath, walkXZ, queueSpot: i => queueSpot(i), spots:{CASHIER_SPOT, CHECKOUT_SPOT, COFFEE_SPOT, STOCK_SPOT, STOCK_IDLE, GUARD_SPOT, DOOR_OUT}, consts:{MAX_CUPS, DAY_LEN}};
 function randomInside(){
   for (let k=0;k<40;k++){ const x=rand(-9,4.5), z=rand(-5,6); if (walkXZ(x,z)) return {x,z}; }
   return {x:0,z:4};
@@ -1371,7 +1372,7 @@ function goNextShelf(c){
     queue.push(c); c.state = 'queue'; c.qi = -1; refreshQueue();
   }
 }
-function queueSpot(i){ return i < 7 ? {x:CHECKOUT_SPOT.x - i*0.8, z:CHECKOUT_SPOT.z} : {x:0.6 + (i-7)*0.8, z:4.4}; }
+function queueSpot(i){ return i < 7 ? {x:CHECKOUT_SPOT.x - i*0.8, z:CHECKOUT_SPOT.z} : i < 14 ? {x:0.6 + (i-7)*0.8, z:4.4} : {x:5.0 - (i-14)*0.8, z:5.5}; }
 function refreshQueue(){
   queue.forEach((c,i)=>{ if (c.qi !== i){ c.qi = i; const s = queueSpot(i); c.agent.goTo(s.x, s.z); } });
 }
@@ -1875,6 +1876,8 @@ function openPanel(name){
   showScreen(name);
 }
 function closePanels(){ showScreen(null); if (G.state === 'paused') G.state = G.prevState || 'play'; canvas.focus({preventScroll:true}); }
+let buyLockT = 0;
+function buyLocked(){ const now = performance.now(); if (now < buyLockT) return true; buyLockT = now + 450; return false; }
 function renderTeam(){
   $('#teamMoney').textContent = fmt(G.money);
   const list = $('#teamList'); list.innerHTML = '';
@@ -1885,8 +1888,8 @@ function renderTeam(){
     const mid = document.createElement('div'); mid.style.minWidth = '0';
     mid.innerHTML = `<div class="nm">${r.name}${lv ? `<span class="lv">LV${lv}</span>` : ''}</div><div class="ds">${r.desc}</div><div class="wg">日薪 ${fmt(r.wage)}${lv ? ' · 速度 ×' + LV_WORK[lv].toFixed(2) : ''}</div>`;
     const b = document.createElement('button'); b.type = 'button';
-    if (!lv){ b.innerHTML = `僱用<small>${fmt(r.cost)}</small>`; b.disabled = G.money < r.cost; b.onclick = () => hire(r.id); }
-    else if (lv < 3){ const c = upgradeCost(r, lv); b.innerHTML = `升級<small>${fmt(c)}</small>`; b.disabled = G.money < c; b.onclick = () => upgrade(r.id); }
+    if (!lv){ b.innerHTML = `僱用<small>${fmt(r.cost)}</small>`; b.disabled = G.money < r.cost; b.onclick = () => { if (buyLocked()) return; hire(r.id); }; }
+    else if (lv < 3){ const c = upgradeCost(r, lv); b.innerHTML = `升級<small>${fmt(c)}</small>`; b.disabled = G.money < c; b.onclick = () => { if (buyLocked()) return; upgrade(r.id); }; }
     else { b.textContent = '滿級'; b.disabled = true; b.className = 'max'; }
     card.append(av, mid, b); list.appendChild(card);
   }
@@ -1944,6 +1947,7 @@ function endDay(){
   $('#btnNext').textContent = broke ? '付不出錢了…' : hated ? '沒有客人想再來了…' : '迎接第 ' + (G.day+1) + ' 天';
   $('#btnNext').onclick = () => { if (broke) gameOver('bankrupt'); else if (hated) gameOver('rating'); else nextDay(); };
   if (!broke && !hated){ G.day++; G.time = 0; save(); G.day--; }
+  else { try { localStorage.removeItem(SAVE_KEY); } catch(e){} }
   showScreen('summary');
 }
 function nextDay(){
@@ -2132,13 +2136,15 @@ function resetWorld(data){
   staff.length = 0; staff.push(player);
   player.carry = false; player.agent.carrying = false; player.agent.path.length = 0;
   player.agent.pos.set(CASHIER_SPOT.x, 0, CASHIER_SPOT.z - 1.2);
-  G.day = data ? data.day : 1; G.money = data ? data.money : START_MONEY; G.rating = data ? data.rating : 3;
-  G.cups = data ? data.cups : 2; G.clones = data ? Object.assign({}, data.clones) : {};
-  G.tips = new Set(data && data.tips ? data.tips : []);
+  const num = (v, d) => (typeof v === 'number' && isFinite(v)) ? v : d;
+  G.day = data ? Math.max(1, Math.floor(num(data.day, 1))) : 1; G.money = data ? num(data.money, START_MONEY) : START_MONEY; G.rating = data ? clamp(num(data.rating, 3), 0, 5) : 3;
+  G.cups = data ? clamp(Math.floor(num(data.cups, 2)), 0, MAX_CUPS) : 2; G.clones = {};
+  if (data && data.clones) for (const r of ROLES){ const lv = Math.floor(num(data.clones[r.id], 0)); if (lv > 0) G.clones[r.id] = Math.min(3, lv); }
+  G.tips = new Set(data && Array.isArray(data.tips) ? data.tips : []);
   G.upg = Object.assign(newUpg(), data && data.upg); applyUpgrades();
   G.seed = data && data.seed ? data.seed : 1 + Math.floor(Math.random()*1e6);
   if (data && typeof data.muted === 'boolean') muted = data.muted;
-  for (const sh of SHELVES) sh.stock = data && data.stock && data.stock[sh.id] !== undefined ? data.stock[sh.id] : sh.max;
+  for (const sh of SHELVES) sh.stock = data && data.stock ? clamp(Math.floor(num(data.stock[sh.id], sh.max)), 0, sh.max) : sh.max;
   for (const r of ROLES) if (G.clones[r.id]) spawnClone(r.id, G.clones[r.id], true);
   G.time = 0; G.spawnT = 2; G.closingT = 0; G.stats = newStats();
   planDay();
