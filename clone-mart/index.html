@@ -96,6 +96,69 @@ button:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
 #tapmark{position:fixed;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;border:3px solid var(--sign);pointer-events:none;animation:tap .5s ease-out forwards}
 @keyframes tap{from{transform:scale(.4);opacity:1}to{transform:scale(1.6);opacity:0}}
 
+/* ---------- device UX (cross-device layout, view buttons, off-screen indicators) ----------
+   --hud-b / --al-h are measured in JS (measureDeviceLayout) so alerts & toasts never sit on top of a wrapped HUD. */
+:root{--hud-b:calc(env(safe-area-inset-top,0px) + 56px);--al-h:0px}
+button{touch-action:manipulation}
+.hbtn{min-height:44px}
+.hbtn.ghost{min-width:44px}
+.hbtn.ghost.on{background:var(--sky);color:#fff;border-color:var(--ink)}
+.card button{min-height:44px}
+#alerts{top:calc(var(--hud-b) + 6px)}
+#toast{top:calc(var(--hud-b) + 8px)}
+#hint{width:max-content}   /* use the full max-width instead of shrinking to half the screen */
+#safeprobe{position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;
+  padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+#edge{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.edge{position:absolute;left:0;top:0;width:46px;height:46px;margin:-23px 0 0 -23px;padding:0;border-radius:50%;border:3px solid var(--coral);
+  background:var(--paper);color:var(--ink);display:grid;place-items:center;font-size:21px;line-height:1;pointer-events:auto;touch-action:none;
+  box-shadow:0 3px 0 rgba(15,29,51,.55);will-change:transform}
+.edge .ic{display:block;animation:edgePop 1.1s ease-in-out infinite}
+.edge.info{border-color:var(--sky)}
+.edge.stock{border-color:#ff9f43}
+.edge .ar{position:absolute;left:50%;top:50%;width:0;height:0;margin:-6px 0 0 -8px;border:8px solid transparent;border-top:0;border-bottom:12px solid var(--coral);transform-origin:8px 6px}
+.edge.info .ar{border-bottom-color:var(--sky)}
+.edge.stock .ar{border-bottom-color:#ff9f43}
+.edge .n{position:absolute;right:-6px;top:-6px;min-width:20px;height:20px;border-radius:10px;background:var(--ink);color:var(--sign);font-family:var(--f-display);font-size:11px;
+  display:grid;place-items:center;padding:0 4px}
+.edge .n:empty{display:none}
+@keyframes edgePop{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
+/* narrow portrait phones: alerts become one wrapped row under the HUD; toasts go below them */
+@media (max-width:540px){
+  .hud-l,.hud-r{gap:6px}
+  .stars{font-size:13px;letter-spacing:0}
+  #ratenum{font-size:12px}
+  .hbtn .cnt{font-size:11px;padding:2px 5px}
+  #alerts{flex-direction:row;flex-wrap:wrap;right:max(10px,env(safe-area-inset-right,0px));gap:4px}
+  #alerts .al{font-size:12px;padding:3px 8px}
+  #toast{top:calc(var(--hud-b) + var(--al-h) + 10px)}
+  #toast div{font-size:14px}
+}
+/* short landscape phones: slimmer HUD and hint so the store stays visible */
+@media (max-height:500px){
+  #hud{padding-top:calc(env(safe-area-inset-top,0px) + 6px)}
+  .chip{padding:3px 10px}
+  .money b{font-size:17px}
+  .day{min-width:96px;padding:3px 10px}
+  .hbtn{font-size:14px;padding:4px 10px}
+  #alerts .al{font-size:12px;padding:2px 8px}
+  #hint{font-size:13px;line-height:1.35;padding:6px 12px;border-width:2px;box-shadow:0 3px 0 var(--ink);
+    bottom:calc(env(safe-area-inset-bottom,0px) + 8px);max-width:min(480px,calc(100% - 160px))}
+  #toast div{font-size:13px;padding:5px 12px}
+  #joy{width:100px;height:100px;margin:-50px 0 0 -50px}
+  #joyknob{width:44px;height:44px;margin:-22px 0 0 -22px}
+  .edge{width:44px;height:44px;margin:-22px 0 0 -22px;font-size:19px}
+}
+/* tablets & desktop: a touch larger */
+@media (min-width:768px) and (min-height:700px){
+  .money b{font-size:22px}
+  .day .row{font-size:14px}
+  .hbtn{font-size:16px}
+  #hint{font-size:16px}
+  #alerts .al{font-size:14px}
+}
+@media (prefers-reduced-motion:reduce){ .edge .ic{animation:none} }
+
 /* ---------- sheets / screens ---------- */
 .screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
   padding:calc(env(safe-area-inset-top,0px) + 16px) max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 16px) max(16px,env(safe-area-inset-left,0px));
@@ -1787,6 +1850,7 @@ function doRestock(s, sh){
   s.carry = false; s.agent.carrying = false;
   SFX.stock();
   squash(s, 0.12);
+  if (s === player) haptic(25);
   floatText(sh.spot.x, 2.0, sh.spot.z, '補貨 -' + fmt(cost), 'good txt');
   return true;
 }
@@ -1799,6 +1863,7 @@ function staffWork(s, dt){
   if (dist2(p, COFFEE_SPOT) < 0.75) coffee.power = Math.max(coffee.power, s.work);
   if (canCarry && !s.carry && dist2(p, STOCK_SPOT) < 0.85){
     s.carry = true; s.agent.carrying = true; SFX.pick();
+    if (s === player) haptic(15);
     if (s === player) tip('carry', '拿到貨了！走到任何一個不滿的貨架前就會補貨。');
   }
   let prog = null;
@@ -1827,6 +1892,7 @@ function staffWork(s, dt){
         floatText(c.agent.pos.x, 2.4, c.agent.pos.z, '抓到了！+' + fmt(total), 'good txt');
         SFX.catch(); emote(c, '😰', 2);
         juiceCatch(s, c, total);
+        if (s === player) haptic([30,40,30]);
         c.thief = false; c.paid = true; c.basket.length = 0; c.agent.speed = 2.2;
         leaveStore(c, false);
       }
@@ -1934,6 +2000,7 @@ function updateRegister(dt){
         floatText(CHECKOUT_SPOT.x, 2.2, CHECKOUT_SPOT.z, (head.vip ? '👑 +' : '+') + fmt(total));
         SFX.ding();
         juiceCheckout(head, total);
+        if (dist2(player.agent.pos, CASHIER_SPOT) < 0.75) haptic(20);
         head.paid = true; emote(head, head.patience > 60 ? '😊' : '🙂', 1.4);
         queue.shift(); head.qi = -1; refreshQueue();
         leaveStore(head, false);
@@ -1955,6 +2022,8 @@ addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.code === 'Escape' || e.code === 'KeyP'){ if (G.state === 'play' || G.state === 'closing') openPanel('pause'); else if (G.state === 'paused') closePanels(); }
   if (e.code === 'KeyT' && (G.state === 'play' || G.state === 'closing')) openPanel('team');
+  if (e.code === 'KeyF' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) toggleFullscreen();
+  if (e.code === 'KeyV' && (G.state === 'play' || G.state === 'closing')) setOverview(!overview);
   if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code) && (G.state==='play'||G.state==='closing')) e.preventDefault();
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
@@ -2041,6 +2110,7 @@ function updatePlayer(dt){
   if (keys.KeyA || keys.ArrowLeft) ix -= 1;
   if (keys.KeyD || keys.ArrowRight) ix += 1;
   if (joy.active){ ix += joy.dx; iz += joy.dy; }
+  if (ix || iz){ const w = screenDirToWorld(ix, iz); ix = w.x; iz = w.z; }   // screen-relative under any camera yaw
   const len = Math.hypot(ix,iz);
   let manual = false;
   if (len > 0.15){
@@ -2070,19 +2140,247 @@ function updateCamera(dt, instant){
     camera.position.set(Math.sin(orbit)*Dt*Math.cos(ELEV*0.85), Dt*Math.sin(ELEV*0.85), 1 + Math.cos(orbit)*Dt*Math.cos(ELEV*0.85));
     camera.lookAt(0,0.5,-0.5);
   } else {
-    D *= camZoom;
-    const hw = D*th, hd = D*tv/Math.sin(ELEV);
-    const sx = Math.max(0, 10.8 - hw), sz = Math.max(0, 9 - hd);
+    // framing: pick the view (normal or rotated-for-portrait) that shows the most store, fit it into the area under the HUD
+    const fv = clamp((VH - camInset.top - camInset.bottom)/VH, 0.5, 1);
+    pickCamView(tv, th, fv);
+    const v = CAM_VIEWS[camView];
+    if (camZoom !== camZoomSeen){ camZoomSeen = camZoom; if (overview) setOverview(false); }
+    let dyaw = v.yaw - camYaw; dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
+    camYaw = instant ? v.yaw : camYaw + dyaw*Math.min(1, dt*5);
+    const ax = camAxes(camYaw);
+    const fit = camFitDistance(v, tv, th, fv);
+    const Dgoal = overview ? camOverviewDistance(v, tv, th, fv) : Math.min(fit, camDistCap(tv))*camZoom;
+    camDist = (instant || !camDist) ? Dgoal : lerp(camDist, Dgoal, Math.min(1, dt*6));
+    D = camDist;
+    const hw = D*th, hd = D*tv/Math.sin(ELEV)*fv;
+    const su = Math.max(0, v.scrU - hw), sv = Math.max(0, v.scrV - hd);
+    // follow with look-ahead in the walking direction
     const p = player.agent.pos;
-    const tx = clamp(p.x, -sx, sx), tz = 1.5 + clamp(p.z - 1.5, -sz, sz);
+    if (instant || !(dt > 0)){ camVel.x = camVel.z = 0; }
+    else { const kv = Math.min(1, dt*5); camVel.x = lerp(camVel.x, (p.x - camPrev.x)/dt, kv); camVel.z = lerp(camVel.z, (p.z - camPrev.z)/dt, kv); }
+    camPrev.x = p.x; camPrev.z = p.z;
+    let lx = camVel.x*0.5, lz = camVel.z*0.5; const ll = Math.hypot(lx, lz); if (ll > 2.2){ lx *= 2.2/ll; lz *= 2.2/ll; }
+    const ox = p.x + lx - v.cx, oz = p.z + lz - v.cz;
+    const shift = (camInset.top - camInset.bottom)/2 * (2*D*tv/Math.sin(ELEV))/VH;   // centre the store in the free area
+    const uu = overview ? 0 : clamp(ox*ax.rx + oz*ax.rz, -su, su);
+    const vv = (overview ? 0 : clamp(ox*ax.fx + oz*ax.fz, -sv, sv)) + shift;
+    const tx = v.cx + ax.rx*uu + ax.fx*vv, tz = v.cz + ax.rz*uu + ax.fz*vv;
     const k = instant ? 1 : Math.min(1, dt*4);
     camTarget.x = lerp(camTarget.x, tx, k); camTarget.z = lerp(camTarget.z, tz, k);
-    camera.position.set(camTarget.x, D*Math.sin(ELEV), camTarget.z + D*Math.cos(ELEV));
+    const hz = D*Math.cos(ELEV);
+    camera.position.set(camTarget.x - ax.fx*hz, D*Math.sin(ELEV), camTarget.z - ax.fz*hz);
     camera.lookAt(camTarget);
   }
   camera.updateProjectionMatrix();
   camera.updateMatrixWorld();
   if (camShake.x || camShake.y || camShake.z){ camera.position.add(camShake); camera.updateMatrixWorld(); }   // juice: additive shake offset
+}
+
+/* ---------------- device UX: camera views ----------------
+   Two framings. View 0 looks north from the street (landscape screens). View 1 is turned 90° and looks east
+   from behind the west wall, so the store's long axis runs up the screen — portrait phones/tablets see far more.
+   cx/cz = framing centre, fitU/fitV = half-extents that must fit across/up the screen, scrU/scrV = follow limits. */
+const CAM_VIEWS = [
+  {yaw:0,           cx:0, cz:1.5, fitU:11,  fitV:8.5,  scrU:10.8, scrV:9},
+  {yaw:-Math.PI/2,  cx:0, cz:0.6, fitU:7.8, fitV:10.9, scrU:8.2,  scrV:10.8},
+];
+let camView = 0, camYaw = 0, camDist = 0, camZoomSeen = 1, overview = false;
+const camVel = {x:0, z:0}, camPrev = {x:0, z:0};
+const camInset = {top:0, bottom:0, left:0, right:0, safeB:0};   // px covered by HUD / safe areas
+// screen-right (r) and screen-up (f) as world XZ directions for a camera yaw
+function camAxes(yaw){ return {rx:Math.cos(yaw), rz:-Math.sin(yaw), fx:-Math.sin(yaw), fz:-Math.cos(yaw)}; }
+function camFitDistance(v, tv, th, fv){ return Math.max(v.fitU/th, v.fitV*Math.sin(ELEV)/(tv*fv)); }
+// "看全店": like camFitDistance but also fits the wider near edge (perspective) with a small margin
+function camOverviewDistance(v, tv, th, fv){ return 1.03*Math.max(v.fitU/th + v.fitV*Math.cos(ELEV), v.fitV*Math.sin(ELEV)/(tv*fv)); }
+// farthest normal camera distance so characters stay readable (~24px per metre), between 30 and 40
+function camDistCap(tv){ return clamp(VH/(2*tv*24), 30, 40); }
+function pickCamView(tv, th, fv){
+  const d0 = camFitDistance(CAM_VIEWS[0], tv, th, fv), d1 = camFitDistance(CAM_VIEWS[1], tv, th, fv);
+  if (camView === 0 && d1 < d0*0.9) camView = 1;
+  else if (camView === 1 && d0 < d1*0.9) camView = 0;
+}
+// convert a screen-space input (x right, y down) into a world XZ direction under the current camera yaw
+function screenDirToWorld(sx, sy){
+  const ax = camAxes(camYaw);
+  return {x: ax.rx*sx - ax.fx*sy, z: ax.rz*sx - ax.fz*sy};
+}
+// does the whole store fit on screen at the normal zoom?
+function storeFitsOnScreen(){
+  const tv = Math.tan(camera.fov*Math.PI/360), th = tv*(VW/VH);
+  const fv = clamp((VH - camInset.top - camInset.bottom)/VH, 0.5, 1);
+  const fit = camFitDistance(CAM_VIEWS[camView], tv, th, fv);
+  return fit <= camDistCap(tv)*1.03;
+}
+function setOverview(on){
+  overview = !!on;
+  if (overview){ camZoom = 1; camZoomSeen = 1; }
+  if (uxEls.over){ uxEls.over.classList.toggle('on', overview); uxEls.over.setAttribute('aria-pressed', overview ? 'true' : 'false'); uxEls.over.title = overview ? '回到跟隨視角 (V)' : '看全店 (V)'; }
+}
+
+/* ---------------- device UX: haptics ----------------
+   haptic(ms | pattern): short vibration on touch devices that support it. Safe to call anywhere. */
+const canVibrate = typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
+let hapticsOn = true;
+function haptic(ms){
+  if (!canVibrate || !hapticsOn || !isTouch) return;
+  try { navigator.vibrate(ms); } catch(e){}
+}
+
+/* ---------------- device UX: fullscreen ---------------- */
+const fsSupported = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+function fsElement(){ return document.fullscreenElement || document.webkitFullscreenElement || null; }
+function toggleFullscreen(){
+  if (!fsSupported) return;
+  const fail = () => toast('無法切換全螢幕', 'bad');
+  try {
+    let p;
+    if (fsElement()) p = (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    else { const el = document.documentElement; p = (el.requestFullscreen || el.webkitRequestFullscreen).call(el, {navigationUI:'hide'}); }
+    if (p && typeof p.catch === 'function') p.catch(fail);
+  } catch(e){ fail(); }
+}
+function syncFullscreenButton(){
+  if (!uxEls.fs) return;
+  const on = !!fsElement();
+  uxEls.fs.textContent = on ? '🗗' : '⛶';
+  uxEls.fs.classList.toggle('on', on);
+  uxEls.fs.setAttribute('aria-label', on ? '離開全螢幕' : '全螢幕');
+  uxEls.fs.title = (on ? '離開全螢幕' : '全螢幕') + ' (F)';
+}
+
+/* ---------------- device UX: HUD view buttons, layout metrics, off-screen indicators ---------------- */
+const uxEls = {over:null, fs:null, edge:null, probe:null, pool:[]};
+let uxMeasureT = 0;
+function buildDeviceUX(){
+  const mk = (id, label, txt, onClick) => {
+    const b = document.createElement('button'); b.type = 'button'; b.id = id; b.className = 'hbtn ghost';
+    b.setAttribute('aria-label', label); b.title = label; b.textContent = txt;
+    b.addEventListener('click', onClick);
+    return b;
+  };
+  const hudR = document.querySelector('#hud .hud-r');
+  const before = $('#btnPause');
+  uxEls.over = mk('btnOverview', '看全店', '🔭', () => { setOverview(!overview); haptic(8); canvas.focus({preventScroll:true}); });
+  uxEls.over.setAttribute('aria-pressed', 'false'); uxEls.over.hidden = true;
+  uxEls.fs = mk('btnFull', '全螢幕', '⛶', () => { toggleFullscreen(); canvas.focus({preventScroll:true}); });
+  uxEls.fs.hidden = !fsSupported;
+  if (hudR){ if (before && before.parentNode === hudR){ hudR.insertBefore(uxEls.over, before); hudR.insertBefore(uxEls.fs, before); } else hudR.append(uxEls.over, uxEls.fs); }
+  setOverview(false); syncFullscreenButton();
+  document.addEventListener('fullscreenchange', () => { syncFullscreenButton(); setTimeout(resize, 60); });
+  document.addEventListener('webkitfullscreenchange', () => { syncFullscreenButton(); setTimeout(resize, 60); });
+  // off-screen indicator layer + safe-area probe
+  uxEls.edge = document.createElement('div'); uxEls.edge.id = 'edge';
+  const hint = $('#hint'); hint.parentNode.insertBefore(uxEls.edge, hint);
+  uxEls.probe = document.createElement('div'); uxEls.probe.id = 'safeprobe'; document.body.appendChild(uxEls.probe);
+  // block page zoom / text selection gestures that slip past touch-action (iOS Safari)
+  for (const ev of ['gesturestart','gesturechange']) document.addEventListener(ev, e => e.preventDefault(), {passive:false});
+  document.addEventListener('dblclick', e => { if (e.target === canvas || e.target === document.body) e.preventDefault(); });
+  document.addEventListener('selectstart', e => { if (!(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) e.preventDefault(); });
+  if (window.visualViewport) visualViewport.addEventListener('resize', () => { if (Math.abs(visualViewport.height - VH) > 1 || Math.abs(visualViewport.width - VW) > 1) resize(); });
+  measureDeviceLayout();
+  // test hook for the cross-device checks
+  window.__cloneMartUX = {camera, player:() => player, view:() => ({view:camView, yaw:camYaw, dist:camDist, overview, inset:Object.assign({}, camInset)}), setOverview, haptic,
+    project(x,y,z){ _v.set(x,y,z).project(camera); return {x:(_v.x+1)/2*VW, y:(1-_v.y)/2*VH}; }};
+}
+// measure the HUD / alerts / safe areas so CSS and the camera can keep the play area clear
+function measureDeviceLayout(){
+  const cs = uxEls.probe ? getComputedStyle(uxEls.probe) : null;
+  const px = s => parseFloat(s) || 0;
+  camInset.left = cs ? px(cs.paddingLeft) : 0; camInset.right = cs ? px(cs.paddingRight) : 0; camInset.safeB = cs ? px(cs.paddingBottom) : 0;
+  const hudEl = $('#hud');
+  const hudB = hudEl.hidden ? (cs ? px(cs.paddingTop) : 0) : Math.round(hudEl.getBoundingClientRect().bottom);
+  camInset.top = hudEl.hidden ? 0 : hudB + 4;
+  const root = document.documentElement.style;
+  if (uxEls._hudB !== hudB){ uxEls._hudB = hudB; root.setProperty('--hud-b', hudB + 'px'); }
+  const ar = hud.alerts.getBoundingClientRect(), alH = Math.round(ar.height);
+  if (uxEls._alH !== alH){ uxEls._alH = alH; root.setProperty('--al-h', alH + 'px'); }
+  // alert pills: a full-width row on narrow screens, a left column otherwise — indicators keep clear of them
+  camInset.alRow = getComputedStyle(hud.alerts).flexDirection === 'row';
+  camInset.alB = alH ? ar.bottom : 0; camInset.alR = alH ? ar.right : 0;
+  const hintEl = $('#hint');   // the tutorial hint bubble (bottom centre) while it is showing
+  camInset.hint = hintEl.classList.contains('off') ? null : hintEl.getBoundingClientRect();
+}
+// arrows at the screen edge for things that need you but are off-screen; tap one to walk there
+function edgeTargets(){
+  const out = [];
+  if (queue.length && reg.power === 0) out.push({x:CASHIER_SPOT.x, z:CASHIER_SPOT.z, icon:'🔔', n:queue.length, cls:'info', label:'收銀台有客人排隊'});
+  for (const c of customers) if (c.state === 'escape') out.push({x:c.agent.pos.x, z:c.agent.pos.z, icon:'🕶️', n:'', cls:'', label:'小偷', chase:c});
+  let empty = false;
+  for (const sh of SHELVES) if (sh.stock === 0){ empty = true; out.push({x:sh.spot.x, z:sh.spot.z, icon:sh.icon, n:'', cls:'', label:sh.name + '缺貨'}); }
+  if (empty && !player.carry && !G.clones.stocker) out.push({x:STOCK_SPOT.x, z:STOCK_SPOT.z, icon:'📦', n:'', cls:'stock', label:'倉庫拿貨'});
+  return out;
+}
+function edgeEl(i){
+  let el = uxEls.pool[i];
+  if (!el){
+    el = document.createElement('button'); el.type = 'button'; el.className = 'edge';
+    el.innerHTML = '<span class="ic"></span><span class="ar"></span><span class="n"></span>';
+    el._ic = el.children[0]; el._ar = el.children[1]; el._n = el.children[2];
+    el.addEventListener('pointerdown', e => e.stopPropagation());
+    el.addEventListener('click', () => {
+      const t = el._t; if (!t || !(G.state === 'play' || G.state === 'closing')) return;
+      const p = t.chase ? t.chase.agent.pos : t;
+      player.agent.goTo(p.x, p.z); haptic(10);
+    });
+    uxEls.edge.appendChild(el); uxEls.pool[i] = el;
+  }
+  return el;
+}
+function updateEdgeIndicators(){
+  const playing = G.state === 'play' || G.state === 'closing';
+  const list = playing ? edgeTargets() : [];
+  const R = 26, L = camInset.left + 8 + R, Rt = VW - camInset.right - 8 - R;
+  const T = Math.max(camInset.top || 0, camInset.alRow ? camInset.alB || 0 : 0) + 6 + R, B = VH - camInset.safeB - 8 - R;
+  const cxs = (L + Rt)/2, cys = (T + B)/2;
+  const shown = [];
+  for (const t of list){
+    _v.set(t.x, 0.8, t.z).project(camera);
+    let sx = (_v.x+1)/2*VW, sy = (1-_v.y)/2*VH;
+    if (_v.z > 1){ sx = VW - sx; sy = VH*2; }               // behind the camera: push to the bottom edge
+    if (sx >= L - R && sx <= Rt + R && sy >= T - R && sy <= B + R) continue;   // on screen & not under the HUD
+    const dx = sx - cxs, dy = sy - cys;
+    const s = Math.min(dx ? (dx > 0 ? (Rt - cxs)/dx : (L - cxs)/dx) : 1e9, dy ? (dy > 0 ? (B - cys)/dy : (T - cys)/dy) : 1e9);
+    shown.push({t, x:cxs + dx*s, y:cys + dy*s, a:Math.atan2(dx, -dy)});
+  }
+  // keep indicators that land on the same edge spot from overlapping
+  for (let i=0;i<shown.length;i++) for (let j=0;j<i;j++){
+    const a = shown[i], b = shown[j];
+    if (Math.abs(a.x-b.x) < 2*R && Math.abs(a.y-b.y) < 2*R){
+      const vertEdge = a.x <= L + 1 || a.x >= Rt - 1;
+      if (vertEdge) a.y = clamp(b.y + (a.y >= b.y ? 2*R+2 : -2*R-2), T, B); else a.x = clamp(b.x + (a.x >= b.x ? 2*R+2 : -2*R-2), L, Rt);
+    }
+  }
+  if (!camInset.alRow && camInset.alB) for (const it of shown){   // left alert column
+    if (it.x < camInset.alR + R && it.y < camInset.alB + R){ if (it.x <= L + 1) it.y = Math.min(B, camInset.alB + R + 4); else it.x = Math.min(Rt, camInset.alR + R + 4); }
+  }
+  const hr = camInset.hint;
+  if (hr) for (const it of shown){   // stay above the hint bubble
+    if (it.x > hr.left - R && it.x < hr.right + R && it.y > hr.top - R) it.y = Math.max(T, hr.top - R - 4);
+  }
+  for (let i=0;i<shown.length;i++){
+    const it = shown[i], el = edgeEl(i);
+    el._t = it.t;
+    if (el.hidden) el.hidden = false;
+    if (el._icv !== it.t.icon){ el._icv = it.t.icon; el._ic.textContent = it.t.icon; }
+    const n = String(it.t.n || ''); if (el._nv !== n){ el._nv = n; el._n.textContent = n; }
+    const cls = 'edge ' + it.t.cls; if (el.className !== cls) el.className = cls;
+    if (el._lab !== it.t.label){ el._lab = it.t.label; el.setAttribute('aria-label', it.t.label); el.title = it.t.label; }
+    el.style.transform = `translate(${it.x.toFixed(1)}px,${it.y.toFixed(1)}px)`;
+    el._ar.style.transform = `rotate(${it.a.toFixed(3)}rad) translateY(-31px)`;
+  }
+  for (let i=shown.length;i<uxEls.pool.length;i++) if (!uxEls.pool[i].hidden){ uxEls.pool[i].hidden = true; uxEls.pool[i]._t = null; }
+}
+// called once per frame from the main loop
+function updateDeviceUX(dt){
+  uxMeasureT -= dt;
+  if (uxMeasureT <= 0){ uxMeasureT = 0.25; measureDeviceLayout(); }
+  const playing = G.state === 'play' || G.state === 'closing';
+  if (uxEls.over){
+    const want = playing && (overview || camZoom < 0.97 || !storeFitsOnScreen());
+    if (uxEls.over.hidden === want) uxEls.over.hidden = !want;
+    if (want && !overview && G.tips.has('move')) tip('overview', '畫面放不下整間店？點右上角 🔭 就能看全店，再點一次回到跟隨視角。');
+  }
+  updateEdgeIndicators();
 }
 
 /* ---------------- day / night ---------------- */
@@ -2538,6 +2836,7 @@ function frame(now){
   if (tagLayer._hidden !== hideTags){ tagLayer._hidden = hideTags; tagLayer.style.visibility = hideTags ? 'hidden' : ''; }
   updateCamera(dt);
   if (G.state !== 'title') placeTags();
+  updateDeviceUX(dt);
   updateHUD(dt); updateHint(dt);
   renderer.render(scene, camera);
 }
@@ -2545,6 +2844,7 @@ function frame(now){
 function resize(){
   VW = innerWidth; VH = innerHeight;
   renderer.setSize(VW, VH, false);
+  if (uxEls.probe) measureDeviceLayout();
   updateCamera(0, true);
 }
 addEventListener('resize', resize);
@@ -2573,6 +2873,7 @@ function boot(hotData){
   if (!isTouch) $('#howMove').textContent = 'WASD／方向鍵走動，或用滑鼠點地板、貨架直接走過去。';
   buildWorld();
   createPlayer();
+  buildDeviceUX();
   player.agent.pos.set(CASHIER_SPOT.x, 0, CASHIER_SPOT.z); player.agent.face(-Math.PI/2);
   const saved = (hotData && hotData.day) ? hotData : loadSave();
   if (saved && saved.day){
