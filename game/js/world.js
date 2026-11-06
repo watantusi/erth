@@ -1467,9 +1467,9 @@ void main() {
   sun.position.set(40, 60, 70);
   root.add(hemi, sun, sun.target);
   // v3：夜裡跟著鏡頭的暖色小燈籠（照亮玩家附近，晚上也看得清楚；白天強度 0）
-  const lantern = new THREE.PointLight(0xffc98a, 0, 15, 0); // decay 0：沒有近距離亮斑，只在範圍邊緣淡出
-  lantern.name = 'nightLantern';
-  root.add(lantern);
+  // 只在高畫質開（每個受光像素多算一盞點光源；低畫質改用稍亮的夜間環境光補）
+  const lantern = q === 'high' ? new THREE.PointLight(0xffc98a, 0, 15, 0) : null; // decay 0：沒有近距離亮斑，只在範圍邊緣淡出
+  if (lantern) { lantern.name = 'nightLantern'; root.add(lantern); }
 
   // =========================================================================
   // 道具擺放
@@ -2675,7 +2675,7 @@ void main() {
           camR.lerp(_v3, k).normalize(); camU.lerp(_v2, k).normalize(); camF.lerp(_v5, k).normalize();
         }
         hemi.position.copy(_v1);
-        lantern.position.copy(cp).addScaledVector(_v5, 2.0).addScaledVector(_v2, 1.0);
+        if (lantern) lantern.position.copy(cp).addScaledVector(_v5, 2.0).addScaledVector(_v2, 1.0);
         sky.position.copy(cp);
         stars.position.copy(cp);
         skyUniforms.uCam.value.copy(cp);
@@ -2704,8 +2704,8 @@ void main() {
     sun.intensity = pal.sunI;
     hemi.color.copy(pal.hs);
     hemi.groundColor.copy(pal.hg);
-    hemi.intensity = pal.hI;
-    lantern.intensity = 0.7 * nightF;
+    hemi.intensity = pal.hI + (lantern ? 0 : 0.25 * nightF);
+    if (lantern) lantern.intensity = 0.7 * nightF;
     cloudMat.emissive.copy(pal.cloud);
     cloudMat.color.copy(WHITE).lerp(CLOUD_NIGHT, nightF);
     // 夜晚特效：沒有夜色時整個不畫（白天不多花 draw call）
