@@ -94,3 +94,9 @@ export const ICE_MELT_TIME = 120;       // 駱駝任務：冰塊融化時間
 export const VOLCANO_TIME = 60;         // 火山任務：量測時限
 export const RADAR_RANGE = 30;          // 雷達顯示範圍（世界單位）
 export const TOTAL_QUESTS = 6;
+
+// ---- v3：知識測驗、收集裝扮、日夜循環、計時挑戰 ----
+export const DAY_LENGTH = 480;          // 一整天（秒）：白天約 5 分、夜晚約 3 分
+export const START_TIME_OF_DAY = 0.3;   // 0 = 午夜、0.25 日出、0.5 正午、0.75 日落
+export const TRIAL_COUNT = 8;           // 計時挑戰的時光晶石數
+export const TRIAL_MEDALS = { gold: 90, silver: 140, bronze: 220 }; // 秒

@@ -293,3 +293,95 @@ const hint = gameplay.getInteractHint(); input.setInteractHint(hint); ui.setProm
 const nav = gameplay.getNavInfo(); ui.setNav(nav); radar.update(nav, player, camera)
 player.onBounce = () => audio.play('bounce')
 ```
+
+---
+
+# v3：知識測驗、收集裝扮、日夜循環、計時挑戰
+
+v1、v2 合約全部保留。新常數在 `config.js` 最下方。
+
+## 玩法
+- **知識測驗**：每張知識卡關閉後出一題三選一（題目與那則知識有關）。答對得 1 顆 ⭐。答錯會看到解說，之後可以在「圖鑑」重答。
+- **收集與裝扮**：
+  - 帽子（草帽、探險帽、毛線帽、花圈、企鵝帽、皇冠）、圍巾顏色（6 色）、腳印特效（葉子、星光、泡泡、雪花）。
+  - 解鎖來源：⭐ 數量門檻、第 4/5/6 片地圖碎片、6 顆藏在難到達處的「金色橡實」（每個生態區 1 顆，其中 1 顆只在夜晚的極光下出現）、計時挑戰獎牌、通關（皇冠）。
+  - 「衣櫥」可以隨時換裝，打開時鏡頭轉到角色正面特寫。「圖鑑」列出 12 則知識與測驗結果。
+- **日夜循環**：一天 `DAY_LENGTH` 秒。夜晚有星空、月亮、窗戶燈光、森林與草原的螢火蟲、極地極光、偶爾的流星；夜晚不能太暗，要看得清楚。設定裡可以關閉（固定白天）。
+- **計時挑戰**：通關後解鎖。隨機在星球上放 8 顆金色「時光晶石」（2 顆在平台挑戰上），3-2-1 倒數後計時，收集完記錄最佳時間與獎牌（金 < 90 秒、銀 < 140 秒、銅 < 220 秒），獎牌解鎖裝扮。挑戰中指南針固定滿級，指向時光晶石。
+
+## 檔案所有權（v3）
+| 檔案 | 擁有者 |
+|---|---|
+| `js/main.js`, `js/config.js`, `js/utils.js`, `index.html`, `style.css` | 整合者 |
+| `js/world.js` | 分身 1 |
+| `js/player.js`, `js/characters.js` | 分身 2 |
+| `js/input.js`, `js/cameraRig.js`, `js/radar.js`, `js/timetrial.js`（新）, `css/controls.css` | 分身 3 |
+| `js/gameplay.js`, `js/quests.js`, `js/content.js`, `js/cosmetics.js`（新） | 分身 4 |
+| `js/ui.js`, `js/audio.js`, `js/effects.js`, `css/ui.css` | 分身 5 |
+
+## API 新增
+
+### world（分身 1）
+```js
+world.getTimeOfDay()           // → 0..1（0 午夜、0.25 日出、0.5 正午、0.75 日落）
+world.setTimeOfDay(t)
+world.isNight()                // → boolean（約 t < 0.22 或 t > 0.78）
+world.setDayNightEnabled(bool) // false：平滑回到白天 0.42 並停住
+world.secretSpots              // Array<{ id, biome, position: Vector3, nightOnly: boolean, hint: string }>，6 個，每個生態區 1 個
+```
+- 祕密點要「看得到但不好拿」：例如風車頂、樹屋屋頂、遠離路線的高台、冰洞深處、火山口外緣高處、遠方海蝕柱頂端；要新增的平台照 v2 的 platforms 格式加入。nightOnly 的那顆在極地，只在夜晚極光下出現（gameplay 負責顯示/隱藏，world 只提供位置）。
+
+### player / characters（分身 2）
+```js
+player.setCosmetics({ hat, scarf, trail })   // hat: null|'straw'|'explorer'|'beanie'|'flower'|'penguin'|'crown'
+                                             // scarf: 'sunny'(預設黃)|'sky'|'mint'|'rose'|'lava'|'night'；trail 由 main 處理，player 只記住
+createItem('goldenAcorn' | 'trialCrystal')   // 新物品
+```
+
+### cameraRig / timetrial（分身 3）
+```js
+cameraRig.setMode('closeup')   // 角色正面 3/4 特寫（衣櫥用），緩慢左右擺動；回到 'follow' 要平滑
+// timetrial.js
+export function createTimeTrial({ scene, world, player, ui, audio, effects })
+  → { active, start(seed?), cancel(), update(dt, t), getNavTarget(), getRadarPoints(out), getBest(),
+      getSaveData(), loadSaveData(d), onFinish /* callback({ time, best, medal, newRecord }) */ }
+// radar 要支援 kind: 'trial'（金色）與 'acorn'
+```
+- start：先 `await ui.showCountdown()`，再開始計時；`ui.setTimer({ time, best, found, total })` 每幀更新，結束或取消時 `ui.setTimer(null)`。
+- 完成：`ui.showTrialResult({ time, best, medal, newRecord })` → 'retry' | 'exit'；medal：'gold'|'silver'|'bronze'|null。
+
+### gameplay / cosmetics（分身 4）
+```js
+gameplay.getWardrobe()     // → { slots: [{id, name}], items: [{ id, slot, name, icon, unlocked, hint }], equipped: { hat, scarf, trail } }
+gameplay.equip(slot, id)   // 已解鎖才生效；呼叫 player.setCosmetics、audio.play('equip')
+gameplay.getEquipped()     // → { hat, scarf, trail }
+gameplay.getJournal()      // → { facts: [{ id, biome, biomeName, icon, title, text, collected, quiz: 'none'|'correct'|'wrong' }], stars, acorns: { found, total }, bestTime, medal }
+gameplay.retryQuiz(id)     // 圖鑑裡重答
+gameplay.canTimeTrial()    // 通關後 true
+gameplay.startTimeTrial() / gameplay.cancelTimeTrial()
+// 計時挑戰中：getNavInfo() 回傳滿級並指向時光晶石；一般收集物暫停（不會被撿到）
+```
+- 知識卡流程：`await ui.showFact(fact)` → `ui.showQuiz(q)`。解鎖新裝扮時 `ui.showUnlock({ icon, name, text })`、`audio.play('unlock')`。
+- 金色橡實：放在 `world.secretSpots`，nightOnly 的只在 `world.isNight()` 時出現（淡入淡出）並可撿。
+- 存檔 v3（能讀 v1、v2）。
+
+### ui / audio / effects（分身 5）
+```js
+ui.showFact(fact)          // 改為回傳 Promise（關閉時 resolve），其餘不變
+ui.showQuiz({ icon, question, choices: string[], answer: number, explain }) // → Promise<{ correct, choice }>
+ui.showUnlock({ icon, name, text })
+ui.showWardrobe()          // 用 callbacks.getWardrobe() 取資料、callbacks.onEquip(slot, id) 換裝、callbacks.onWardrobeOpen(bool)
+ui.showJournal()           // 用 callbacks.getJournal()；答錯的題目可按「再答一次」→ callbacks.onRetryQuiz(id)
+ui.setTimer(state | null)  // { time, best, found, total }
+ui.showCountdown()         // → Promise（3、2、1、出發！）
+ui.showTrialResult(r)      // → Promise<'retry'|'exit'>
+// HUD 新增 🎒 衣櫥、📖 圖鑑按鈕；設定新增「日夜循環」開關（callbacks.onDayNight(bool)）與「計時挑戰」（callbacks.canTimeTrial() 為 true 才顯示 → callbacks.onTimeTrial()）；勝利畫面也加「計時挑戰」。
+audio.setNight(bool)       // 夜晚：蟲鳴環境音、音樂變柔和
+// 新音效：'correct' | 'wrong' | 'unlock' | 'equip' | 'acorn' | 'countdown' | 'go' | 'trialEnd'
+effects.trail(position, up, kind) // kind: 'leaf' | 'star' | 'bubble' | 'snow'：腳印特效的小粒子
+```
+
+## 主程式（整合者）
+- `createUI` 的 callbacks 新增：getWardrobe、onEquip、onWardrobeOpen（切換鏡頭 closeup/follow）、getJournal、onRetryQuiz、onDayNight、canTimeTrial、onTimeTrial。
+- `player.onStep` 時若有 trail → `effects.trail(...)`；`world.isNight()` 變化時 → `audio.setNight()`。
+- 存檔加上時間與日夜循環開關。
