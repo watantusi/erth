@@ -455,8 +455,8 @@ const SHELF = Object.fromEntries(SHELVES.map(s => [s.id, s]));
 const ROLES = [   // the five AI clones, unlocked by total stars; each runs its own recipes when you are not controlling it
   {id:'barista', name:'咖啡分身', icon:'☕', color:0xc98b5a, css:'#c98b5a', need:0,  recipes:['coffee','noodle'],          home:{x:7.9, z:2.0},  desc:'沖咖啡、泡泡麵'},
   {id:'cook',    name:'熱食分身', icon:'🍱', color:0xff9f43, css:'#ff9f43', need:2,  recipes:['bento','oden'],             home:{x:-6.2, z:3.0}, desc:'微波便當、煮關東煮'},
-  {id:'griller', name:'烤台分身', icon:'🌭', color:0xff6058, css:'#ff6058', need:4,  recipes:['hotdog'],                   home:{x:-7.4, z:2.6}, desc:'烤香腸、夾成大亨堡'},
-  {id:'prep',    name:'備料分身', icon:'🔪', color:0x34d6a6, css:'#34d6a6', need:7,  recipes:['fruitcup','drink','snack'], home:{x:-3.4, z:2.9}, desc:'切水果杯、拿飲料零食'},
+  {id:'griller', name:'烤台分身', icon:'🌭', color:0xff6058, css:'#ff6058', need:4,  recipes:['hotdog','hotdogset'],       home:{x:-7.4, z:2.6}, desc:'烤香腸、夾大亨堡和套餐'},
+  {id:'prep',    name:'備料分身', icon:'🔪', color:0x34d6a6, css:'#34d6a6', need:7,  recipes:['fruitcup','onigiri','drink','snack'], home:{x:-3.4, z:2.9}, desc:'切水果、捏飯糰、拿飲料零食'},
   {id:'cleaner', name:'清潔分身', icon:'🧯', color:0x4da3ff, css:'#4da3ff', need:10, recipes:[],                           home:{x:-1.0, z:2.8}, desc:'拖地、丟失敗品、滅火、修理'},
 ];
 const ROLE = Object.fromEntries(ROLES.map(r => [r.id, r]));
@@ -1337,13 +1337,13 @@ function toast(text, cls){
   const box = $('#toast'); box.appendChild(d); while (box.children.length > 3) box.firstChild.remove();
   setTimeout(()=>d.remove(), 2700);
 }
-const hintQ = []; let hintT = 0;
+const hintQ = []; let hintT = 0, hintCur = null;   // a tip whose valid.cond() turns false is cut short (after 1.4 s) so the next one can show
 function showHint(t, valid){ hintQ.push({t, valid}); }
 function updateHint(dt){
   const el = $('#hint');
-  if (hintT > 0){ hintT -= dt; if (hintT <= 0) el.classList.add('off'); return; }
+  if (hintT > 0){ hintT -= dt; if (hintT < 4.6 && hintCur && hintCur.valid && hintCur.valid.cond && !hintCur.valid.cond()) hintT = 0; if (hintT <= 0) el.classList.add('off'); return; }
   while (hintQ.length && hintQ[0].valid && !hintQ[0].valid()) hintQ.shift();
-  if (hintQ.length && hintT <= 0){ el.textContent = hintQ.shift().t; el.classList.remove('off'); hintT = 6; }
+  if (hintQ.length && hintT <= 0){ hintCur = hintQ.shift(); el.textContent = hintCur.t; el.classList.remove('off'); hintT = 6; }
 }
 
 /* ---------------- audio ---------------- */
@@ -1667,8 +1667,10 @@ const ITEMS = {
   fruit:{n:'水果', ic:'🍎'},          fruitcup:{n:'水果杯', ic:'🍓'},
   drink:{n:'飲料', ic:'🥤'},          snack:{n:'零食', ic:'🍪'},
   burnt:{n:'失敗品', ic:'💀'},        ext:{n:'滅火器', ic:'🧯'},
+  rice:{n:'白飯', ic:'🍚'},           nori:{n:'海苔', ic:'🟩'},
+  onigiri:{n:'飯糰', ic:'🍙'},        hotdogset:{n:'熱狗套餐', ic:'🛍️'},
 };
-const COMBOS = [['bun','sausage_cooked','hotdog']];
+const COMBOS = [['bun','sausage_cooked','hotdog'], ['rice','nori','onigiri'], ['hotdog','drink','hotdogset']];
 function combine(a, b){ for (const [x,y,r] of COMBOS) if ((a===x && b===y) || (a===y && b===x)) return r; return null; }
 
 const RECIPES = {
@@ -1680,22 +1682,46 @@ const RECIPES = {
   oden:    {n:'關東煮', ic:'🍢', item:'oden',     pts:35, time:80, steps:['🥚食材','🍲湯鍋']},
   hotdog:  {n:'大亨堡', ic:'🌭', item:'hotdog',   pts:40, time:85, steps:['🥩香腸','🔥烤台','🥖麵包']},
   fruitcup:{n:'水果杯', ic:'🍓', item:'fruitcup', pts:30, time:75, steps:['🍎水果','🔪長按切']},
+  onigiri: {n:'飯糰',   ic:'🍙', item:'onigiri',  pts:20, time:65, steps:['🍚飯鍋','🟩海苔']},
+  hotdogset:{n:'熱狗套餐', ic:'🛍️', item:'hotdogset', pts:60, time:105, steps:['🌭大亨堡','🥤冰箱']},
 };
 const ALL_RECIPES = Object.keys(RECIPES);
+// Each level has one twist (tw = short label on the level card, twist = the line on the prep screen):
+//   script — fixed tutorial tickets, one at a time, clock paused (tutMul = timer multiplier)
+//   bulk   — 團購單: some tickets need 2 of the same item (p = chance, rec = which recipes)
+//   rush   — announced rush waves: at = fraction of the level (or every N s in endless), len s, k = spawn-gap ×, add = extra ticket slots
+//   rain   — every N s a burst of n puddles at once;  storm — every N s a blackout breaks n machines at once
+//   vip    — chance a ticket is a 👑 VIP: double points, much shorter timer
+// Star thresholds come from the calibration sim (owner idle = AI only; owner on autopilot + team = bot+team):
+//   AI only < ★;  ★ ≈ AI + 0.15·(bot+team − AI), ★★ ≈ +0.42, ★★★ ≈ +0.7.  Level 1 is calibrated for a replay (tutorial skipped).
 const LEVELS = [
-  {n:'開店第一天',   hour:8,    len:150, rec:['drink','snack','coffee'], every:[8,11], max:3, clones:1, spills:0,   stars:[240,380,540],
+  {n:'開店第一天',   hour:8,    len:150, rec:['drink','snack','coffee'], every:[8,11], max:3, clones:1, spills:0,   stars:[260,400,550],
+   script:['drink','snack','coffee'], tutMul:2.2,
+   tw:'📘 新手教學', twist:'📘 前三張單是教學：一張一張來、計時暫停，慢慢學（拿到 ★ 後重玩會跳過）。',
    desc:'先學會拿東西、沖咖啡，再送到出餐台。'},
-  {n:'早餐尖峰',     hour:6.5,  len:180, rec:['coffee','noodle','bento','drink'], every:[7,10], max:4, clones:1, spills:0, stars:[300,530,770],
-   desc:'泡麵要加熱水，便當要微波。微波太久會燒焦！'},
-  {n:'午餐大爆滿',   hour:11.5, len:180, rec:['bento','hotdog','coffee','drink'], every:[6.5,9], max:4, clones:2, spills:0.6, stars:[690,960,1240],
-   desc:'大亨堡：先烤香腸，再拿著香腸去夾麵包。地上偶爾會濕。'},
-  {n:'下雨的傍晚',   hour:17,   len:200, rec:['oden','hotdog','coffee','noodle'], every:[6.5,9], max:5, clones:2, spills:1.6, stars:[840,1040,1250],
-   desc:'關東煮要慢慢煮，煮太久會爛掉。雨天地板特別滑。'},
-  {n:'深夜加班',     hour:21,   len:210, rec:['fruitcup','oden','bento','hotdog','coffee'], every:[6,8.5], max:5, clones:3, spills:0.8, stars:[1240,1570,1920],
-   desc:'水果要放上砧板，長按「動作」切成水果杯。'},
-  {n:'颱風夜大混亂', hour:22,   len:240, rec:['coffee','noodle','bento','oden','hotdog','fruitcup','drink'], every:[5.5,7.5], max:5, clones:3, spills:1.4, outage:28, stars:[340,860,1390],
-   desc:'停電會讓機器故障 ⚡，長按「動作」修好它。'},
-  {n:'24H 無限營業', hour:20,   len:0, endless:true, rec:ALL_RECIPES, every:[8,10], max:5, clones:5, spills:1, outage:45, stars:[3000,6000,10000],
+  {n:'早餐尖峰',     hour:6.5,  len:180, rec:['coffee','onigiri','noodle','drink'], every:[7,10], max:4, clones:1, spills:0, stars:[450,730,1010],
+   bulk:{p:0.3, rec:['coffee','onigiri','drink']},
+   tw:'🧾 團購單', twist:'🧾 辦公室團購：有些單一次要 2 份，分數也加倍！',
+   desc:'飯糰：到倉庫的飯鍋拿白飯，再去拿海苔就捏好了。泡麵要加熱水。'},
+  {n:'午餐大爆滿',   hour:11.5, len:180, rec:['bento','hotdog','coffee','drink'], every:[6.5,9], max:4, clones:2, spills:0, stars:[660,880,1110],
+   rush:[{at:0.4, len:45, k:0.45, add:1, ic:'🍱', name:'午餐尖峰'}],
+   tw:'🍱 午餐尖峰', twist:'🍱 中午會有一波「午餐尖峰」，45 秒內客人一口氣湧進來！',
+   desc:'便當要微波，好了馬上拿，不然會燒焦。大亨堡：先烤香腸，再拿著香腸去夾麵包。'},
+  {n:'下雨的傍晚',   hour:17,   len:200, rec:['oden','hotdog','coffee','noodle'], every:[6.5,9], max:5, clones:2, spills:0.5, stars:[870,1120,1380],
+   rain:{every:38, n:3},
+   tw:'☔ 雨傘水漬', twist:'☔ 每隔一陣子就有一群客人帶著濕雨傘進門，地上一次濕好幾攤。',
+   desc:'關東煮要慢慢煮，煮太久會爛掉。踩到水漬會變慢，記得拖地。'},
+  {n:'深夜加班',     hour:21,   len:210, rec:['fruitcup','oden','bento','hotdogset','coffee'], every:[6,8.5], max:5, clones:3, spills:0.8, stars:[1650,1950,2270],
+   vip:0.2,
+   tw:'👑 VIP 客人', twist:'👑 戴金帽的 VIP：分數兩倍，但很沒耐心，要優先做！',
+   desc:'水果放上砧板，長按「動作」切成水果杯。熱狗套餐＝大亨堡再去冰箱拿一瓶飲料。'},
+  {n:'颱風夜大混亂', hour:22,   len:240, rec:['coffee','noodle','bento','oden','hotdog','fruitcup','drink'], every:[5.5,7.5], max:5, clones:3, spills:1.4, stars:[310,740,1180],
+   storm:{every:46, n:2},
+   tw:'⚡ 颱風跳電', twist:'⚡ 颱風一來就跳電，一次壞兩台機器，畫面會先警告。',
+   desc:'機器故障 ⚡ 時不會運作，空手長按「動作」修好它。'},
+  {n:'24H 無限營業', hour:20,   len:0, endless:true, rec:ALL_RECIPES, every:[8,10], max:5, clones:5, spills:1, outage:45, stars:[3600,4500,5300],
+   vip:0.1, bulk:{p:0.12, rec:['coffee','onigiri','drink','snack','noodle']}, rush:[{every:150, len:30, k:0.5, add:1, ic:'🔥', name:'宵夜尖峰'}],
+   tw:'🔥 全部都來', twist:'🔥 VIP、團購單、尖峰時段全部都會出現，而且越來越快。',
    desc:'錯過 5 張單就打烊，看你能撐多久！'},
 ];
 const MAX_FAILS_ENDLESS = 5;
@@ -1707,13 +1733,20 @@ const G = {
   stats:null, best:{}, tips:new Set(), team:[], demo:true, endT:0, fails:0, outT:0, spillT:0,
 };
 // money/rating are kept as the names other modules (juice, HUD money tick) read: money = this shift's score
-function newStats(){ return {delivered:0, failed:0, tips:0, base:0, penalty:0, burnt:0, fires:0, maxCombo:1, byRec:{}}; }
+function newStats(){ return {delivered:0, failed:0, tips:0, base:0, penalty:0, burnt:0, fires:0, maxCombo:1, byRec:{}, vip:0, vipMiss:0, bulk:0, rushDone:0, events:0}; }
 G.stats = newStats();
 const customers = [], queue = [], staff = [], spills = [];
 const orders = [];
 let player = null, owner = null;
 function addMoney(n){ G.money += n; }
 function tip(key, text, valid){ if (G.demo || G.state === 'title' || G.tips.has(key)) return; G.tips.add(key); showHint(text, valid); }
+// a tip that only matters while cond() holds: if it goes stale before it reaches the screen it is dropped and re-armed for next time
+function tipWhile(key, text, cond){
+  if (G.tips.has(key)) return;
+  const valid = () => { if (cond()) return true; G.tips.delete(key); return false; };
+  valid.cond = cond;
+  tip(key, text, valid);
+}
 function totalStars(){ let t = 0; for (const k in G.best) t += (G.best[k] && G.best[k].stars) || 0; return t; }
 
 /* ---------------- item meshes ---------------- */
@@ -1890,6 +1923,51 @@ function buildKitchen(){
   highlight = new THREE.Mesh(new THREE.RingGeometry(0.3,0.42,28).rotateX(-Math.PI/2), new THREE.MeshBasicMaterial({color:0xffcf3a, transparent:true, opacity:0.9, depthWrite:false, side:THREE.DoubleSide}));
   highlight.renderOrder = 5; highlight.visible = false; scene.add(highlight);
   fireGroupGeo = new THREE.ConeGeometry(0.12,0.42,7).translate(0,0.21,0);
+}
+
+/* ---------------- extra stations: the 飯糰 corner in the old stockroom ---------------- */
+// Rice cooker + nori box on a small table against the east wall of the stockroom (walk in from the shop floor at z≈-3).
+// Also gives the new items (rice, nori, onigiri, hotdogset) a look: itemMesh is wrapped so it only fills in types it draws nothing for.
+function buildKitchenExtra(){
+  const XG = {
+    sheet: new THREE.BoxGeometry(0.26,0.012,0.2),
+    tri: new THREE.CylinderGeometry(0.14,0.14,0.09,3).rotateX(Math.PI/2).rotateZ(Math.PI).translate(0,0.075,0),
+    band: new THREE.BoxGeometry(0.15,0.075,0.1).translate(0,0.04,0),
+    setTray: new THREE.BoxGeometry(0.5,0.04,0.3).translate(0,0.02,0),
+  };
+  const baseItemMesh = itemMesh;
+  itemMesh = function(type){
+    const g = baseItemMesh(type);
+    if (g.children.length) return g;
+    const add = (geo, c, x, y, z, sc) => { const m = new THREE.Mesh(geo, typeof c === 'number' ? mat(c) : c); m.position.set(x||0, y||0, z||0); if (sc) m.scale.setScalar(sc); m.castShadow = true; g.add(m); return m; };
+    const steam = () => { for (let i=0;i<3;i++){ const s = add(IG.steam, steamMat, (i-1)*0.05, 0.3 + i*0.07, 0); s.userData.steam = i; } };
+    const nest = (t, x, sc) => { const m = baseItemMesh(t); m.position.x = x; m.scale.setScalar(sc); g.add(m); };
+    switch (type){
+      case 'rice': add(IG.bowl, 0xf2f2f2); add(IG.soup, 0xffffff); add(IG.ball, 0xffffff, 0, 0.13, 0).scale.set(1.9,0.6,1.9); steam(); break;
+      case 'nori': for (let i=0;i<3;i++) add(XG.sheet, [0x1d3527,0x26432f,0x1a2e22][i], 0, 0.01 + i*0.014, (i-1)*0.01).rotation.y = (i-1)*0.12; break;
+      case 'onigiri': add(XG.tri, 0xfbfbf6); add(XG.band, 0x1d3527); break;
+      case 'hotdogset': add(XG.setTray, 0xff9f43); nest('hotdog', -0.1, 0.85); nest('drink', 0.16, 0.85); break;
+    }
+    return g;
+  };
+  // table + rice cooker + nori box
+  const g = new THREE.Group(); scene.add(g); pickables.push(g);
+  box(0.72,0.9,1.9, 0xf2f2ee, 9.58,0,-4.05, g);
+  box(0.76,0.05,1.96, 0x9aa7b8, 9.58,0.9,-4.05, g);
+  box(0.05,0.12,1.9, 0x34d6a6, 9.2,0.62,-4.05, g, {cast:false});
+  const ck = new THREE.Group(); ck.position.set(9.6, 0.95, -4.55); g.add(ck);
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.24,0.22,0.3,18), mat(0xfff5f0)); body.position.y = 0.15; body.castShadow = true; ck.add(body);
+  const lid = new THREE.Mesh(new THREE.SphereGeometry(0.245,18,8,0,Math.PI*2,0,Math.PI/2), mat(0xe85d75)); lid.scale.y = 0.45; lid.position.y = 0.3; lid.castShadow = true; ck.add(lid);
+  box(0.1,0.03,0.06, 0x2e3440, 0,0.42,0, ck);
+  box(0.03,0.05,0.05, mat(0xff6058,0xff6058,0.8), -0.24,0.2,0, ck, {cast:false});
+  const nb = new THREE.Group(); nb.position.set(9.6, 0.95, -3.55); g.add(nb);
+  box(0.46,0.1,0.36, 0x2e3440, 0,0,0, nb);
+  for (let i=0;i<3;i++){ const m = itemMesh('nori'); m.position.set(0, 0.1 + i*0.03, 0); m.rotation.y = i*0.2; nb.add(m); }
+  signPlane(1.3,0.42,(c,w,h)=>{ roundRect(c,4,4,w-8,h-8,14); c.fillStyle='#fffaf0'; c.fill(); c.lineWidth=6; c.strokeStyle='#34d6a6'; c.stroke();
+    c.fillStyle='#14233d'; c.font=`900 ${h*0.5}px ${FONT}`; c.textAlign='center'; c.textBaseline='middle'; c.fillText('飯糰站', w/2, h*0.54); }, scene, 9.93, 1.9, -4.05, -Math.PI/2);
+  blockRect(9.2,-5.0,10,-3.1);
+  addSlot({id:'ricesrc', kind:'src', give:'rice', n:'飯鍋', x:9.6, y:1.2, z:-4.55, spot:{x:8.6, z:-4.55}, reach:1.3});
+  addSlot({id:'norisrc', kind:'src', give:'nori', n:'海苔盒', x:9.6, y:1.05, z:-3.55, spot:{x:8.6, z:-3.55}, reach:1.3});
 }
 
 /* ---------------- fire, spills, outages ---------------- */
@@ -2088,28 +2166,38 @@ function pickRecipe(){
   while (t > w[i]){ t -= w[i]; i++; }
   return pool[Math.min(i, pool.length-1)];
 }
-function spawnOrder(){
-  const rec = pickRecipe(), R = RECIPES[rec];
-  const ramp = G.level.endless ? Math.max(0.5, 1 - G.time/700) : 1;   // endless: tickets get shorter over time
-  const o = {id:++G.orderSeq, rec, t:0, limit:R.time*ramp, cust:null, claim:null, el:null};
+const REC_TIPS = {coffee:'熱咖啡：到後面櫃台拿 🥛 空杯，放進咖啡機，好了再送到出餐台。',
+  noodle:'泡麵：從泡麵貨架拿一碗，拿到後面櫃台的熱水機加熱水。',
+  bento:'熱便當：從便當櫃拿冷便當，放進中島的微波爐。好了要馬上拿，不然會燒焦！',
+  hotdog:'大亨堡：拿生香腸放上烤台，烤好後拿著烤香腸去麵包箱「拿取」，就會夾成大亨堡。',
+  oden:'關東煮：拿關東煮料放進湯鍋，煮好再盛起來送出去。',
+  fruitcup:'水果杯：把水果放上砧板，空手長按「動作」切好，再拿起來送出去。',
+  onigiri:'飯糰：到右後方倉庫的 🍚 飯鍋拿白飯，拿著白飯去旁邊的海苔盒「拿取」，就捏成飯糰了。',
+  hotdogset:'熱狗套餐：先做好大亨堡，拿著它去冰箱「拿取」一瓶飲料，就變成套餐。',
+  drink:'飲料：到後面的冰箱拿一瓶，直接送到出餐台。', snack:'零食：到零食貨架拿一包，直接送到出餐台。'};
+function spawnOrder(forceRec){
+  const L = G.level;
+  const rec = forceRec || pickRecipe(), R = RECIPES[rec];
+  const ramp = L.endless ? Math.max(0.5, 1 - G.time/700) : 1;   // endless: tickets get shorter over time
+  const o = {id:++G.orderSeq, rec, t:0, limit:R.time*ramp, cust:null, claim:null, el:null, pts:R.pts, qty:1, got:0};
+  if (G.tut >= 0 && forceRec){ o.tut = true; o.limit = R.time*(L.tutMul || 2); }   // tutorial ticket: generous, owner only
+  else if (!G.demo){
+    if (L.bulk && L.bulk.rec.includes(rec) && Math.random() < L.bulk.p){ o.qty = 2; o.limit *= 1.5; o.pts = R.pts*2 + 10; }
+    else if (L.vip && Math.random() < L.vip){ o.vip = true; o.limit *= 0.6; o.pts = R.pts*2; }
+  }
   orders.push(o);
   o.cust = spawnCustomer(o);
   refreshQueue();
   if (!G.demo){
-    const first = {coffee:'熱咖啡：到後面櫃台拿 🥛 空杯，放進咖啡機，好了再送到出餐台。',
-      noodle:'泡麵：從泡麵貨架拿一碗，拿到後面櫃台的熱水機加熱水。',
-      bento:'熱便當：從便當櫃拿冷便當，放進中島的微波爐。好了要馬上拿，不然會燒焦！',
-      hotdog:'大亨堡：拿生香腸放上烤台，烤好後拿著烤香腸去麵包箱「拿取」，就會夾成大亨堡。',
-      oden:'關東煮：拿關東煮料放進湯鍋，煮好再盛起來送出去。',
-      fruitcup:'水果杯：把水果放上砧板，空手長按「動作」切好，再拿起來送出去。',
-      drink:'飲料：到後面的冰箱拿一瓶，直接送到出餐台。', snack:'零食：到零食貨架拿一包，直接送到出餐台。'}[rec];
-    tip('rec_' + rec, first);
+    tipWhile('rec_' + rec, REC_TIPS[rec], () => orders.some(x => x.rec === rec) && !(player && player.hold && player.hold.type === R.item));
+    if (o.qty > 1) tipWhile('bulk', '🧾 團購單！票角寫 ×2 的要送 2 份，每送 1 份打一個勾，送齊才算完成，分數加倍。', () => orders.some(x => x.qty > 1));
+    if (o.vip) tipWhile('vip', '👑 VIP 來了！戴金帽的客人分數兩倍，但等不久，先做他的單。', () => orders.some(x => x.vip));
   }
   return o;
 }
 function spawnCustomer(o){
   const side = Math.random() < 0.5 ? -1 : 1;
-  const ch = makeChar({shirt:pick(SHIRTS), pants:pick(PANTS), skin:pick(SKIN), hair:pick(HAIR), cap: Math.random()<0.2 ? pick([0x2f3b52,0xe85d75,0x58c48f,0xf2f2f2]) : 0, scale: rand(1.0,1.12)});
+  const ch = makeChar({shirt:pick(SHIRTS), pants:pick(PANTS), skin:pick(SKIN), hair:pick(HAIR), cap: o.vip ? 0xffcf3a : Math.random()<0.2 ? pick([0x2f3b52,0xe85d75,0x58c48f,0xf2f2f2]) : 0, scale: o.vip ? 1.16 : rand(1.0,1.12)});
   const a = new Agent(ch, rand(2.4,3.0));
   a.pos.set(side*13.5, 0, STREET_Z + rand(-0.4,0.4));
   a.path = [{x:side*9.3, z:STREET_Z}, {x:DOOR_OUT.x + rand(-0.3,0.3), z:DOOR_OUT.z}];
@@ -2153,7 +2241,7 @@ function updateCustomer(c, dt){
     }
   }
   if (c.emoteT > 0){ c.emoteT -= dt; c.tag.icon(c.emote); }
-  else if (c.order && (c.state === 'wait' || c.state === 'arrive')) c.tag.icon(RECIPES[c.order.rec].ic);
+  else if (c.order && (c.state === 'wait' || c.state === 'arrive')) c.tag.icon((c.order.vip ? '👑' : '') + RECIPES[c.order.rec].ic + (c.order.qty > 1 ? '×' + (c.order.qty - c.order.got) : ''));
   else c.tag.icon('');
   if (c.order && c.state === 'wait'){ const f = 1 - c.order.t/c.order.limit; c.tag.setBar(f, f > 0.5 ? '#34d6a6' : f > 0.25 ? '#ffcf3a' : '#ff6058'); }
   else c.tag.setBar(null);
@@ -2164,26 +2252,36 @@ function deliver(s){
   for (const o of orders) if (RECIPES[o.rec].item === h.type && (!best || o.t/o.limit > best.t/best.limit)) best = o;
   if (!best) return nope(s, '沒有人點' + ITEMS[h.type].n);
   releaseHold(s);
+  if (best.qty - best.got > 1){   // 團購單: one more ✓ on the ticket, not done yet
+    best.got++;
+    if (!G.demo){ floatText(SLOT.pass.x, 2.2, SLOT.pass.z, '✓ ' + best.got + '/' + best.qty + ' 再 ' + (best.qty - best.got) + ' 份', 'good txt'); SFX.pick(); haptic(12); decorateTicket(best, true); }
+    squash(s, 0.12);
+    return true;
+  }
   completeOrder(best, s);
   return true;
 }
 function completeOrder(o, s){
-  const R = RECIPES[o.rec];
+  const R = RECIPES[o.rec], pts = o.pts || R.pts;
   const oldest = orders.reduce((m, x) => (!m || x.id < m.id) ? x : m, null);
   G.combo = (oldest === o) ? Math.min(4, G.combo + 1) : 1;
   const left = clamp(1 - o.t/o.limit, 0, 1);
-  const tipAmt = Math.round(R.pts*0.6*left) * Math.max(1, G.combo - 1);
-  const total = R.pts + tipAmt;
+  const tipAmt = Math.round(pts*0.6*left) * Math.max(1, G.combo - 1);
+  const total = pts + tipAmt;
   const i = orders.indexOf(o); orders.splice(i,1);
   if (o.claim && o.claim.ai) o.claim.ai.claim = null;
   if (!G.demo){
     addMoney(total);
-    G.stats.delivered++; G.stats.base += R.pts; G.stats.tips += tipAmt; G.stats.maxCombo = Math.max(G.stats.maxCombo, G.combo);
+    G.stats.delivered++; G.stats.base += pts; G.stats.tips += tipAmt; G.stats.maxCombo = Math.max(G.stats.maxCombo, G.combo);
     G.stats.byRec[o.rec] = (G.stats.byRec[o.rec]||0) + 1;
-    floatText(SLOT.pass.x, 2.2, SLOT.pass.z, '+' + fmt(total) + (G.combo > 1 ? ' ×' + (G.combo-1) + ' 小費' : ''));
+    if (o.vip) G.stats.vip++;
+    if (o.qty > 1) G.stats.bulk++;
+    floatText(SLOT.pass.x, 2.2, SLOT.pass.z, (o.vip ? '👑 ' : '') + '+' + fmt(total) + (G.combo > 1 ? ' ×' + (G.combo-1) + ' 小費' : ''));
     SFX.ding(); haptic(20);
     juiceCheckout(s, total);
     ticketDone(o, true);
+    if (G.stats.delivered === 1) tip('served', '出餐成功！越快送到，小費越多。');
+    if (G.combo >= 3) tip('combo', '連擊！照順序先送最舊的那張單，小費會一直加倍。');
   }
   if (o.cust) customerLeave(o.cust, true);
 }
@@ -2193,13 +2291,29 @@ function failOrder(o){
   if (o.claim && o.claim.ai) o.claim.ai.claim = null;
   G.combo = 1;
   if (!G.demo){
-    const pen = Math.round(R.pts*0.5);
+    const pen = o.tut ? 0 : Math.round(R.pts*0.5*(o.vip ? 1.6 : 1)*(o.qty > 1 ? 1.5 : 1));   // tutorial tickets never cost points
     addMoney(-pen); G.stats.failed++; G.stats.penalty += pen; G.fails++;
-    floatText(o.cust ? o.cust.agent.pos.x : CHECKOUT_SPOT.x, 2.4, o.cust ? o.cust.agent.pos.z : CHECKOUT_SPOT.z, '-' + fmt(pen) + ' 等太久了', 'bad txt');
+    if (o.vip) G.stats.vipMiss++;
+    floatText(o.cust ? o.cust.agent.pos.x : CHECKOUT_SPOT.x, 2.4, o.cust ? o.cust.agent.pos.z : CHECKOUT_SPOT.z, (pen ? '-' + fmt(pen) + ' ' : '') + '等太久了', 'bad txt');
     SFX.bad(); camShakeAdd(0.2);
     ticketDone(o, false);
   }
   if (o.cust) customerLeave(o.cust, false);
+}
+// extra marks on a ticket for this level's twists (added beside the ticket markup, which renderTickets owns)
+function decorateTicket(o, bump){
+  const el = o.el; if (!el) return;
+  if (!o._dec){
+    o._dec = true;
+    if (o.vip) el.classList.add('tk-vip');
+    if (o.tut) el.classList.add('tk-tut');
+    if (o.vip || o.qty > 1 || o.tut){ const b = document.createElement('i'); b.className = 'tkx'; el.appendChild(b); o._bx = b; }
+  }
+  if (o._bx){
+    const t = o.vip ? '👑 ×2' : o.qty > 1 ? (o.got ? '✓' + o.got + '/' + o.qty : '×' + o.qty) : '教學';
+    if (o._bx.textContent !== t) o._bx.textContent = t;
+    if (bump){ o._bx.classList.remove('pop'); void o._bx.offsetWidth; o._bx.classList.add('pop'); }
+  }
 }
 
 /* ---------------- AI clones ---------------- */
@@ -2213,6 +2327,8 @@ const PLANS = {
   oden:    [['take','odensrc'], ['put','pot'], ['wait','pot','oden']],
   hotdog:  [['take','sausagesrc'], ['put','grill'], ['wait','grill','sausage_cooked'], ['take','bunsrc']],
   fruitcup:[['take','fruitsrc'], ['put','board'], ['chop','board'], ['take','board']],
+  onigiri: [['take','ricesrc'], ['take','norisrc']],
+  hotdogset:[['take','sausagesrc'], ['put','grill'], ['wait','grill','sausage_cooked'], ['take','bunsrc'], ['take','drink']],
 };
 function aiReset(s){
   const ai = s.ai;
@@ -2249,7 +2365,7 @@ function aiChoose(s){
     }
   }
   let pickO = null;
-  for (const o of orders){ if (o.claim || !r.recipes.includes(o.rec)) continue; if (!pickO || o.id < pickO.id) pickO = o; }
+  for (const o of orders){ if (o.claim || !r.recipes.includes(o.rec) || (o.tut && s !== owner)) continue; if (!pickO || o.id < pickO.id) pickO = o; }
   if (!pickO) return;
   pickO.claim = s; s.ai.claim = pickO;
   s.ai.plan = PLANS[pickO.rec].concat([['deliver','pass']]); s.ai.i = 0;
@@ -2911,6 +3027,8 @@ function levelUnlocked(i){
   return ((G.best[i-1] && G.best[i-1].stars) || 0) >= 1;
 }
 function showLevels(){
+  if (!G.demo) setupWorld(0, ROLES.map(r => r.id), true);   // stop the finished shift from ticking (and spawning tickets) behind the menu
+  hintQ.length = 0;
   G.state = 'menu';
   const list = $('#lvList'); list.innerHTML = '';
   const ts = totalStars();
@@ -2921,7 +3039,7 @@ function showLevels(){
     const open = levelUnlocked(i);
     const st = '★'.repeat(best.stars) + '<i>' + '★'.repeat(3 - best.stars) + '</i>';
     b.innerHTML = `<span class="no">${L.endless ? 'ENDLESS' : 'LEVEL ' + (i+1)}</span><span class="nm">${open ? '' : '🔒 '}${L.n}</span>` +
-      `<span class="rc">${L.rec.map(r => RECIPES[r].ic).join('')}</span><span class="st">${st}</span>` +
+      `<span class="rc">${L.rec.map(r => RECIPES[r].ic).join('')}</span>${L.tw ? `<span class="tw">${L.tw}</span>` : ''}<span class="st">${st}</span>` +
       `<span class="bs">${open ? (best.score ? '最高 ' + fmt(best.score) : '還沒玩過') : '前一關拿到 ★ 解鎖'}</span>`;
     b.disabled = !open;
     b.onclick = () => { initAudio(); SFX.pick(); showPrep(i); };
@@ -2944,6 +3062,10 @@ function showPrep(i){
   prepLv = i; const L = LEVELS[i];
   $('#prepTitle').textContent = (L.endless ? '' : '第 ' + (i+1) + ' 關 · ') + L.n;
   $('#prepDesc').textContent = L.desc + (L.endless ? '' : '　營業 ' + mmss(L.len) + '，★ ' + L.stars.join(' / ★★ ').replace(/\/ ★★ (\d+)$/, '/ ★★★ $1'));
+  let tw = $('#prepTwist');
+  if (!tw){ tw = document.createElement('p'); tw.id = 'prepTwist'; tw.className = 'twist'; $('#prepDesc').after(tw); }
+  tw.textContent = '今日特色　' + (L.twist || '');
+  tw.hidden = !L.twist;
   const rl = $('#prepRec'); rl.innerHTML = '';
   for (const k of L.rec){
     const R = RECIPES[k];
@@ -2981,10 +3103,71 @@ function renderPrepTeam(){
   }
 }
 
+/* ---------------- level-twist UI: event chip, level intro card, ticket badges ---------------- */
+const DESIGN_CSS = `
+#evChip{position:fixed;right:max(10px,env(safe-area-inset-right,0px));top:calc(var(--hud-b) + 92px);z-index:4;pointer-events:none;
+  background:var(--chip);color:var(--paper);border:2px solid var(--sign);border-radius:999px;padding:4px 12px;font-weight:900;font-size:14px;white-space:nowrap}
+#evChip.hot{background:var(--coral);border-color:var(--paper);animation:evPulse .8s ease-in-out infinite}
+#evChip.tut{border-color:var(--sky)}
+@keyframes evPulse{50%{transform:scale(1.07)}}
+#lvIntro{position:fixed;left:50%;top:calc(50% + 72px);transform:translateX(-50%);z-index:4;pointer-events:none;text-align:center;
+  background:var(--paper);color:var(--ink);border:3px solid var(--ink);border-radius:16px;box-shadow:0 5px 0 var(--ink);padding:8px 16px 10px;
+  max-width:min(440px,calc(100% - 32px));width:max-content;opacity:0}
+#lvIntro.show{animation:introIn 4.4s ease-out forwards}
+#lvIntro .no{font-family:var(--f-display);font-size:12px;color:var(--muted);letter-spacing:.06em}
+#lvIntro .nm{font-weight:900;font-size:20px}
+#lvIntro .tw{font-weight:700;font-size:14px;margin-top:2px;line-height:1.4}
+@keyframes introIn{0%{opacity:0;transform:translate(-50%,16px)}10%{opacity:1;transform:translate(-50%,0)}82%{opacity:1}100%{opacity:0;transform:translate(-50%,-8px)}}
+.tk{position:relative}
+.tk.tk-vip{border-color:#c9971a;background:#fff4cc;box-shadow:0 3px 0 #8a6510}
+.tk.tk-tut{border-color:var(--sky)}
+.tkx{position:absolute;top:-9px;right:-6px;font-style:normal;background:var(--sign);color:var(--ink);border:2px solid var(--ink);border-radius:8px;
+  font-size:11px;font-weight:900;line-height:15px;padding:0 4px;white-space:nowrap}
+.tk-tut .tkx{background:var(--sky);color:#fff}
+.tkx.pop{animation:tkxPop .35s ease-out}
+@keyframes tkxPop{40%{transform:scale(1.5)}}
+.lv .tw{font-size:12px;font-weight:900;color:var(--ink);background:#f4efe4;border-radius:7px;padding:1px 6px;align-self:flex-start}
+.twist{margin:6px 0 0;font-weight:900;font-size:14px;background:#fff4cc;border:2px solid var(--sign);border-radius:10px;padding:6px 10px;color:var(--ink)}
+.receipt .coach{font-size:13px;line-height:1.5;margin:6px 0 2px;font-weight:700}
+@media (prefers-reduced-motion:reduce){ #evChip.hot,.tkx.pop{animation:none} #lvIntro.show{animation:none;opacity:1} }
+`;
+const dz = {chip:null, intro:null};
+function designUI(){
+  const st = document.createElement('style'); st.id = 'designCss'; st.textContent = DESIGN_CSS; document.head.appendChild(st);
+  dz.chip = document.createElement('div'); dz.chip.id = 'evChip'; dz.chip.hidden = true; dz.chip.setAttribute('aria-live', 'polite');
+  dz.intro = document.createElement('div'); dz.intro.id = 'lvIntro'; dz.intro.setAttribute('aria-live', 'polite');
+  const hudEl = $('#hud'); hudEl.appendChild(dz.chip);
+  document.body.appendChild(dz.intro);
+}
+function setEventChip(text, cls){
+  const c = dz.chip; if (!c) return;
+  if (!text){ if (!c.hidden){ c.hidden = true; c._t = ''; } return; }
+  if (c._t !== text){ c._t = text; c.textContent = text; }
+  const k = cls || ''; if (c._c !== k){ c._c = k; c.className = k; }
+  if (c.hidden) c.hidden = false;
+}
+function updateEventChip(){
+  if (G.demo) return setEventChip('');
+  const L = G.level;
+  if (G.tut >= 0) return setEventChip('📘 教學中 · 計時暫停', 'tut');
+  if (G.rush) return setEventChip(G.rush.ic + ' ' + G.rush.name + ' ' + mmss(rushLeft(G.rush)), 'hot');
+  if (L.rain && G.rainT < 6) return setEventChip('☔ 雨勢變大 ' + Math.ceil(Math.max(0, G.rainT)), 'hot');
+  if (L.storm && G.stormT < 6) return setEventChip('🌀 跳電警報 ' + Math.ceil(Math.max(0, G.stormT)), 'hot');
+  if (L.rush && !L.endless){ const r = L.rush[0], left = r.at*L.len - G.time; if (left > 0 && left < 15) return setEventChip(r.ic + ' ' + r.name + '快到了 ' + Math.ceil(left)); }
+  setEventChip('');
+}
+function showLevelIntro(L, i){
+  const el = dz.intro; if (!el) return;
+  el.innerHTML = `<div class="no">${L.endless ? 'ENDLESS' : 'LEVEL ' + (i+1)}</div><div class="nm"></div><div class="tw"></div>`;
+  el.querySelector('.nm').textContent = L.n;
+  el.querySelector('.tw').textContent = L.twist || L.desc;
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+}
+
 /* ---------------- level flow ---------------- */
 function clearWorld(){
   while (customers.length) removeCustomer(customers[0]);
-  orders.length = 0; clearTickets();
+  orders.length = 0; clearTickets(); setEventChip('');
   while (spills.length) removeSpill(spills[0]);
   for (const sl of SLOTS){ if (sl.fire) extinguish(sl); if (sl.item){ dropItem(sl.item); sl.item = null; } sl.broken = 0; sl.fix = 0; }
   for (const s of staff.slice()) if (s !== owner) removeStaff(s);
@@ -2998,6 +3181,8 @@ function setupWorld(i, team, demo){
   const L = G.level;
   G.time = 0; G.money = 0; G.combo = 1; G.fails = 0; G.spawnT = 1; G.gapT = 0; G.stats = newStats();
   G.spillT = L.spills ? rand(14, 24)/L.spills : 1e9; G.outT = L.outage ? L.outage*0.7 : 1e9;
+  G.tut = (!demo && L.script && !(G.best[i] && G.best[i].stars)) ? 0 : -1; G.rush = null; G.warnAt = 0;   // the tutorial runs until the level has a ★
+  G.rainT = L.rain ? L.rain.every*0.6 : 1e9; G.stormT = L.storm ? L.storm.every*0.55 : 1e9;
   owner.agent.pos.set(4.2, 0, 2.4); owner.agent.face(-Math.PI/2);
   for (const id of team) spawnClone(id, !!demo);
   player = owner;
@@ -3013,7 +3198,9 @@ function startLevel(i, team){
   updateCamera(0, true);
   canvas.focus({preventScroll:true});
   if (i === 0) showHint(isTouch ? '左手拖曳走路，右下角 ✋ 拿起／放下。把點單上的東西送到黃色的「出餐」台！' : 'WASD 走路，空白鍵拿起／放下。把點單上的東西送到黃色的「出餐」台！');
-  if (team.length) tip('swap', (isTouch ? '按 🔄' : '按 Q 或 Tab') + ' 可以換成操作分身，其他人會繼續自己工作。');
+  if (team.length && !LEVELS[i].script) tip('swap', (isTouch ? '按 🔄' : '按 Q 或 Tab') + ' 可以換成操作分身，其他人會繼續自己工作。');
+  showLevelIntro(LEVELS[i], i);
+  _hc.r = null;   // refresh the "/next star" target for this level's thresholds
 }
 function bigMsg(text, zh){
   hud.big.className = zh ? 'zh' : '';
@@ -3029,6 +3216,7 @@ function countdownTick(dt){
 function endLevel(){
   if (G.state !== 'play') return;
   G.state = 'ending'; G.endT = 1.6;
+  setEventChip(''); if (dz.intro) dz.intro.classList.remove('show');
   for (const o of orders) ticketDone(o, false);
   bigMsg(G.level.endless ? '打烊！' : '時間到！', true);
   SFX.close();
@@ -3051,10 +3239,14 @@ function showResults(){
   $('#receipt').innerHTML =
     `<div class="hd">分身便利店 CLONE MART<small>出餐明細 · ${L.n}</small></div><hr>` +
     row('送出餐點', S.delivered + ' 份') + recRows + row('最高連擊', '×' + S.maxCombo) +
+    ((S.vip || S.vipMiss) ? row('👑 VIP 服務', S.vip + ' 位' + (S.vipMiss ? '（氣走 ' + S.vipMiss + '）' : '')) : '') +
+    (S.bulk ? row('🧾 團購單完成', S.bulk + ' 張') : '') + (S.rushDone ? row('🔥 撐過尖峰', S.rushDone + ' 次') : '') +
     (S.failed ? row('逾時沒送到', S.failed + ' 張', 'neg') : '') + (S.burnt ? row('燒焦／失敗品', S.burnt + ' 個', 'neg') : '') + (S.fires ? row('起火', S.fires + ' 次', 'neg') : '') + '<hr>' +
     row('餐點收入', fmt(S.base)) + row('小費', '+' + fmt(S.tips)) + (S.penalty ? row('逾時扣分', '-' + fmt(S.penalty), 'neg') : '') + '<hr>' +
     row('本次分數', fmt(score), 'tot pos') + row('星星門檻', '★' + L.stars[0] + '　★★' + L.stars[1] + '　★★★' + L.stars[2]) +
-    `<div class="bar"></div>`;
+    (stars < 3 ? row('距離 ' + '★'.repeat(stars + 1), '還差 ' + fmt(L.stars[stars] - score)) : '') +
+    `<div class="coach"></div><div class="bar"></div>`;
+  $('#receipt .coach').textContent = coachLine(L, S, stars);
   const nx = G.lv + 1;
   const nb = $('#btnNextLv');
   nb.hidden = nx >= LEVELS.length;
@@ -3063,6 +3255,17 @@ function showResults(){
   showScreen('results');
   const starsAfter = totalStars(), newRoles = ROLES.filter(r => r.need > starsBefore && r.need <= starsAfter);
   if (newRoles.length) setTimeout(() => toast(newRoles.map(r => r.icon + ' ' + r.name).join('、') + ' 解鎖了！', 'good'), 400);
+}
+// one line of advice on the receipt: the most useful thing to fix next time
+function coachLine(L, S, stars){
+  if (stars === 3) return '💯 滿星！店長，你的分身們都以你為榮。' + (L.endless ? '' : '試試看下一關吧！');
+  if (S.fires) return '💡 機器上的失敗品放著會起火：燒焦了就馬上丟進垃圾桶。';
+  if (S.burnt >= 2) return '💡 微波爐、烤台做好要馬上拿出來，不然會燒焦。';
+  if (S.vipMiss) return '💡 👑 VIP 等不久，看到金色的單要先做。';
+  if (S.failed >= 3) return '💡 太多單逾時了：帶分身上場，' + (isTouch ? '按 🔄' : '按 Q') + ' 換人去幫最忙的那條線。';
+  if (S.maxCombo < 3) return '💡 照順序先送最舊的單，連擊小費會一直加倍。';
+  if (L.rush) return '💡 尖峰來之前先把手上的單清掉，尖峰時優先做簡單的單。';
+  return '💡 自己去做分身不會做的菜，讓分身各做各的，分數最高。';
 }
 function backToTitle(){
   setupWorld(0, ROLES.map(r => r.id), true);
@@ -3112,23 +3315,103 @@ function updateMachines(dt){
     }
   }
 }
+/* level twists: tutorial script, rush waves, rain bursts, storm blackouts */
+function rushNow(){
+  const L = G.level; if (!L.rush || G.demo || G.tut >= 0) return null;
+  for (const r of L.rush){
+    if (r.every){ const k = G.time % r.every; if (G.time >= r.every && k < r.len) return r; }
+    else { const a = r.at*L.len; if (G.time >= a && G.time < a + r.len) return r; }
+  }
+  return null;
+}
+function rushLeft(r){ const L = G.level; return r.every ? r.len - G.time % r.every : r.at*L.len + r.len - G.time; }
+function flashBig(text){
+  bigMsg(text, true);
+  const h = hud.big.innerHTML;
+  setTimeout(() => { if (hud.big.innerHTML === h && G.state !== 'countdown' && G.state !== 'ending') hud.big.innerHTML = ''; }, 1300);
+}
+function fanfare(){ tone(784, 0.1, 'triangle', 0.08); tone(988, 0.1, 'triangle', 0.08, 0.1); tone(1319, 0.22, 'triangle', 0.08, 0.2); }
+function twistTick(dt){
+  const L = G.level;
+  // tutorial: scripted tickets one at a time; the clock stands still until the last one is done
+  if (G.tut >= 0){
+    if (!orders.length && G.gapT <= 0){
+      if (G.tut < L.script.length){ spawnOrder(L.script[G.tut]); G.tut++; G.gapT = 1.4; }
+      else {
+        G.tut = -1; G.spawnT = 2.5; G.gapT = 0;
+        toast('📘 教學完成！計時開始', 'good'); fanfare();
+        tip('tutdone', '教學完成！現在客人會一直來，同時會有好幾張單。照順序先送最舊的單，連擊小費會加倍。');
+        if (staff.length > 1) tip('swap', (isTouch ? '按 🔄' : '按 Q 或 Tab') + ' 可以換成操作分身，其他人會繼續自己工作。');
+      }
+    }
+    return;
+  }
+  // rush waves
+  const r = rushNow();
+  if (r !== G.rush){
+    if (r){ flashBig(r.ic + ' ' + r.name + '！'); fanfare(); camShakeAdd(0.25); G.spawnT = Math.min(G.spawnT, 0.6); G.stats.events++;
+      tip('rush', r.ic + ' ' + r.name + '！接下來客人特別多，先做簡單快速的單，別讓點單逾時。'); }
+    else if (G.rush){ toast('😮‍💨 ' + G.rush.name + '結束，喘口氣！', 'good'); G.stats.rushDone++; }
+    G.rush = r;
+  }
+  // rain: a group with wet umbrellas walks in → several puddles at once
+  if (L.rain){
+    G.rainT -= dt;
+    if (G.rainT <= 4 && G.warnAt !== 'rain'){ G.warnAt = 'rain'; toast('☔ 外面雨越下越大…', ''); }
+    if (G.rainT <= 0){
+      G.rainT = L.rain.every*rand(0.85, 1.15); G.warnAt = 0; G.stats.events++;
+      G.tips.add('spill');   // the rain tip below covers mopping
+      for (let k=0;k<L.rain.n;k++) spawnSpill();
+      toast('☔ 一群客人帶著濕雨傘進來，地板濕了！', 'bad'); camShakeAdd(0.15);
+      tip('rain', '☔ 地板一次濕了好幾攤！踩到會變慢，空手站在水漬旁長按「動作」拖乾。');
+    }
+  }
+  // storm: a blackout breaks several machines at once
+  if (L.storm){
+    G.stormT -= dt;
+    if (G.stormT <= 4 && G.warnAt !== 'storm'){ G.warnAt = 'storm'; toast('🌀 風雨變強了，燈在閃…', ''); }
+    if (G.stormT <= 0){
+      G.stormT = L.storm.every*rand(0.85, 1.15); G.warnAt = 0; G.stats.events++;
+      flashBig('⚡ 跳電！'); camShakeAdd(0.5);
+      G.tips.add('outage');   // the storm tip below covers repairs
+      for (let k=0;k<L.storm.n;k++) breakRandomMachine();
+      tip('storm', '⚡ 颱風跳電，好幾台機器同時壞掉！空手站在 ⚡ 機器旁長按「動作」修理，先修你現在要用的。');
+    }
+  }
+}
+// tips that depend on what is happening right now (each shows once, ever)
+function situationTips(){
+  if (G.demo || !player) return;
+  const h = player.hold;
+  if (h && h.type !== 'ext' && orders.some(o => RECIPES[o.rec].item === h.type))
+    tipWhile('carry', '拿到了！走到黃色的「出餐」台，' + (isTouch ? '按 ✋' : '按空白鍵') + '出餐。', () => player.hold && orders.some(o => RECIPES[o.rec].item === player.hold.type));
+  for (const o of orders) if (o.t/o.limit > 0.72 && !o.tut){ tipWhile('urgent', '點單在晃＝快超時了！先救最急的那張，逾時會扣分。', () => orders.some(x => x.t/x.limit > 0.6)); break; }
+  for (const id of ['coffee','hotwater','micro','grill','pot']){
+    const sl = SLOT[id];
+    if (sl.item && applOutRule(id, sl.item.type)){ tipWhile('ready', '✅ 機器上的東西做好了！拿起來送去出餐。', () => sl.item && applOutRule(id, sl.item.type)); break; }
+  }
+}
 function simulate(dt){
   const L = G.level;
-  G.time += dt;
+  if (G.tut < 0) G.time += dt;   // the tutorial pauses the level clock
   // tickets
-  for (const o of orders.slice()){ o.t += dt; if (o.t >= o.limit) failOrder(o); }
+  for (const o of orders.slice()){ o.t += dt; if (o.t >= o.limit) failOrder(o); else if (!o._dec || o._bx) decorateTicket(o); }
   G.spawnT -= dt; G.gapT -= dt;
+  twistTick(dt);
   const late = !L.endless && G.time > L.len - 8;
+  const rush = G.rush, maxB = L.max + (rush ? rush.add : 0);
   const minBoard = Math.min(3, L.max);
-  if (!late && orders.length < L.max && G.gapT <= 0 && (G.spawnT <= 0 || orders.length < minBoard)){
-    spawnOrder(); G.gapT = 2.2;
+  if (G.tut < 0 && !late && orders.length < maxB && G.gapT <= 0 && (G.spawnT <= 0 || orders.length < minBoard)){
+    spawnOrder(); G.gapT = rush ? 1.2 : 2.2;
     const ramp = L.endless ? Math.max(0.3, 1 - G.time/450) : 1;   // endless: tickets come faster over time
-    G.spawnT = rand(L.every[0], L.every[1])*ramp;
+    G.spawnT = rand(L.every[0], L.every[1])*ramp*(rush ? rush.k : 1);
   }
   // hazards
   G.spillT -= dt; if (G.spillT <= 0){ G.spillT = rand(25, 42)/(L.spills || 1); spawnSpill(); }
   G.outT -= dt; if (G.outT <= 0){ G.outT = L.outage*rand(0.8, 1.2); breakRandomMachine(); }
   updateMachines(dt);
+  situationTips();
+  updateEventChip();
   // characters
   if (!G.demo && !G.bot) updatePlayer(dt);
   for (const s of staff){
@@ -3269,6 +3552,7 @@ function boot(hotData){
   loadProgress();
   buildWorld();
   buildKitchen();
+  buildKitchenExtra(); designUI();
   createPlayer();
   buildDeviceUX();
   setupWorld(0, ROLES.map(r => r.id), true);
