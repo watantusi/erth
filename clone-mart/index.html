@@ -2318,8 +2318,8 @@ function nope(s, msg){
 // the grab/drop button: pick up, put down, combine, deliver or throw away
 function grab(s, sl){
   if (!sl) return false;
-  if (sl.fire) return nope(s, '著火了！先滅火');
   const h = s.hold;
+  if (sl.fire && !(!h && sl.item && sl.item.type === 'ext')) return nope(s, '著火了！先滅火');   // the extinguisher itself can always be grabbed
   if (!h){
     if (sl.item){
       if (sl.kind === 'appl' && sl.item.type === APPL_IN(sl) && s === player) tip('early', '還沒好喔！拿起來會中斷加熱，等進度條跑完再拿。');
@@ -2602,7 +2602,8 @@ function aiChoose(s){
   }
   if (r.id === 'cleaner' || r.fixer){
     const fire = SLOTS.find(sl => sl.fire);
-    if (fire){ s.ai.plan = [['take','extstand'], ['spray', fire.id], ['put','extstand']]; s.ai.i = 0; return; }
+    const ext = fire && SLOTS.find(sl => sl.item && sl.item.type === 'ext');   // wherever it was left (not in someone's hand)
+    if (ext){ s.ai.plan = [['take', ext.id], ['spray', fire.id], ['put','extstand']]; s.ai.i = 0; return; }
     const broken = SLOTS.find(sl => sl.broken);
     if (broken){ s.ai.plan = [['fix', broken.id]]; s.ai.i = 0; return; }
     const burnt = SLOTS.find(sl => sl.item && sl.item.type === 'burnt' && !sl.fire);
@@ -2644,7 +2645,7 @@ function aiUpdate(s, dt){
   aiFace(s, sl);
   switch (op){
     case 'take':
-      if (sl.fire) return;
+      if (sl.fire && !(sl.item && sl.item.type === 'ext')) return;
       if (s.hold && sl.kind !== 'src'){ aiReset(s); return; }
       if (sl.kind !== 'src' && !sl.item){ aiReset(s); return; }
       if (grab(s, sl)) next(); else aiReset(s);
@@ -2657,6 +2658,7 @@ function aiUpdate(s, dt){
       break;
     case 'wait':
       if (!sl.item){ aiReset(s); return; }
+      if (sl.broken){ ai.t = 0; if ((ROLE[s.role] || {}).fixer && findTarget(s) === sl) s.prog = useTick(s, dt); return; }   // don't give up (and leave the food to burn once repaired) while the machine is out; a fixer repairs it
       if (sl.item.type === 'burnt'){ grab(s, sl); ai.plan = [['bin','trash']]; ai.i = 0; if (ai.claim){ ai.claim.claim = null; ai.claim = null; } return; }
       if (sl.item.type === want && !s.hold){ if (grab(s, sl)) next(); }
       break;
@@ -3148,8 +3150,8 @@ function updateHUD(dt){
   const f = L.endless ? clamp(G.fails/MAX_FAILS_ENDLESS,0,1) : clamp(G.time/(L.len||1),0,1);
   const fr = Math.round(f*200)/2;
   if (_hc.f !== fr){ _hc.f = fr; hud.fill.style.width = fr + '%'; }
-  const sf = Math.round(starFill(G.money, L.stars)*100)/100;
-  if (_hc.r !== sf){ _hc.r = sf; hud.star.style.width = (sf/3*100) + '%'; const nx = L.stars.find(t => G.money < t); hud.rate.textContent = nx ? '/' + nx : '滿星'; }
+  const sf = Math.round(starFill(G.money, L.stars)*100)/100, sk = sf + '|' + L.stars;   // key on the thresholds too: a new level at the same fill must refresh the "/next★" label
+  if (_hc.r !== sk){ _hc.r = sk; hud.star.style.width = (sf/3*100) + '%'; const nx = L.stars.find(t => G.money < t); hud.rate.textContent = nx ? '/' + nx : '滿星'; }
   const r = ROLE[player && player.role];
   setText(hud.team, 't', r ? r.icon + ' ' + r.name.replace('分身','') : '老闆');
   if (G.state === 'play'){
@@ -3200,7 +3202,7 @@ function clearTickets(){ for (const o of orders) o.el = null; hud.orders.innerHT
 function grabLabel(s, sl){
   const h = s.hold;
   if (!sl) return '—';
-  if (sl.fire) return '起火';
+  if (sl.fire && !(!h && sl.item && sl.item.type === 'ext')) return '起火';
   if (!h) return (sl.item || sl.kind === 'src') ? '拿起' : '—';
   if (sl.kind === 'trash') return h.type === 'ext' ? '—' : '丟掉';
   if (sl.kind === 'pass') return '出餐';
@@ -3256,8 +3258,8 @@ function updateSlotTags(){
 const screens = {title:$('#title'), levels:$('#levels'), prep:$('#prep'), pause:$('#pause'), results:$('#results')};
 function showScreen(name){ for (const k in screens) screens[k].hidden = k !== name; }
 function openPanel(name){
-  if (G.state === 'play') G.prevState = G.state;
   if (G.state !== 'play' && G.state !== 'countdown') return;
+  G.prevState = G.state;   // resume into the countdown if paused during it
   G.state = 'paused';
   for (const k in keys) keys[k] = false;
   joy.active = false; joyEl.hidden = true; touchUse = false;
@@ -3274,8 +3276,10 @@ function levelUnlocked(i){
   if (LEVELS[i].endless) return ((G.best[i-1] && G.best[i-1].stars) || 0) >= 1;
   return ((G.best[i-1] && G.best[i-1].stars) || 0) >= 1;
 }
+// menus simulate the world behind them: a quit/finished level must not keep running there (tickets, fails, keyboard)
+function menuWorld(){ if (!G.demo){ setupWorld(0, ROLES.map(r => r.id), true); hud.big.innerHTML = ''; } }
 function showLevels(){
-  if (!G.demo) setupWorld(0, ROLES.map(r => r.id), true);   // stop the finished shift from ticking (and spawning tickets) behind the menu
+  menuWorld();
   hintQ.length = 0;
   G.state = 'menu';
   const list = $('#lvList'); list.innerHTML = '';
@@ -3307,6 +3311,7 @@ function defaultTeam(L){
   return want.slice(0, L.clones).map(x => x.id);
 }
 function showPrep(i){
+  menuWorld();
   prepLv = i; const L = LEVELS[i];
   $('#prepTitle').textContent = (L.endless ? '' : '第 ' + (i+1) + ' 關 · ') + L.n;
   $('#prepDesc').textContent = L.desc + (L.endless ? '' : '　營業 ' + mmss(L.len) + '，★ ' + L.stars.join(' / ★★ ').replace(/\/ ★★ (\d+)$/, '/ ★★★ $1'));
@@ -3754,6 +3759,7 @@ function switchChar(dir){
   if (player !== owner) aiReset(player);
   player.pending = null;
   aiReset(nx); nx.agent.path.length = 0; nx.prog = null;
+  if (nx.spawnFx > 0){ nx.spawnFx = 0; nx.ch.g.scale.setScalar(1.12); }   // the pop-in only advances under AI control
   player = nx;
   SFX.pick(); haptic(10); squash(nx, 0.18);
   floatText(nx.agent.pos.x, 2.5, nx.agent.pos.z, '換我！', 'txt');
@@ -3798,6 +3804,11 @@ function boot(hotData){
   if (!isTouch) $('#howMove').textContent = 'WASD 走路，空白鍵拿起／放下，E 長按做動作，Q 換人。';
   if (isTouch) document.body.classList.add('touch');
   loadProgress();
+  if (hotData && hotData.best && typeof hotData.best === 'object') for (const k in hotData.best){   // hot reload: merge the snapshot (getSaveData)
+    const b = hotData.best[k], p = G.best[k] || {score:0, stars:0};
+    if (b && isFinite(b.score) && isFinite(b.stars)) G.best[k] = {score:Math.max(p.score, b.score|0), stars:clamp(Math.max(p.stars, b.stars|0), 0, 3)};
+  }
+  if (hotData && Array.isArray(hotData.team) && !G.team.length) G.team = hotData.team.filter(id => ROLE[id]);
   buildWorld();
   buildKitchen();
   buildKitchenExtra(); designUI();
@@ -3810,7 +3821,7 @@ function boot(hotData){
   // test hook
   window.__cloneMart = {
     sim(secs){ const n = Math.round(secs*30); for (let i=0;i<n && G.state === 'play';i++) simulate(1/30); if (G.state === 'ending'){ G.endT = 0; showResults(); } return G.state; },
-    G, orders, SLOTS, SLOT, staff, customers, spills, LEVELS, RECIPES, ROLES, ITEMS,
+    G, orders, SLOTS, SLOT, staff, customers, spills, LEVELS, RECIPES, ROLES, ITEMS, PLANS, APPL, COMBOS, MAX_FAILS_ENDLESS, scene, pickables,
     startLevel, setupWorld, endLevel, showResults, showLevels, showPrep, spawnOrder, spawnSpill, ignite, breakRandomMachine, grab, useTick, findTarget, switchChar, actGrab,
     get player(){ return player; }, get owner(){ return owner; }, ROLE,
     botOwner(on){ G.bot = !!on; if (on){ ROLE.bot = {id:'bot', recipes:ALL_RECIPES.slice(), home:{x:4.2, z:2.4}, fixer:true}; owner.role = 'bot'; } else { owner.role = 'owner'; player = owner; } }, skipCountdown(){ if (G.state === 'countdown'){ G.cdT = 0; countdownTick(0); } },
