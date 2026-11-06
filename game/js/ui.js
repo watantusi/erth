@@ -1,6 +1,7 @@
 // 分身 5：介面（開始畫面、HUD、指南針、表情、知識卡、設定、勝利畫面、提示訊息、表情泡泡）
 // v2：居民對話框、任務追蹤、分級指南針（setNav）、互動提示、地圖碎片彈窗
 // v3：知識測驗、解鎖彈窗、衣櫥、圖鑑、計時挑戰（倒數、計時器、成績）、日夜循環設定
+// v4：選角畫面、衣櫥「角色」分頁、圖鑑「地形」分頁、設定「移動速度」、HUD 地形數
 import * as THREE from 'three';
 import * as CFG from './config.js';
 import { EMOTES, SAVE_KEY, GAME_TITLE, GAME_SUBTITLE, BIOMES, PING_DURATION, TOTAL_QUESTS } from './config.js';
@@ -26,8 +27,22 @@ const MEDALS = CFG.TRIAL_MEDALS || { gold: 90, silver: 140, bronze: 220 };
 const MEDAL_ICON = { gold: '🥇', silver: '🥈', bronze: '🥉' };
 const MEDAL_NAME = { gold: '金牌', silver: '銀牌', bronze: '銅牌' };
 const DEFAULT_SLOTS = [{ id: 'hat', name: '帽子' }, { id: 'scarf', name: '圍巾' }, { id: 'trail', name: '腳印特效' }];
-const SLOT_ICON = { hat: '🎩', scarf: '🧣', trail: '👣' };
+const SLOT_ICON = { character: '🧒', hat: '🎩', scarf: '🧣', trail: '👣' };
 const NONE_ITEM = { hat: { icon: '🙅', name: '不戴帽子' }, trail: { icon: '🚫', name: '不要特效' } };
+// v4
+const CHAR_IDS = Array.isArray(CFG.CHARACTERS) && CFG.CHARACTERS.length ? CFG.CHARACTERS : ['wanderer', 'fox', 'astro', 'bear', 'cloud'];
+const CHAR_FALLBACK = {
+  wanderer: { name: '小旅人', desc: '橘色兜帽的好奇寶寶，最愛到處走走看看。', icon: '🧒' },
+  fox: { name: '狐狸探險家', desc: '豎起狐狸耳朵，搖著蓬鬆尾巴去冒險！', icon: '🦊' },
+  astro: { name: '太空小子', desc: '背著小噴射背包，從外太空來拜訪地球。', icon: '🚀' },
+  bear: { name: '熊熊', desc: '穿著棕色連帽衣，抱起來軟綿綿的。', icon: '🐻' },
+  cloud: { name: '雲朵仙子', desc: '蓬鬆的雲朵頭髮，輕飄飄的小翅膀。', icon: '☁️' },
+};
+const SPEED_KEYS = [['slow', '慢'], ['normal', '標準'], ['fast', '快']];
+const LANDFORM_ICON = '⛰️';
+const PROMPT_ICON = { 對話: '💬', 看看: '👀' };
+const HUD_MODAL_CLS = ['is-dimmed', 'is-talking', 'is-wardrobe', 'is-quiet', 'is-select'];
+const CHEVRON_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.2 4.6a1.6 1.6 0 0 1 0 2.3L10.1 12l5.1 5.1a1.6 1.6 0 1 1-2.3 2.3l-6.2-6.2a1.6 1.6 0 0 1 0-2.4l6.2-6.2a1.6 1.6 0 0 1 2.3 0z"/></svg>`;
 const SCARF_COLORS = { sunny: '#ffcf4d', sky: '#5fb4f0', mint: '#5fd3a0', rose: '#ff8fb4', lava: '#ff6a3d', night: '#3a4a8c' };
 
 const TITLE_COLORS = ['#ff8a5c', '#ffb703', '#5cc98a', '#3b9ae1', '#a37cf0'];
@@ -118,7 +133,15 @@ export function createUI({ root, audio, callbacks = {} }) {
   const starV = h('b', 'tw-starpill-v', '0');
   starPill.append(starIc, starV);
   starPill.hidden = true;
-  progFoot.append(bar, starPill);
+  // v4：地形數（額外收集，不列入恢復度）放在星星旁邊
+  const landPill = h('div', 'tw-landpill');
+  landPill.setAttribute('aria-label', '地形知識');
+  landPill.title = '地形知識牌';
+  const landV = h('b', 'tw-landpill-v', '0');
+  const landTot = h('span', 'tw-landpill-tot', '/8');
+  landPill.append(h('span', 'tw-landpill-ic', LANDFORM_ICON), landV, landTot);
+  landPill.hidden = true;
+  progFoot.append(bar, starPill, landPill);
   progress.append(chips, progFoot);
 
   // ================= HUD：指南針 =================
@@ -311,6 +334,7 @@ export function createUI({ root, audio, callbacks = {} }) {
     hud.classList.toggle('is-talking', name === 'dialogue');
     hud.classList.toggle('is-wardrobe', name === 'wardrobe');
     hud.classList.toggle('is-quiet', name === 'countdown');
+    hud.classList.toggle('is-select', name === 'select');
   }
   function closeModal(name) {
     if (current !== name) return;
@@ -318,7 +342,7 @@ export function createUI({ root, audio, callbacks = {} }) {
     m.classList.remove('is-open');
     m.hidden = true;
     current = null;
-    hud.classList.remove('is-dimmed', 'is-talking', 'is-wardrobe', 'is-quiet');
+    hud.classList.remove(...HUD_MODAL_CLS);
     armedKey = null;
     if (queue.length) {
       const [n, s, a] = queue.shift();
@@ -401,7 +425,7 @@ export function createUI({ root, audio, callbacks = {} }) {
       if (current === 'dialogue') abortDialogue();
       const f = forced[current];
       current = null;
-      hud.classList.remove('is-dimmed', 'is-talking', 'is-wardrobe', 'is-quiet');
+      hud.classList.remove(...HUD_MODAL_CLS);
       if (f) { try { f(); } catch { /* 忽略 */ } }
     }
     started = false;
@@ -567,8 +591,29 @@ export function createUI({ root, audio, callbacks = {} }) {
       if (cb.onTimeTrial) cb.onTimeTrial();
     });
 
-    settings.card.append(head, row('🔊 音效', sSound), row('✨ 畫質', sQual), dayRow, trialRow, resetRow, done);
-    settingsRefs = { soundOn, soundOff, qHigh, qLow, resetRow, dayOn, dayOff, trialRow };
+    // v4：移動速度 慢／標準／快
+    const sSpeed = h('div', 'tw-seg tw-seg-3');
+    sSpeed.setAttribute('role', 'group');
+    sSpeed.setAttribute('aria-label', '移動速度');
+    const speedBtns = {};
+    for (const [key, label] of SPEED_KEYS) {
+      const b = button('tw-seg-btn', label);
+      b.addEventListener('click', () => {
+        if (speed === key) return;
+        sfx('ui');
+        speed = key;
+        refreshSpeed();
+        retrigger(b, 'is-bump');
+        try { if (cb.onSpeed) cb.onSpeed(key); } catch { /* 忽略 */ }
+      });
+      speedBtns[key] = b;
+      sSpeed.append(b);
+    }
+    const speedRow = row('🏃 移動速度', sSpeed);
+    speedRow.classList.add('tw-row-speed');
+
+    settings.card.append(head, speedRow, row('🔊 音效', sSound), row('✨ 畫質', sQual), dayRow, trialRow, resetRow, done);
+    settingsRefs = { soundOn, soundOff, qHigh, qLow, resetRow, dayOn, dayOff, trialRow, speedBtns, speedRow };
   }
   settings.m.addEventListener('click', (e) => { if (e.target === settings.m && guardOk()) { sfx('ui'); closeSettings(); } });
 
@@ -578,6 +623,16 @@ export function createUI({ root, audio, callbacks = {} }) {
     quality = mqCoarse.matches && small ? 'low' : 'high';
   }
   let dayNight = true;
+  let speed = 'normal';
+  function readSpeed() {
+    let k;
+    try { k = cb.getSpeed ? cb.getSpeed() : undefined; } catch { k = undefined; }
+    if (k === undefined || k === null) k = storageGet(`${SAVE_KEY}:speed`);
+    return SPEED_KEYS.some(([key]) => key === k) ? k : 'normal';
+  }
+  function refreshSpeed() {
+    for (const [key] of SPEED_KEYS) settingsRefs.speedBtns[key].setAttribute('aria-pressed', speed === key ? 'true' : 'false');
+  }
   function refreshDayNight() {
     settingsRefs.dayOn.setAttribute('aria-pressed', dayNight ? 'true' : 'false');
     settingsRefs.dayOff.setAttribute('aria-pressed', dayNight ? 'false' : 'true');
@@ -596,6 +651,9 @@ export function createUI({ root, audio, callbacks = {} }) {
       refreshMute();
       try { const d = cb.getDayNight ? cb.getDayNight() : undefined; if (typeof d === 'boolean') dayNight = d; } catch { /* 忽略 */ }
       refreshDayNight();
+      speed = readSpeed();
+      refreshSpeed();
+      settingsRefs.speedRow.hidden = !cb.onSpeed;
       let can = false;
       try { can = !!(cb.canTimeTrial && cb.canTimeTrial()); } catch { can = false; }
       settingsRefs.trialRow.hidden = !can || !cb.onTimeTrial;
@@ -737,8 +795,19 @@ export function createUI({ root, audio, callbacks = {} }) {
       totalQuests: p.totalQuests || 0,
       fragments: p.fragments | 0,
       hasQuests: !!p.totalQuests,
+      landforms: p.landforms | 0,
+      totalLandforms: p.totalLandforms | 0,
+      totalStars: p.totalStars | 0,
       done: !!p.done,
     };
+    landPill.hidden = !np.totalLandforms;
+    if (np.totalLandforms) {
+      landV.textContent = np.landforms;
+      landTot.textContent = `/${np.totalLandforms}`;
+      landPill.setAttribute('aria-label', `地形知識 ${np.landforms}/${np.totalLandforms}`);
+      landPill.classList.toggle('is-full', np.landforms >= np.totalLandforms);
+      if (started && np.landforms !== prev.landforms && prev.totalLandforms) retrigger(landPill, 'is-pop');
+    }
     chipC.v.textContent = np.crystals;
     chipC.tot.textContent = `/${np.totalCrystals}`;
     chipT.v.textContent = np.trees;
@@ -1132,8 +1201,10 @@ export function createUI({ root, audio, callbacks = {} }) {
     if (!text) { prompt.classList.remove('is-visible'); return; }
     prompt.textContent = '';
     const m = /^([A-Za-z0-9]|Enter|Space|空白鍵)\s+(.+)$/.exec(text);
-    if (m) prompt.append(h('kbd', 'tw-kbd', m[1]), h('span', 'tw-prompt-t', m[2]));
-    else prompt.append(h('span', 'tw-prompt-t', text));
+    const label = m ? m[2] : text;
+    if (m) prompt.append(h('kbd', 'tw-kbd', m[1]));
+    if (PROMPT_ICON[label.trim()]) prompt.append(h('span', 'tw-prompt-ic', PROMPT_ICON[label.trim()]));
+    prompt.append(h('span', 'tw-prompt-t', label));
     prompt.classList.add('is-visible');
     retrigger(prompt, 'is-pop');
   }
@@ -1717,7 +1788,7 @@ export function createUI({ root, audio, callbacks = {} }) {
   const wdGrid = h('div', 'tw-wd-grid');
   const wdHint = h('div', 'tw-wd-hint', '');
   wd.card.append(wdHead, wdTabs, wdGrid, wdHint);
-  let wdSlot = 'hat';
+  let wdSlot = null; // null = 第一個分頁（v4：「角色」）
   let wdHintTimer = 0;
   wdClose.addEventListener('click', () => { sfx('ui'); closeWardrobe(); });
   wd.m.addEventListener('click', (e) => { if (e.target === wd.m && guardOk()) { sfx('ui'); closeWardrobe(); } });
@@ -1738,22 +1809,76 @@ export function createUI({ root, audio, callbacks = {} }) {
     clearTimeout(wdHintTimer);
     wdHintTimer = setTimeout(() => wdHint.classList.remove('is-on'), 3200);
   }
+  /** v4：角色清單（callbacks.getCharacters） */
+  function getCharactersData() {
+    let list = null;
+    try { list = cb.getCharacters ? cb.getCharacters() : null; } catch { list = null; }
+    return normChars(list);
+  }
+  function normChars(list) {
+    if (!Array.isArray(list)) return [];
+    return list.filter((c) => c && c.id !== undefined && c.id !== null).map((c) => {
+      const fb = CHAR_FALLBACK[c.id] || {};
+      return { id: c.id, name: c.name || fb.name || String(c.id), desc: c.desc ?? fb.desc ?? '', icon: c.icon || fb.icon || '🙂', selected: !!c.selected };
+    });
+  }
+  function renderCharacterGrid(bump) {
+    const chars = getCharactersData();
+    for (const c of chars) {
+      const on = c.selected;
+      const b = button('tw-wd-item tw-wd-char', '');
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.classList.toggle('is-on', on);
+      const art = h('span', 'tw-wd-art');
+      art.append(h('span', 'tw-wd-ic', c.icon));
+      const txt = h('span', 'tw-wd-char-t');
+      txt.append(h('span', 'tw-wd-name', c.name));
+      if (c.desc) txt.append(h('span', 'tw-wd-desc', c.desc));
+      b.append(art, txt);
+      if (on) b.append(h('span', 'tw-wd-check', '✓'));
+      if (bump && on) b.classList.add('is-bump');
+      b.setAttribute('aria-label', `${c.name}${on ? '（目前的角色）' : ''}`);
+      b.addEventListener('click', () => {
+        if (on) {
+          retrigger(b, 'is-bump');
+          wdShowHint(`✓ 現在就是「${c.name}」喔`, 'ok');
+          return;
+        }
+        sfx('select');
+        try { if (cb.onSelectCharacter) cb.onSelectCharacter(c.id); } catch { /* 忽略 */ }
+        renderWardrobe(true);
+        wdRevealOn();
+        wdShowHint(`✨ 變身成「${c.name}」了！`, 'ok');
+      });
+      wdGrid.append(b);
+    }
+    if (!chars.length) wdGrid.append(h('p', 'tw-wd-empty', '目前沒有其他角色。'));
+  }
   function renderWardrobe(bump) {
-    const { slots, items, equipped } = getWardrobeData();
+    const data = getWardrobeData();
+    const { items, equipped } = data;
+    const slots = cb.getCharacters ? [{ id: 'character', name: '角色', isChar: true }, ...data.slots.filter((x) => x.id !== 'character')] : data.slots;
     if (!slots.some((s) => s.id === wdSlot)) wdSlot = slots[0].id;
+    wd.card.classList.toggle('is-char', wdSlot === 'character');
     // 分頁
     wdTabs.textContent = '';
     let total = 0, have = 0;
     for (const s of slots) {
-      const own = items.filter((it) => it.slot === s.id);
-      const un = own.filter((it) => it.unlocked).length;
-      total += own.length; have += un;
+      let nText;
+      if (s.isChar) {
+        nText = `${getCharactersData().length} 位`;
+      } else {
+        const own = items.filter((it) => it.slot === s.id);
+        const un = own.filter((it) => it.unlocked).length;
+        total += own.length; have += un;
+        nText = `${un}/${own.length}`;
+      }
       const t = button('tw-wd-tab', '');
       t.setAttribute('role', 'tab');
       t.setAttribute('aria-selected', s.id === wdSlot ? 'true' : 'false');
       const top = h('span', 'tw-wd-tab-top');
       top.append(h('span', 'tw-wd-tab-ic', SLOT_ICON[s.id] || '✨'), h('span', 'tw-wd-tab-l', s.name || s.id));
-      t.append(top, h('span', 'tw-wd-tab-n', `${un}/${own.length}`));
+      t.append(top, h('span', 'tw-wd-tab-n', nText));
       t.addEventListener('click', () => {
         if (wdSlot === s.id) return;
         sfx('ui');
@@ -1767,6 +1892,7 @@ export function createUI({ root, audio, callbacks = {} }) {
     wdCount.textContent = total ? `${have}/${total}` : '';
     // 物品
     wdGrid.textContent = '';
+    if (wdSlot === 'character') { renderCharacterGrid(bump); return; }
     const list = items.filter((it) => it.slot === wdSlot);
     const eq = equipped[wdSlot] ?? null;
     if (NONE_ITEM[wdSlot] && !list.some((it) => it.id === null || it.id === 'none')) {
@@ -1808,6 +1934,15 @@ export function createUI({ root, audio, callbacks = {} }) {
     }
     if (!list.length) wdGrid.append(h('p', 'tw-wd-empty', '這裡還沒有東西喔。'));
   }
+  /** 目前穿戴／選中的那一格（含右上角勾勾）在畫面外時，捲到看得到 */
+  function wdRevealOn() {
+    const on = wdGrid.querySelector('.tw-wd-item.is-on');
+    if (!on) return;
+    const top = on.offsetTop - wdGrid.offsetTop - 10;
+    const bottom = top + on.offsetHeight + 20;
+    if (top < wdGrid.scrollTop) wdGrid.scrollTop = Math.max(0, top);
+    else if (bottom > wdGrid.scrollTop + wdGrid.clientHeight) wdGrid.scrollTop = bottom - wdGrid.clientHeight;
+  }
   function showWardrobe() {
     if (!started || current || !cb.getWardrobe) return;
     openModal('wardrobe', () => {
@@ -1816,6 +1951,7 @@ export function createUI({ root, audio, callbacks = {} }) {
       wdHint.classList.remove('is-on');
       renderWardrobe();
       wdGrid.scrollTop = 0;
+      requestAnimationFrame(wdRevealOn);
     });
     try { if (cb.onWardrobeOpen) cb.onWardrobeOpen(true); } catch { /* 忽略 */ }
   }
@@ -1830,9 +1966,17 @@ export function createUI({ root, audio, callbacks = {} }) {
   const jn = makeModal('journal', 'tw-jn-card');
   const jnHead = h('div', 'tw-card-head tw-jn-head');
   const jnClose = button('tw-close', '✕', '關閉');
-  jnHead.append(h('h2', 'tw-card-title', '📖 圖鑑'), jnClose);
+  const jnTitleWrap = h('div', 'tw-wd-titlewrap');
+  const jnCount = h('span', 'tw-wd-count tw-jn-count', '');
+  jnTitleWrap.append(h('h2', 'tw-card-title', '📖 圖鑑'), jnCount);
+  jnHead.append(jnTitleWrap, jnClose);
+  // v4：分頁「知識」「地形」（有地形資料才顯示）
+  const jnTabs = h('div', 'tw-wd-tabs tw-jn-tabs');
+  jnTabs.setAttribute('role', 'tablist');
+  jnTabs.hidden = true;
   const jnBody = h('div', 'tw-jn-body');
-  jn.card.append(jnHead, jnBody);
+  jn.card.append(jnHead, jnTabs, jnBody);
+  let jnTab = 'facts';
   let reopenJournal = false;
   let reopenTimer = 0;
   jnClose.addEventListener('click', () => { sfx('ui'); closeJournal(); });
@@ -1848,19 +1992,50 @@ export function createUI({ root, audio, callbacks = {} }) {
     if (sub) s.append(sub);
     return s;
   }
+  function jnTabBtn(id, icon, label, n) {
+    const t = button('tw-wd-tab', '');
+    t.setAttribute('role', 'tab');
+    t.setAttribute('aria-selected', id === jnTab ? 'true' : 'false');
+    const top = h('span', 'tw-wd-tab-top');
+    top.append(h('span', 'tw-wd-tab-ic', icon), h('span', 'tw-wd-tab-l', label));
+    t.append(top, h('span', 'tw-wd-tab-n', n));
+    t.addEventListener('click', () => {
+      if (jnTab === id) return;
+      sfx('ui');
+      jnTab = id;
+      renderJournal();
+      jnBody.scrollTop = 0;
+    });
+    jnTabs.append(t);
+  }
   function renderJournal() {
     let j = null;
     try { j = cb.getJournal ? cb.getJournal() : null; } catch { j = null; }
     j = j || {};
     const facts = Array.isArray(j.facts) ? j.facts.filter((f) => f && typeof f === 'object') : [];
+    const lands = Array.isArray(j.landforms) ? j.landforms.filter((f) => f && typeof f === 'object') : [];
     jnBody.textContent = '';
+    const collected = facts.filter((f) => f.collected).length;
+    const landHave = lands.filter((f) => f.collected).length;
+    // ---- 分頁 ----
+    jnTabs.textContent = '';
+    jnTabs.hidden = !lands.length;
+    if (!lands.length) jnTab = 'facts';
+    if (lands.length) {
+      jnTabBtn('facts', '📚', '知識', `${collected}/${facts.length || 12}`);
+      jnTabBtn('lands', LANDFORM_ICON, '地形', `${landHave}/${lands.length}`);
+    }
+    jnCount.textContent = lands.length ? `${LANDFORM_ICON} 地形 ${landHave}/${lands.length}` : '';
+    jnCount.hidden = !lands.length;
+    jn.card.classList.toggle('has-tabs', !!lands.length);
     // ---- 統計 ----
     const starsN = typeof j.stars === 'number' ? j.stars : (stars || 0);
     if (typeof j.stars === 'number') setStars(j.stars, false);
+    const quizTotal = Math.max(lastProgress.totalStars || 0, (facts.length || 12) + lands.length);
+    if (jnTab === 'lands') { renderLandforms(lands, starsN, quizTotal); return; }
     const stats = h('div', 'tw-jn-stats');
-    const collected = facts.filter((f) => f.collected).length;
     stats.append(jnStat('📚', '已收集知識', `${collected}/${facts.length || 12}`));
-    stats.append(jnStat('⭐', '測驗星星', `${starsN}/${facts.length || 12}`));
+    stats.append(jnStat('⭐', '測驗星星', `${starsN}/${quizTotal}`));
     const ac = j.acorns || {};
     stats.append(jnStat('🌰', '金色橡實', `${ac.found | 0}/${ac.total || 6}`));
     const best = typeof j.bestTime === 'number' && isFinite(j.bestTime) && j.bestTime > 0 ? j.bestTime : null;
@@ -1902,6 +2077,47 @@ export function createUI({ root, audio, callbacks = {} }) {
       jnBody.append(sec);
     }
     if (!facts.length) jnBody.append(h('p', 'tw-wd-empty', '還沒有任何紀錄，去找知識晶石吧！'));
+  }
+  /** v4：圖鑑「地形」分頁 */
+  function renderLandforms(lands, starsN, quizTotal) {
+    const have = lands.filter((f) => f.collected).length;
+    const right = lands.filter((f) => f.collected && f.quiz === 'correct').length;
+    const stats = h('div', 'tw-jn-stats is-three');
+    stats.append(jnStat(LANDFORM_ICON, '已發現地形', `${have}/${lands.length}`));
+    stats.append(jnStat('✅', '地形測驗答對', `${right}/${lands.length}`));
+    stats.append(jnStat('⭐', '測驗星星', `${starsN}/${quizTotal}`));
+    jnBody.append(stats);
+    if (have < lands.length) {
+      const tip = h('div', 'tw-jn-tip');
+      tip.append(h('span', 'tw-jn-tip-ic', '🪵'), h('span', '', '走近地形旁邊的知識牌，按「看看」就能把它收進圖鑑！'));
+      jnBody.append(tip);
+    }
+    const grid = h('div', 'tw-jn-grid tw-jn-lands');
+    // 已發現的排前面（原本順序不變），未發現的小卡片集中在後面
+    const sorted = [...lands.filter((f) => f.collected), ...lands.filter((f) => !f.collected)];
+    for (const f of sorted) {
+      const b = BIOMES.find((x) => x.id === f.biome);
+      const where = b ? `${b.icon} ${b.name}` : (f.biomeName || '');
+      grid.append(landformEntry(f, where));
+    }
+    jnBody.append(grid);
+  }
+  function landformEntry(f, where) {
+    if (!f.collected) {
+      const e = h('article', 'tw-jn-entry is-missing is-land');
+      const body = h('div', 'tw-jn-eb');
+      body.append(h('div', 'tw-jn-title', '？？？'), h('div', 'tw-jn-where', where ? `未發現的地形 · ${where}` : '未發現的地形'));
+      e.append(h('div', 'tw-jn-ic', '❔'), body);
+      return e;
+    }
+    const e = journalEntry({ ...f, icon: f.icon || LANDFORM_ICON, title: f.title || f.name || '' }, '');
+    e.classList.add('is-land');
+    const tag = h('div', 'tw-jn-landtag');
+    if (f.name && f.title && f.title !== f.name) tag.append(h('b', '', f.name));
+    if (where) tag.append(h('span', '', where));
+    const body = e.querySelector('.tw-jn-eb');
+    body.insertBefore(tag, body.firstChild);
+    return e;
   }
   function journalEntry(f, biomeName) {
     const e = h('article', `tw-jn-entry ${f.collected ? 'is-have' : 'is-missing'}`);
@@ -2140,6 +2356,141 @@ export function createUI({ root, audio, callbacks = {} }) {
     root.classList.toggle('is-night', !!on);
   }
 
+  // =====================================================================
+  // ================= v4：選角畫面（下方卡片，上方留給 3D 角色） =================
+  // =====================================================================
+  const sel = makeModal('select', 'tw-sel-card');
+  sel.m.classList.add('tw-modal-sel');
+  sel.m.setAttribute('aria-label', '選擇你的旅人');
+  const selHead = h('div', 'tw-sel-head');
+  const selTitle = h('h2', 'tw-sel-title', '選擇你的旅人');
+  const selKeys = h('div', 'tw-sel-keys');
+  selKeys.setAttribute('aria-hidden', 'true');
+  selKeys.append(h('kbd', 'tw-kbd', '←'), h('kbd', 'tw-kbd', '→'), h('span', '', '切換'), h('kbd', 'tw-kbd', 'Enter'), h('span', '', '決定'));
+  selHead.append(selTitle);
+  const selMain = h('div', 'tw-sel-main');
+  const selPrev = button('tw-sel-arrow is-prev', '', '上一位');
+  selPrev.innerHTML = CHEVRON_SVG;
+  const selNext = button('tw-sel-arrow is-next', '', '下一位');
+  selNext.innerHTML = CHEVRON_SVG;
+  const selStage = h('div', 'tw-sel-stage');
+  selStage.setAttribute('aria-live', 'polite');
+  const selSlide = h('div', 'tw-sel-slide');
+  const selIcWrap = h('div', 'tw-sel-icwrap');
+  const selIc = h('span', 'tw-sel-ic', '🧒');
+  selIcWrap.append(selIc);
+  const selTxt = h('div', 'tw-sel-txt');
+  const selName = h('div', 'tw-sel-name', '');
+  const selDesc = h('p', 'tw-sel-desc', '');
+  selTxt.append(selName, selDesc);
+  selSlide.append(selIcWrap, selTxt);
+  selStage.append(selSlide);
+  selMain.append(selPrev, selStage, selNext);
+  const selFoot = h('div', 'tw-sel-foot');
+  const selDots = h('div', 'tw-sel-dots');
+  selDots.setAttribute('role', 'tablist');
+  selDots.setAttribute('aria-label', '角色');
+  const selGo = button('tw-btn tw-btn-primary tw-sel-go', '就決定是你了！');
+  selFoot.append(selDots, selGo, selKeys);
+  sel.card.append(selHead, selMain, selFoot);
+
+  const SEL = { list: [], idx: 0, resolve: null, swipedAt: 0, sw: null };
+  function selRender(dir) {
+    const c = SEL.list[SEL.idx];
+    if (!c) return;
+    selIc.textContent = c.icon;
+    selName.textContent = c.name;
+    selDesc.textContent = c.desc || '';
+    selDesc.hidden = !c.desc;
+    sel.card.dataset.char = String(c.id);
+    [...selDots.children].forEach((d, i) => {
+      d.classList.toggle('is-on', i === SEL.idx);
+      d.setAttribute('aria-selected', i === SEL.idx ? 'true' : 'false');
+    });
+    selPrev.hidden = selNext.hidden = SEL.list.length < 2;
+    selDots.hidden = SEL.list.length < 2;
+    if (dir) {
+      selSlide.classList.remove('is-in-next', 'is-in-prev');
+      retrigger(selSlide, dir > 0 ? 'is-in-next' : 'is-in-prev');
+      retrigger(dir > 0 ? selNext : selPrev, 'is-nudge');
+    }
+  }
+  function selSet(i, dir) {
+    const n = SEL.list.length;
+    if (current !== 'select' || n < 1) return;
+    i = ((i % n) + n) % n;
+    if (i === SEL.idx) return;
+    SEL.idx = i;
+    sfx('select');
+    selRender(dir || 1);
+    try { if (cb.onPreviewCharacter) cb.onPreviewCharacter(SEL.list[i].id); } catch { /* 忽略 */ }
+  }
+  const selStep = (d) => selSet(SEL.idx + d, d);
+  const selSwiped = () => performance.now() - SEL.swipedAt < 350;
+  selPrev.addEventListener('click', (e) => { e.stopPropagation(); selPrev.blur(); if (!selSwiped()) selStep(-1); });
+  selNext.addEventListener('click', (e) => { e.stopPropagation(); selNext.blur(); if (!selSwiped()) selStep(1); });
+  function selConfirm() {
+    if (current !== 'select' || !guardOk() || selSwiped()) return;
+    const c = SEL.list[SEL.idx];
+    sfx('ui');
+    const r = SEL.resolve;
+    SEL.resolve = null;
+    try { document.activeElement && sel.m.contains(document.activeElement) && document.activeElement.blur(); } catch { /* 忽略 */ }
+    closeModal('select');
+    if (r) r(c ? c.id : undefined);
+  }
+  selGo.addEventListener('click', selConfirm);
+  forced.select = () => { const r = SEL.resolve; SEL.resolve = null; const c = SEL.list[SEL.idx]; if (r) r(c ? c.id : undefined); };
+  // 左右滑動（整個畫面都可以滑，包括上方的角色）
+  sel.m.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    SEL.sw = { id: e.pointerId, x: e.clientX, y: e.clientY };
+  });
+  const selSwipeEnd = (e) => {
+    const sw = SEL.sw;
+    if (!sw || sw.id !== e.pointerId) return;
+    SEL.sw = null;
+    if (e.type === 'pointercancel') return;
+    const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+      selStep(dx < 0 ? 1 : -1);
+      SEL.swipedAt = performance.now();
+    }
+  };
+  sel.m.addEventListener('pointerup', selSwipeEnd);
+  sel.m.addEventListener('pointercancel', selSwipeEnd);
+
+  function showCharacterSelect({ characters, current: cur } = {}) {
+    return new Promise((resolve) => {
+      let list = normChars(characters);
+      if (!list.length) list = normChars(CHAR_IDS.map((id) => ({ id })));
+      // 從開始畫面直接接手（不必等 hideStart）
+      if (current === 'start') closeModal('start');
+      openModal('select', () => {
+        SEL.list = list;
+        // 已經開著又被呼叫：兩個 Promise 都用同一個結果結束
+        const prev = SEL.resolve;
+        SEL.resolve = prev ? (v) => { prev(v); resolve(v); } : resolve;
+        SEL.sw = null;
+        SEL.swipedAt = 0;
+        let i = list.findIndex((c) => c.id === cur);
+        if (i < 0) i = Math.max(0, list.findIndex((c) => c.selected));
+        SEL.idx = i;
+        selDots.textContent = '';
+        list.forEach((c, k) => {
+          const d = button('tw-sel-dot', '', c.name);
+          d.setAttribute('role', 'tab');
+          d.append(h('i'));
+          d.addEventListener('click', (e) => { e.stopPropagation(); d.blur(); if (!selSwiped()) selSet(k, k > SEL.idx ? 1 : -1); });
+          selDots.append(d);
+        });
+        selKeys.hidden = mqCoarse.matches;
+        selRender(0);
+        try { if (cb.onPreviewCharacter && list[i]) cb.onPreviewCharacter(list[i].id); } catch { /* 忽略 */ }
+      }, () => resolve(cur));
+    });
+  }
+
   // ================= 鍵盤 =================
   let armedKey = null;
   const CLOSE_KEYS = new Set(['Enter', 'NumpadEnter', 'Escape', 'Space']);
@@ -2169,6 +2520,26 @@ export function createUI({ root, audio, callbacks = {} }) {
         return;
       }
       if (e.key === 'Escape' || code === 'Tab') { if (e.key === 'Escape') e.preventDefault(); }
+      return;
+    }
+    if (current === 'select') {
+      if (code === 'ArrowLeft' || code === 'KeyA' || code === 'ArrowRight' || code === 'KeyD') {
+        e.preventDefault();
+        selStep(code === 'ArrowLeft' || code === 'KeyA' ? -1 : 1);
+        return;
+      }
+      if (/^(Digit|Numpad)[1-9]$/.test(code) && !e.repeat) {
+        const k = +code.slice(-1) - 1;
+        if (k < SEL.list.length) { e.preventDefault(); selSet(k, k > SEL.idx ? 1 : -1); }
+        return;
+      }
+      // Enter / 空白鍵：按下上膛、放開才決定（開始畫面按下的 Enter 不會直接跳過選角）
+      if (e.key === 'Enter' || code === 'NumpadEnter' || code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        if (!e.repeat) armedKey = code || e.key;
+        return;
+      }
+      if (e.key === 'Escape') e.preventDefault();
       return;
     }
     if (current === 'fragment') {
@@ -2261,6 +2632,7 @@ export function createUI({ root, audio, callbacks = {} }) {
     else if (current === 'quiz') closeQuiz();
     else if (current === 'unlock') closeUnlock(false);
     else if (current === 'dialogue') { e.preventDefault(); dlgAdvance(true); }
+    else if (current === 'select') { e.preventDefault(); selConfirm(); }
   });
 
   refreshMute();
@@ -2297,5 +2669,7 @@ export function createUI({ root, audio, callbacks = {} }) {
     showTrialResult,
     setStars: (n) => setStars(n, started),
     setNight,
+    // v4
+    showCharacterSelect,
   };
 }

@@ -1,5 +1,6 @@
 // 分身 5：音效。全部用 Web Audio API 即時合成，不載入任何音檔。
 // v3：夜晚環境音（蟲鳴、貓頭鷹、夜風）與柔和的夜晚音樂；測驗、解鎖、換裝、橡實、計時挑戰音效。
+// v4：選角切換「咻」（'select'）、地形知識牌木頭敲擊聲（'sign'）。
 import { SAVE_KEY } from './config.js';
 
 const MUTE_KEY = SAVE_KEY + ':muted';
@@ -489,6 +490,28 @@ export function createAudio() {
       [72, 76, 79, 84].forEach((m) => tone(mtof(m) * rand(0.998, 1.002), t + 0.72, 1.6, { type: 'sine', gain: 0.05, attack: 0.03 }));
       for (let i = 0; i < 6; i++) tone(mtof(96 + pick(PENTA)), t + 0.8 + i * 0.09, 0.3, { type: 'sine', gain: 0.025 });
       duck(0.15, 1.8, 1.6);
+    },
+    // ---- v4 ----
+    select() {
+      // 選角切換：輕柔的「咻」+ 一聲小木琴
+      const t = ctx.currentTime + 0.004;
+      noise(t, 0.22, { filterType: 'bandpass', freq: 500, freqEnd: 2600, Q: 0.9, gain: 0.05, attack: 0.06 });
+      const m = 76 + pick([0, 2, 4, 7]);
+      tone(mtof(m), t + 0.07, 0.22, { type: 'triangle', gain: 0.08, attack: 0.003 });
+      tone(mtof(m + 12), t + 0.07, 0.12, { type: 'sine', gain: 0.025, attack: 0.003 });
+    },
+    sign() {
+      // 地形知識牌：木頭「叩叩」兩聲 + 一聲溫柔的小鈴
+      const t = ctx.currentTime + 0.006;
+      [0, 0.13].forEach((dt, i) => {
+        const f = (i ? 340 : 400) * rand(0.97, 1.03);
+        tone(f, t + dt, 0.09, { type: 'sine', gain: 0.2, freqEnd: f * 0.72, glide: 0.07, attack: 0.002 });
+        tone(f * 2.76, t + dt, 0.04, { type: 'triangle', gain: 0.03, attack: 0.001 });
+        noise(t + dt, 0.035, { filterType: 'bandpass', freq: 1400, Q: 2.2, gain: 0.07, attack: 0.001 });
+      });
+      tone(mtof(84), t + 0.3, 0.7, { type: 'sine', gain: 0.045, attack: 0.01 });
+      tone(mtof(91), t + 0.36, 0.55, { type: 'sine', gain: 0.025, attack: 0.01 });
+      duck(0.6, 0.3, 0.8);
     },
   };
   let beatTick = false;
