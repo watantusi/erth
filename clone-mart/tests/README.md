@@ -39,3 +39,11 @@ The suite reads all content from the game at run time: `RECIPES`, `PLANS`, `LEVE
 | edge | Pause during the countdown. Quitting to the menu, and results → next-level prep. Input during results. Switching character while holding or chopping. Switching to a clone that is still spawning. Two characters grabbing the same station in one frame. Dropping onto a fire. An extinguisher left on a station that catches fire. A clone's machine breaks or its order expires mid-cook. Restarting mid-fire. Hot reload snapshot. |
 
 The hook must keep `sim`, `startLevel`, `skipCountdown`, `botOwner`, `G`, `orders`, `SLOTS`, `SLOT`, `staff`, `customers`, `spills`, `LEVELS`, `RECIPES`, `ROLES`, `ROLE`, `ITEMS`, `PLANS`, `APPL`, `MAX_FAILS_ENDLESS`, `scene`, `pickables`, `grab`, `useTick`, `findTarget`, `switchChar`, `ignite`, `spawnSpill`, `breakRandomMachine`, `showLevels`, `showPrep`, `player` and `owner`. The suite also uses `window.__cloneMartUX` (`camera`, `project`) and `window.__cloneMartNav.walkXZ`.
+
+## Local co-op checks (`coop.js`)
+
+```sh
+NODE_PATH=$(npm root -g) THREE_JS=/path/three.min.js node clone-mart/tests/coop.js
+```
+
+A separate desktop + iPhone run for 👥 雙人同樂 (about 3 minutes). It uses real keyboard events for both players at once (WASD + arrows, Space / Enter, holding E and /, Q and "."), a stubbed `navigator.getGamepads` with two pads, and `window.__cloneMartCoop`. It checks the prep toggle (always on desktop; on touch only with 2 pads), 2P taking a clone that leaves the AI loop, 2P delivering a coffee while 1P delivers a drink, the 1P / 2P line on the receipt, switching without landing on the other player, the empty-team partner, the camera keeping both players on screen at opposite corners when zoomed in, and co-op off behaving exactly like single player.

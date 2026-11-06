@@ -393,6 +393,24 @@ body.pad button:focus{outline:4px solid var(--sky);outline-offset:3px}
   #title .howto{grid-template-columns:1fr 1fr;column-gap:12px}
   #title .howto li{font-size:13px}
 }
+/* ---------- local co-op: 1P / 2P badges and tags, 2P target label, 👥 toggle on the prep sheet ---------- */
+.pn{display:inline-block;font-family:var(--f-display);font-style:normal;font-weight:400;font-size:10px;line-height:1.45;border-radius:5px;padding:0 4px;border:1.5px solid var(--ink)}
+.pn.p1{background:var(--sign);color:var(--ink)} .pn.p2{background:var(--sky);color:#fff}
+.tag.p1 .tx,.tag.p2 .tx{font-family:var(--f-display);font-weight:400;font-size:12px;border:2px solid var(--ink);padding:0 6px}
+.tag.p1 .tx{background:var(--sign);color:var(--ink)} .tag.p2 .tx{background:var(--sky);color:#fff}
+#tlabel2{position:absolute;left:0;top:0;white-space:nowrap;pointer-events:none;font-size:12px;font-weight:900;line-height:1.25;color:var(--ink);background:rgba(240,248,255,.95);
+  border:2px solid var(--sky);border-radius:9px;padding:1px 7px;box-shadow:0 2px 0 rgba(15,29,51,.45);will-change:transform;display:flex;gap:6px;align-items:center}
+#tlabel2.dim{background:rgba(15,29,51,.78);color:rgba(255,255,255,.85);border-color:rgba(77,163,255,.6);box-shadow:none}
+#tlabel2 kbd{font:inherit;font-size:10px;background:var(--sky);color:#fff;border-radius:5px;padding:0 4px;line-height:1.4}
+#tlabel2 .sep{opacity:.35}
+#prepCoop{margin-top:12px}
+#prepCoop .coopbtn{width:100%}
+#prepCoop .coopbtn > span{display:flex;align-items:center;gap:8px}
+#prepCoop .sw{font-style:normal;font-size:11px;border-radius:999px;padding:0 8px;background:#e3dccb;color:var(--ink)}
+#prepCoop .coopbtn.on{background:var(--sky);border-color:var(--ink)} #prepCoop .coopbtn.on .sw{background:var(--sign)}
+#prepCoop .coopkeys{margin-top:6px;font-size:12.5px;line-height:1.8;background:#eaf4ff;border-radius:10px;padding:6px 10px;color:var(--ink)}
+.receipt .r.coopres{font-size:14px}
+@media (max-height:500px) and (min-width:560px){ #prepCoop{grid-column:1/-1} }
 </style>
 </head>
 <body>
@@ -3266,8 +3284,10 @@ const fwdPress = new Map();                  // canvas pointers that landed just
 addEventListener('keydown', e => {
   const repeat = e.repeat && keys[e.code];
   keys[e.code] = true;
-  lastInput = 'key';
+  const p2key = coopOn() && P2_KEYS.has(e.code);   // couch co-op: the arrow / numpad side of the keyboard belongs to 2P
+  if (p2key) PS[1].last = 'key'; else lastInput = 'key';
   if (PLAYING() && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','Tab'].includes(e.code)) e.preventDefault();
+  if (PLAYING() && coopOn() && (p2key || P1_KEYS.has(e.code))) e.preventDefault();   // 2P's Enter / / / Ctrl combos must not reach the page
   if (repeat) return;
   if (e.code === 'Escape' || e.code === 'KeyP'){ if (G.state === 'play' || G.state === 'countdown') openPanel('pause'); else if (G.state === 'paused') closePanels(); }
   if (e.code === 'KeyF' && !e.ctrlKey && !e.metaKey && !e.altKey) toggleFullscreen();
@@ -3275,6 +3295,8 @@ addEventListener('keydown', e => {
   if (PLAYING()){
     if (e.code === 'Space' || e.code === 'KeyJ') actGrab();
     if (e.code === 'Tab' || e.code === 'KeyQ') switchChar(e.shiftKey ? -1 : 1);
+    if (p2key && P2_GRAB.has(e.code)) actGrab(1);
+    if (p2key && P2_SWAP.has(e.code)) switchChar(1, 1);
   }
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
@@ -3436,26 +3458,47 @@ function aimAssist(s){
   if (best !== null) a.rot = best;
 }
 // auto-use (touch / gamepad): standing still and empty-handed at the board with fruit on it chops without holding 🔪
-function autoUseOK(s){
-  if (lastInput === 'key' || s.hold || s.agent.path.length || s.pending || s.slip) return false;
+function autoUseOK(s, li){
+  if ((li || lastInput) === 'key' || s.hold || s.agent.path.length || s.pending || s.slip) return false;
   const t = findTarget(s);
   return !!(t && t.kind === 'board' && t.item && t.item.type === 'fruit' && !t.fire);
 }
-let autoUsing = false;
+let autoUsing = false;   // 1P's auto-use (2P's lives in PS[1].autoUsing)
 
+// what one human is pressing: k = 0 → 1P (WASD + arrows + joystick + first pad; arrows go to 2P in co-op), k = 1 → 2P (arrows + second pad)
+function slotInput(k){
+  let x = 0, z = 0, use = false;
+  if (!k){
+    const ar = !coopOn();
+    if (keys.KeyW || (ar && keys.ArrowUp)) z -= 1;
+    if (keys.KeyS || (ar && keys.ArrowDown)) z += 1;
+    if (keys.KeyA || (ar && keys.ArrowLeft)) x -= 1;
+    if (keys.KeyD || (ar && keys.ArrowRight)) x += 1;
+    if (joy.active){ x += joy.dx; z += joy.dy; }
+    if (pad.on){ x += pad.x; z += pad.y; }
+    use = !!(touchUse || keys.KeyE || keys.KeyK || (pad.on && pad.use));
+  } else {
+    if (keys.ArrowUp) z -= 1;
+    if (keys.ArrowDown) z += 1;
+    if (keys.ArrowLeft) x -= 1;
+    if (keys.ArrowRight) x += 1;
+    if (pad2.on){ x += pad2.x; z += pad2.y; }
+    use = [...P2_USE].some(c => keys[c]) || (pad2.on && pad2.use);
+  }
+  return {x, z, use};
+}
 function updatePlayer(dt){
-  const s = player, a = s.agent;
-  let ix = 0, iz = 0;
-  if (keys.KeyW || keys.ArrowUp) iz -= 1;
-  if (keys.KeyS || keys.ArrowDown) iz += 1;
-  if (keys.KeyA || keys.ArrowLeft) ix -= 1;
-  if (keys.KeyD || keys.ArrowRight) ix += 1;
-  if (joy.active){ ix += joy.dx; iz += joy.dy; }
-  if (pad.on){ ix += pad.x; iz += pad.y; }
+  updatePlayerSlot(0, dt);
+  if (coopOn()) withPlayer(coop.p2, () => updatePlayerSlot(1, dt));
+}
+// one human-controlled character for one step: k = 0 → 1P (`player`), k = 1 → 2P (`coop.p2`)
+function updatePlayerSlot(k, dt){
+  const s = k ? coop.p2 : player, a = s.agent, inp = slotInput(k), li = k ? PS[1].last : lastInput;
+  let ix = inp.x, iz = inp.z;
   if (ix || iz){ const w = screenDirToWorld(ix, iz); ix = w.x; iz = w.z; }   // screen-relative under any camera yaw
   const len = Math.hypot(ix,iz);
   let manual = false;
-  a.speed = s === owner ? 4.4 : 3.4;
+  a.speed = (s === owner || s.coopPartner) ? 4.4 : 3.4;
   if (s.slipCD > 0) s.slipCD -= dt;
   if (s.slip){
     // sliding on a wet floor: momentum carries you, input is ignored
@@ -3491,15 +3534,157 @@ function updatePlayer(dt){
     if (slotDist(sl, a.pos) <= sl.reach + 0.2){
       const r = slotFaceRot(sl, a.pos);
       a.rot = r; a.g.rotation.y = r;
-      const chopHere = lastInput !== 'key' && !s.hold && sl.kind === 'board' && sl.item && sl.item.type === 'fruit';   // auto-use chops it instead of picking it back up
-      if (!chopHere && grab(s, sl)) haptic(8);
+      const chopHere = li !== 'key' && !s.hold && sl.kind === 'board' && sl.item && sl.item.type === 'fruit';   // auto-use chops it instead of picking it back up
+      if (!chopHere && humanGrab(k, s, sl)) haptic(8);
     }
   } else if (manual) s.aimT = 0.3;   // aim assist runs briefly after you stop walking
   else if (s.aimT > 0 && !a.path.length && !s.pending){ s.aimT -= dt; aimAssist(s); }
-  const held = touchUse || keys.KeyE || keys.KeyK || (pad.on && pad.use);
-  autoUsing = !held && !manual && autoUseOK(s);
-  s.prog = (held || autoUsing) ? useTick(s, dt) : null;
+  const held = inp.use;
+  const au = !held && !manual && autoUseOK(s, li);
+  if (k) PS[1].autoUsing = au; else autoUsing = au;
+  s.prog = (held || au) ? useTick(s, dt) : null;
 }
+
+/* ---------------- local co-op: two humans on one device (couch co-op) ----------------
+   👥 雙人同樂 on the prep screen. 1P keeps `player` (WASD · Space/J grab · E/K hold to use · Q/Tab switch, touch, first gamepad).
+   2P drives `coop.p2`: a clone from the team (or a 2P partner when the team is empty) with the arrows · Enter / 右Shift / Numpad0 grab ·
+   / / 右Ctrl / Numpad1 hold to use · . / Numpad2 switch, or the second gamepad. 2P never runs AI and is left out of 1P's switch cycle.
+   Score is shared; coop.del counts each human's deliveries for the receipt. Off = everything exactly as in single player. */
+const coop = {want:false, on:false, p2:null, del:[0, 0], ring:null, tl:null, el:null, mid:{x:0, z:0}};
+const PS = [{last:'key', autoUsing:false}, {last:'key', autoUsing:false}];   // per-human input state; 1P's live in lastInput / autoUsing
+const P1_KEYS = new Set(['KeyW','KeyA','KeyS','KeyD','Space','KeyJ','KeyE','KeyK','KeyQ']);
+const P2_GRAB = new Set(['Enter','NumpadEnter','ShiftRight','Numpad0']);
+const P2_USE = new Set(['ControlRight','Numpad1','Slash']);
+const P2_SWAP = new Set(['Numpad2','Period']);
+const P2_KEYS = new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight', ...P2_GRAB, ...P2_USE, ...P2_SWAP]);
+const pad2 = {on:false, x:0, y:0, use:false, prev:[]};   // the second gamepad (2P)
+function coopOn(){ return coop.on && !!coop.p2 && !G.demo && staff.includes(coop.p2); }
+function isHuman(s){ return s === player || (coopOn() && s === coop.p2); }
+// run fn as if s were `player`, so feedback meant for "you" (nope messages, tips, full-volume SFX) also reaches 2P
+function withPlayer(s, fn){ const p = player; player = s; try { return fn(); } finally { player = p; } }
+// grab for a human slot, counting the orders it completes (per-player line on the receipt)
+function humanGrab(k, s, sl){
+  const d0 = G.stats ? G.stats.delivered : 0, ok = grab(s, sl);
+  if (G.stats && G.stats.delivered > d0) coop.del[k ? 1 : 0] += G.stats.delivered - d0;
+  return ok;
+}
+function padCount(){ let n = 0; for (const g of padList()) if (g && g.connected !== false && g.buttons && g.buttons.length) n++; return n; }
+// a keyboard (desktop) or two gamepads make two-player play plausible
+function coopAvailable(){ return !isTouch || padCount() >= 2; }
+// level start: hand 2P a clone (not the cleaner if there is a cook), or bring a 2P partner when nobody came along
+function coopSetup(){
+  coop.del = [0, 0]; coop.p2 = null; pad2.use = false; PS[1].autoUsing = false; PS[1].last = isTouch ? 'pad' : 'key';
+  coop.on = coop.want && coopAvailable();
+  if (!coop.on) return;
+  const clones = staff.filter(s => s !== owner && ROLE[s.role]);
+  let s = clones.find(c => c.role !== 'cleaner') || clones[0];
+  if (!s){
+    s = makeStaff('partner', makeChar({shirt:0x5d8de8, pants:0x2f3b52, skin:0xe8b48f, hair:0x4a3020, apron:0x4da3ff, cap:0x4da3ff, ring:0x4da3ff, scale:1.12}), 4.4, 1);
+    s.coopPartner = true;
+    const p = randomNear({x:3.0, z:2.4}); s.agent.pos.set(p.x, 0, p.z); s.agent.face(-Math.PI/2);
+    staff.push(s); applyCosmetics(s);
+  }
+  aiReset(s); s.agent.path.length = 0; s.prog = null; s.pending = null;
+  if (s.spawnFx > 0){ s.spawnFx = 0; s.ch.g.scale.setScalar(1.12); }
+  coop.p2 = s;
+  showHint('👥 雙人同樂！1P：WASD 走路、空白鍵拿放、E 長按、Q 換人。2P：方向鍵走路、Enter 拿放、/ 長按、. 換人。');
+}
+// 2P's gamepad: same mapping as 1P's (A grab · X/B hold · LB/RB switch · Start pause · Back 看全店)
+function coopPad(gp){
+  if (!gp){
+    if (pad2.on){ pad2.on = false; pad2.x = pad2.y = 0; pad2.use = false; if (coopOn()) toast('🎮 2P 手把已中斷'); if (!screens.prep.hidden) renderCoopToggle(); }
+    return;
+  }
+  const b = gp.buttons.map(x => !!x && (x.pressed || x.value > 0.5));
+  if (!pad2.on){ pad2.on = true; pad2.prev = b; if (coopOn()) toast('🎮 2P 手把已連接', 'good'); if (!screens.prep.hidden) renderCoopToggle(); }
+  const was = pad2.prev, edge = i => b[i] && !was[i];
+  pad2.prev = b;
+  if (!coopOn()){ pad2.x = pad2.y = 0; pad2.use = false; return; }
+  let x = +gp.axes[0] || 0, y = +gp.axes[1] || 0;
+  if (b[14]) x = -1; if (b[15]) x = 1; if (b[12]) y = -1; if (b[13]) y = 1;
+  const m = Math.hypot(x, y), DZ = 0.22;
+  if (m < DZ){ x = y = 0; } else { const k = Math.min(1, (m - DZ)/(0.92 - DZ))/m; x *= k; y *= k; }
+  if (x || y || b.some(Boolean)) PS[1].last = 'pad';
+  const inGame = G.state === 'play' || G.state === 'countdown';
+  pad2.x = inGame ? x : 0; pad2.y = inGame ? y : 0;
+  pad2.use = G.state === 'play' && !!(b[1] || b[2]);
+  if (edge(9)){ if (inGame) openPanel('pause'); else if (G.state === 'paused') closePanels(); return; }
+  if (G.state === 'play'){
+    if (edge(0)) actGrab(1);
+    if (edge(4)) switchChar(-1, 1);
+    if (edge(5)) switchChar(1, 1);
+    if (edge(8)) setOverview(!overview);
+  }
+}
+// camera: frame the midpoint of both humans…
+function coopFocus(){
+  const a = player.agent.pos, b = coop.p2.agent.pos;
+  coop.mid.x = (a.x + b.x)/2; coop.mid.z = (a.z + b.z)/2;
+  return coop.mid;
+}
+// …and back off as they separate (never past the whole-store overview). 1.3: the near half of the view is the narrow one
+function coopCamDist(D0, ax, v, tv, th, fv){
+  const a = player.agent.pos, b = coop.p2.agent.pos, dx = a.x - b.x, dz = a.z - b.z;
+  const du = Math.abs(dx*ax.rx + dz*ax.rz)/2 + 1.2, dv = Math.abs(dx*ax.fx + dz*ax.fz)/2 + 1.4;
+  const need = 1.3*Math.max(du/th, dv*Math.sin(ELEV)/(tv*fv));
+  return Math.max(D0, Math.min(need, camOverviewDistance(v, tv, th, fv)));
+}
+// staff tag text: "你" in single player, coloured "1P" / "2P" in co-op
+function staffTag(s){
+  const on = coopOn(), p1 = on && s === player, p2 = on && s === coop.p2, n = p1 ? 1 : p2 ? 2 : 0;
+  if (s._pTag !== n){ s._pTag = n; s.tag.cls('p1', p1).cls('p2', p2); }
+  if (G.demo) return '';
+  return on ? (p1 ? '1P' : p2 ? '2P' : '') : (s === player ? '你' : '');
+}
+// 2P's target ring (sky blue) and "⏎ 拿 空杯" label
+function coopRingMesh(){
+  if (!coop.ring && highlight){
+    coop.ring = new THREE.Mesh(highlight.geometry, new THREE.MeshBasicMaterial({color:0x4da3ff, transparent:true, opacity:0.9, depthWrite:false, depthTest:false, side:THREE.DoubleSide}));
+    coop.ring.renderOrder = 20; coop.ring.visible = false; scene.add(coop.ring);
+  }
+  return coop.ring;
+}
+function coopLabelEl(){
+  if (!coop.tl){ coop.tl = document.createElement('div'); coop.tl.id = 'tlabel2'; coop.tl.hidden = true; tagLayer.appendChild(coop.tl); }
+  return coop.tl;
+}
+function coopActionLabel(){
+  const s = coop.p2, t = findTarget(s), html = targetLabelHTML(s, t, grabLabel(s, t), useLabel(s), 1), tl = coopLabelEl();
+  if (tl._h !== html){ tl._h = html; tl.innerHTML = html.replace(/^dim:/, ''); tl.classList.toggle('dim', html.startsWith('dim:')); }
+}
+// prep screen: the 👥 toggle (desktop always; touch only with two gamepads connected)
+function renderCoopToggle(){
+  let el = coop.el;
+  if (!el){
+    el = coop.el = document.createElement('div'); el.id = 'prepCoop';
+    el.innerHTML = '<button type="button" class="tp coopbtn" id="btnCoop"></button><div class="coopkeys"></div>';
+    el.firstChild.onclick = () => { coop.want = !coop.want; SFX.pick(); renderCoopToggle(); };
+    $('#prepCtrl').before(el);
+  }
+  const avail = coopAvailable(), on = coop.want && avail;
+  el.hidden = !avail;
+  const b = el.firstChild, team = prepTeam.map(id => ROLE[id]).filter(Boolean);
+  const r = team.find(x => x.id !== 'cleaner') || team[0];
+  b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  b.innerHTML = '<span>👥 雙人同樂 <i class="sw">' + (on ? '開' : '關') + '</i></span><small>' + (on ? '2P 操作 ' + (r ? r.icon + ' ' + r.name : '🧑 夥伴（沒帶分身時多一位店員）') + '，分數共用' : '兩個人一起顧店：同一個鍵盤，或兩支手把') + '</small>';
+  const k = el.lastChild;
+  k.hidden = !on;
+  k.innerHTML = on ? '<b class="pn p1">1P</b> WASD 走路　空白鍵 拿放　E 長按　Q 換人' + (pad.on ? '　🎮 手把 1' : '') +
+    '<br><b class="pn p2">2P</b> 方向鍵 走路　Enter／右Shift 拿放　/ 或 右Ctrl 長按　. 換人' + (pad2.on ? '　🎮 手把 2' : '') : '';
+}
+addEventListener('gamepadconnected', () => { if (coop.el && !screens.prep.hidden) renderCoopToggle(); });
+addEventListener('gamepaddisconnected', () => { if (coop.el && !screens.prep.hidden) renderCoopToggle(); });
+// receipt: one line with each human's deliveries (the AI clones' share after 🤖)
+function coopResults(){
+  if (!coopOn()) return;
+  const a = coop.del[0], b = coop.del[1], ai = Math.max(0, G.stats.delivered - a - b);
+  const d = document.createElement('div'); d.className = 'r coopres';
+  d.innerHTML = `<span>👥 雙人出餐</span><span><b class="pn p1">1P</b> ${a} 份　<b class="pn p2">2P</b> ${b} 份${ai ? '　🤖 ' + ai + ' 份' : ''}</span>`;
+  const r0 = $('#receipt .r'); if (r0) r0.after(d);
+}
+// test hook for the co-op checks
+window.__cloneMartCoop = {coop, pad2, PS, on:coopOn, want(on){ coop.want = !!on; if (coop.el) renderCoopToggle(); }, get p2(){ return coop.p2; }, isHuman, available:coopAvailable,
+  setZoom(z){ camZoom = z; }, view:() => ({dist:camDist, overview, zoom:camZoom})};
 
 /* ---------------- camera ---------------- */
 const ELEV = 56*Math.PI/180;
@@ -3525,17 +3710,20 @@ function updateCamera(dt, instant){
     camYaw = instant ? v.yaw : camYaw + dyaw*Math.min(1, dt*5);
     const ax = camAxes(camYaw);
     const fit = camFitDistance(v, tv, th, fv);
-    const Dgoal = overview ? camOverviewDistance(v, tv, th, fv) : Math.min(fit, camDistCap(tv))*camZoom;
+    let Dgoal = overview ? camOverviewDistance(v, tv, th, fv) : Math.min(fit, camDistCap(tv))*camZoom;
+    const co = coopOn();
+    if (co && !overview) Dgoal = coopCamDist(Dgoal, ax, v, tv, th, fv);   // co-op: back off until both players fit
     camDist = (instant || !camDist) ? Dgoal : lerp(camDist, Dgoal, Math.min(1, dt*6));
     D = camDist;
     const hw = D*th, hd = D*tv/Math.sin(ELEV)*fv;
     const su = Math.max(0, v.scrU - hw), sv = Math.max(0, v.scrV - hd);
     // follow with look-ahead in the walking direction
-    const p = player.agent.pos;
+    const p = co ? coopFocus() : player.agent.pos;   // co-op: the midpoint between 1P and 2P
     if (instant || !(dt > 0)){ camVel.x = camVel.z = 0; }
     else { const kv = Math.min(1, dt*5); camVel.x = lerp(camVel.x, (p.x - camPrev.x)/dt, kv); camVel.z = lerp(camVel.z, (p.z - camPrev.z)/dt, kv); }
     camPrev.x = p.x; camPrev.z = p.z;
-    let lx = camVel.x*0.5, lz = camVel.z*0.5; const ll = Math.hypot(lx, lz); if (ll > 2.2){ lx *= 2.2/ll; lz *= 2.2/ll; }
+    const la = co ? 0 : 0.5;   // no look-ahead in co-op: it could push the other player off screen
+    let lx = camVel.x*la, lz = camVel.z*la; const ll = Math.hypot(lx, lz); if (ll > 2.2){ lx *= 2.2/ll; lz *= 2.2/ll; }
     const ox = p.x + lx - v.cx, oz = p.z + lz - v.cz;
     const shift = (camInset.top - camInset.bottom)/2 * (2*D*tv/Math.sin(ELEV))/VH;   // centre the store in the free area
     const uu = overview ? 0 : clamp(ox*ax.rx + oz*ax.rz, -su, su);
@@ -3631,8 +3819,10 @@ function haptic(ms){
 const pad = {on:false, x:0, y:0, use:false, prev:[], navT:0, navDir:''};
 function padList(){ try { return (navigator.getGamepads && navigator.getGamepads()) || []; } catch(e){ return []; } }
 function pollGamepad(dt){
-  let gp = null;
-  for (const g of padList()) if (g && g.connected !== false && g.buttons && g.buttons.length){ gp = g; break; }
+  const pads = [];
+  for (const g of padList()) if (g && g.connected !== false && g.buttons && g.buttons.length) pads.push(g);
+  const gp = pads[0] || null;   // first pad → 1P
+  coopPad(pads[1] || null);     // second pad → 2P (couch co-op only)
   if (!gp){
     if (pad.on){ pad.on = false; pad.x = pad.y = 0; pad.use = false; toast('🎮 手把已中斷'); if (lastInput === 'pad') lastInput = isTouch ? 'touch' : 'key'; }
     return;
@@ -4028,15 +4218,18 @@ function updateActionLabels(){
   const go = g === '出餐' && !!player.hold && orders.some(o => RECIPES[o.rec].item === player.hold.type);
   if (_hc.go !== go){ _hc.go = go; hud.btnGrab.classList.toggle('go', go); }
   // label next to the target ring
-  const html = targetLabelHTML(player, t, g, u);
+  const html = targetLabelHTML(player, t, g, u, 0);
   if (_hc.tl !== html){ _hc.tl = html; if (uxEls.tl){ uxEls.tl.innerHTML = html ? html.replace(/^dim:/, '') : ''; uxEls.tl.classList.toggle('dim', html.startsWith('dim:')); } }
+  if (coopOn()) coopActionLabel();
 }
 const useIcon = u => u === '噴' ? '🧯' : u === '修理' ? '🔧' : u === '拖地' ? '🧽' : '🔪';
 // "✋ 拿 空杯 · 🔪 長按 切" — glyphs follow the input you last used (touch / keyboard / gamepad)
-function targetLabelHTML(s, sl, g, u){
+function targetLabelHTML(s, sl, g, u, slot){   // slot 1 = 2P in co-op (its own glyphs, a "2P" badge)
   const esc = t => String(t).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[c]);
   const nm = type => (ITEMS[type] && ITEMS[type].n) || '';
-  const k = lastInput === 'pad' ? ['<kbd>A</kbd>', '<kbd>X</kbd>'] : lastInput === 'key' ? ['<kbd>空白</kbd>', '<kbd>E</kbd>'] : ['✋', useIcon(u)];
+  const li = slot ? PS[1].last : lastInput, autoUsing_ = slot ? PS[1].autoUsing : autoUsing;
+  const k = li === 'pad' ? ['<kbd>A</kbd>', '<kbd>X</kbd>'] : li === 'key' ? (slot ? ['<kbd>Enter</kbd>', '<kbd>/</kbd>'] : ['<kbd>空白</kbd>', '<kbd>E</kbd>']) : ['✋', useIcon(u)];
+  const badge = coopOn() ? '<b class="pn p' + (slot ? 2 : 1) + '">' + (slot ? 2 : 1) + 'P</b>' : '';
   const parts = [];
   if (sl && g && g !== '—'){
     const h = s.hold;
@@ -4050,32 +4243,38 @@ function targetLabelHTML(s, sl, g, u){
     else if (g === '組合' && h && sl.item){ const r = combine(h.type, sl.item.type); v = r ? '組成 ' + nm(r) : g; }
     parts.push((g === '起火' ? '' : k[0] + ' ') + esc(v));
   }
-  if (u && u !== '—') parts.push(k[1] + ' ' + (autoUsing ? '自動' : '長按') + esc(u));
-  if (!parts.length) return sl ? 'dim:' + esc(sl.n) : '';
-  return parts.join('<span class="sep">·</span>');
+  if (u && u !== '—') parts.push(k[1] + ' ' + (autoUsing_ ? '自動' : '長按') + esc(u));
+  if (!parts.length) return sl ? 'dim:' + badge + esc(sl.n) : '';
+  return badge + parts.join('<span class="sep">·</span>');
 }
 /* target ring + per-station status tags */
 function updateHighlight(t){
-  const tt = (G.state === 'play') ? findTarget(player) : null;
-  const tl = uxEls.tl;
-  if (!tt){ highlight.visible = false; if (tl && !tl.hidden) tl.hidden = true; return; }
-  const p = player.agent.pos;
+  const t1 = targetRing(player, highlight, uxEls.tl, t, 0);
+  if (coopOn() || coop.ring) targetRing(coopOn() ? coop.p2 : null, coopRingMesh(), coopLabelEl(), t, t1);   // 2P's ring + label (stacked under 1P's on a shared target)
+}
+// one human's target ring + label (s = null hides them)
+function targetRing(s, highlight, tl, t, other){
+  const tt = (G.state === 'play' && s) ? findTarget(s) : null;
+  if (!tt){ highlight.visible = false; if (tl && !tl.hidden) tl.hidden = true; return null; }
+  const same = !!other && other === tt;
+  const p = s.agent.pos;
   let x = tt.x, y = tt.y + 0.012, z = tt.z;
   if (tt.band){   // long shelves: ring on the floor at the shelf face, right in front of you
     const b = tt.band; x = clamp(p.x, b[0] + 0.25, b[1] - 0.25); z = tt.z < b[2] ? b[2] : tt.z > b[3] ? b[3] : tt.z; y = 0.03;
   }
   highlight.visible = true;
   highlight.position.set(x, y, z);
-  highlight.scale.setScalar((tt.band ? 1.25 : 1) + Math.sin(t*6)*0.08);
+  highlight.scale.setScalar(((tt.band ? 1.25 : 1) + Math.sin(t*6)*0.08)*(same ? 1.3 : 1));
   if (tl){
     const show = !!tl.innerHTML;
     if (tl.hidden === show) tl.hidden = !show;
     if (show){
       _v.set(x, y, z).project(camera);
-      const sx = clamp((_v.x+1)/2*VW, 70, VW - 70), sy = (1-_v.y)/2*VH + 16;
+      const sx = clamp((_v.x+1)/2*VW, 70, VW - 70), sy = (1-_v.y)/2*VH + 16 + (same ? 26 : 0);
       tl.style.transform = `translate(${sx.toFixed(1)}px,${sy.toFixed(1)}px) translate(-50%,0)`;
     }
   }
+  return tt;
 }
 function updateSlotTags(){
   for (const sl of SLOTS){
@@ -4283,6 +4482,7 @@ function renderPrepTeam(){
     };
     box_.appendChild(b);
   }
+  renderCoopToggle();   // 👥 雙人同樂 (names the clone 2P will take)
 }
 
 /* ---------------- level-twist UI: event chip, level intro card, ticket badges ---------------- */
@@ -4377,6 +4577,7 @@ function startLevel(i, team){
   hintQ.length = 0; hintT = 0; $('#hint').classList.add('off');
   G.team = team.slice(); saveProgress();
   setupWorld(i, team, false);
+  coopSetup();   // 👥 couch co-op: hand 2P a character (no-op when off)
   $('#hud').hidden = false; showScreen(null);
   G.state = 'countdown'; G.cdT = 3.4; G.cdShown = null;
   updateCamera(0, true);
@@ -4433,6 +4634,7 @@ function showResults(){
     (stars < 3 ? row('距離 ' + '★'.repeat(stars + 1), '還差 ' + fmt(L.stars[stars] - score)) : '') +
     `<div class="coach"></div><div class="bar"></div>`;
   $('#receipt .coach').textContent = coachLine(L, S, stars);
+  coopResults();   // 👥 per-player deliveries (co-op only)
   const nx = G.lv + 1;
   const nb = $('#btnNextLv');
   nb.hidden = nx >= LEVELS.length;
@@ -4615,7 +4817,7 @@ function simulate(dt){
   // characters
   if (!G.demo && !G.bot) updatePlayer(dt);
   for (const s of staff){
-    if (s === player && !G.demo && !G.bot) continue;
+    if (isHuman(s) && !G.demo && !G.bot) continue;   // 1P (and 2P in co-op) moved in updatePlayer
     aiUpdate(s, dt);
     s.agent.carrying = !!s.hold;
     s.agent.speed = s.baseSpeed*(onSpill(s) ? 0.55 : 1);
@@ -4636,7 +4838,7 @@ function simulate(dt){
   // staff tags
   for (const s of staff){
     const r = ROLE[s.role];
-    s.tag.icon(s.hold ? ITEMS[s.hold.type].ic : (r ? r.icon : '')).text(s === player && !G.demo ? '你' : '').setBar(s.prog, '#34d6a6');
+    s.tag.icon(s.hold ? ITEMS[s.hold.type].ic : (r ? r.icon : '')).text(staffTag(s)).setBar(s.prog, '#34d6a6');
   }
   for (const sp of spills) sp.tag.setBar(sp.prog > 0 ? sp.prog/1.2 : null, '#4da3ff');
   if (!G.demo){
@@ -4698,26 +4900,35 @@ addEventListener('orientationchange', () => setTimeout(resize, 200));
 document.addEventListener('visibilitychange', () => { if (document.hidden && G.state === 'play') openPanel('pause'); });
 
 /* ---------------- buttons ---------------- */
-function switchChar(dir){
+// k = 0: 1P cycles through the team (2P's character left out); k = 1: 2P cycles through everyone but 1P's character
+function switchChar(dir, k){
   if (G.state !== 'play') return;
-  const list = staff.filter(s => s === owner || ROLE[s.role]);
-  if (list.length < 2){ toast('這關沒有帶分身', ''); return; }
-  const i = list.indexOf(player);
+  if (k && !coopOn()) return;
+  const me = k ? coop.p2 : player, other = k ? player : (coopOn() ? coop.p2 : null);
+  const list = staff.filter(s => (s === owner || ROLE[s.role] || s.coopPartner) && s !== other);
+  if (list.length < 2){ toast(other ? '沒有其他人可以換' : '這關沒有帶分身', ''); return; }
+  const i = list.indexOf(me);
   const nx = list[(i + (dir || 1) + list.length) % list.length];
-  if (player !== owner) aiReset(player);
-  player.pending = null;
+  if (me !== owner) aiReset(me);
+  me.pending = null;
+  if (k) me.prog = null;
   aiReset(nx); nx.agent.path.length = 0; nx.prog = null;
   if (nx.spawnFx > 0){ nx.spawnFx = 0; nx.ch.g.scale.setScalar(1.12); }   // the pop-in only advances under AI control
-  player = nx;
+  if (k) coop.p2 = nx; else player = nx;
   SFX.pick(); haptic(10); squash(nx, 0.18);
-  floatText(nx.agent.pos.x, 2.5, nx.agent.pos.z, '換我！', 'txt');
+  floatText(nx.agent.pos.x, 2.5, nx.agent.pos.z, other ? (k ? '2P 換我！' : '1P 換我！') : '換我！', 'txt');
 }
-function actGrab(){
+// k = 1: 2P's grab key / button (runs as if 2P were the player, so its feedback shows too)
+function actGrab(k){
   if (G.state !== 'play') return;
-  const t = findTarget(player);
-  player.pending = null;
-  if (!t){ if (player.hold) nope(player, '這裡不能放東西'); return; }
-  if (grab(player, t)) haptic(8);
+  if (k && !coopOn()) return;
+  const s = k ? coop.p2 : player;
+  withPlayer(s, () => {
+    const t = findTarget(s);
+    s.pending = null;
+    if (!t){ if (s.hold) nope(s, '這裡不能放東西'); return; }
+    if (humanGrab(k, s, t)) haptic(8);
+  });
 }
 $('#btnTeam').onclick = () => { initAudio(); switchChar(1); };
 $('#btnPause').onclick = () => openPanel('pause');
