@@ -125,7 +125,7 @@ function makeMarkerMaterials() {
 }
 
 // ===========================================================================
-export function createQuests({ scene, world, player, ui, audio, effects, onFragment, avoid = [] }) {
+export function createQuests({ scene, world, player, ui, audio, effects, onFragment, avoid = [], avoidZones = [] }) {
   const root = new THREE.Group();
   root.name = 'quests';
   scene.add(root);
@@ -189,6 +189,13 @@ export function createQuests({ scene, world, player, ui, audio, effects, onFragm
     }
     return false;
   }
+  // v4：地形知識牌等禁區（{ dir, dist }：dist = 球面距離，世界單位）
+  const zones = (Array.isArray(avoidZones) ? avoidZones : []).filter((z) => z && z.dir && z.dist > 0)
+    .map((z) => ({ dir: z.dir.clone().normalize(), dist: z.dist }));
+  function inZone(dir, extra = 0) {
+    for (let i = 0; i < zones.length; i++) if (angleBetweenDirs(dir, zones[i].dir) * 30 < zones[i].dist + extra) return true;
+    return false;
+  }
   function spacingOk(dir, minDist) {
     for (const t of taken) if (angleBetweenDirs(dir, t) * 30 < minDist) return false;
     return true;
@@ -207,6 +214,7 @@ export function createQuests({ scene, world, player, ui, audio, effects, onFragm
         else if (phase < 5 && !world.isFree(out, clearance)) ok = false;
         else if (phase < 3 && biome && world.getBiome(out).id !== biome) ok = false;
         else if (phase < 5 && nearPlatform(out, clearance + 0.4)) ok = false;
+        else if (phase < 5 && inZone(out, clearance * 0.5)) ok = false;
       } catch { ok = false; }
       if (!ok) continue;
       if (!fallback) fallback = out.clone();
@@ -299,7 +307,7 @@ export function createQuests({ scene, world, player, ui, audio, effects, onFragm
         const dirT = away.clone().applyAxisAngle(up, ang);
         const p = pos.clone().addScaledVector(dirT, radius + 0.75).normalize();
         try {
-          if (world.isWater(p) || !world.isFree(p, 0.3) || nearPlatform(p, 0.6) || !spacingOk(p, 2.5)) continue;
+          if (world.isWater(p) || !world.isFree(p, 0.3) || nearPlatform(p, 0.6) || inZone(p) || !spacingOk(p, 2.5)) continue;
         } catch { continue; }
         taken.push(p.clone());
         return groundPoint(p);
@@ -331,7 +339,7 @@ export function createQuests({ scene, world, player, ui, audio, effects, onFragm
           if (gap < 0.9 || gap > 3.5) continue;
           const mid = a.position.clone().add(b.position).multiplyScalar(0.5).normalize();
           try {
-            if (world.isWater(mid) || nearPlatform(mid, 0.6) || !spacingOk(mid, 3)) continue;
+            if (world.isWater(mid) || nearPlatform(mid, 0.6) || inZone(mid) || !spacingOk(mid, 3)) continue;
             if (angleBetweenDirs(mid, momDir) * 30 < 6) continue;
           } catch { continue; }
           found = mid; break outer;

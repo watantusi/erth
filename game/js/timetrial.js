@@ -8,6 +8,8 @@
 //   - getSaveData() → { best, medal }
 // 視覺：晶石模型用 characters.createItem('trialCrystal')（沒有時改用簡單的金色八面體），
 // 光柱與地面光環各用一個 InstancedMesh。物件只建立一次（重玩時重複利用），每幀不配置新物件。
+// v4：擺放以 world.isFree / isWater / getSupportRadius 為準（新地形：河流湖泊是可涉水的淺水、高山可走），
+// 不放在地形知識牌（world.landforms[i].sign）2 單位內，也不放在頭頂有平台/拱門的位置下方太低處。
 import * as THREE from 'three';
 import * as Characters from './characters.js';
 import { TRIAL_COUNT, TRIAL_MEDALS, PICKUP_RADIUS, PLANET_RADIUS, SEA_LEVEL, START_BIOME } from './config.js';
@@ -25,6 +27,7 @@ const ELEVATED = 2;          // 放在平台挑戰上的數量
 const MIN_SPACING = 8;       // 晶石之間最小距離
 const START_ANGLE = 0.3;     // 起點區（草原中心）半徑（弧度）
 const PLAYER_MIN = 8;        // 地面晶石離玩家目前位置的最小距離
+const SIGN_CLEAR = 2;        // 離地形知識牌的最小距離（v4）
 const COLLECT_TIME = 0.4;    // 收集動畫秒數
 const FINISH_DELAY = 0.55;   // 最後一顆收集後等動畫播完再出結果
 const MEDAL_RANK = { gold: 3, silver: 2, bronze: 1 };
@@ -251,6 +254,29 @@ export function createTimeTrial({ scene, world, player, ui, audio, effects } = {
     }
     return true;
   }
+  /** v4：地形知識牌附近（避免和「看看」互動重疊） */
+  function nearLandformSign(dir) {
+    const list = world && Array.isArray(world.landforms) ? world.landforms : null;
+    if (!list) return false;
+    for (let i = 0; i < list.length; i++) {
+      const p = list[i] && toVec(list[i].sign);
+      if (!p) continue;
+      _b.copy(p).normalize();
+      if (angleBetweenDirs(dir, _b) * PLANET_RADIUS < SIGN_CLEAR) return true;
+    }
+    return false;
+  }
+  /**
+   * v4：站立面。getSupportRadius 從高處往下找（拱門頂、橋面等平台也算），但只接受離地面 0.4 以內的
+   * （= 走得到的地面或淺台階）；頭頂有東西擋住（拱門下方很低、浮空平台下）就不放。回傳半徑或 NaN。
+   */
+  function groundBase(dir) {
+    const g = groundR(dir);
+    if (typeof world.getSupportRadius !== 'function') return g;
+    const top = safe(() => world.getSupportRadius(dir, g + 6));
+    if (!Number.isFinite(top) || top <= g + 0.4) return g;
+    return NaN; // 上方有平台：晶石會卡在平台裡或看不到
+  }
   function nearSecret(dir) {
     const list = world && Array.isArray(world.secretSpots) ? world.secretSpots : null;
     if (!list) return false;
@@ -272,7 +298,9 @@ export function createTimeTrial({ scene, world, player, ui, audio, effects } = {
     c.check.copy(c.dir).multiplyScalar(base + CHECK);
     let wet = false;
     if (!elevated) wet = !!safe(() => world.isWater(c.dir));
-    c.ground.copy(c.dir).multiplyScalar((wet ? Math.max(base, SEA_LEVEL) : base) + 0.07);
+    // 光環放在水面：海洋 = SEA_LEVEL；高處的河流/湖泊 = 涉水地面 + 0.35
+    const surf = !wet ? base : base < SEA_LEVEL + 0.05 ? Math.max(base, SEA_LEVEL) : base + 0.35;
+    c.ground.copy(c.dir).multiplyScalar(surf + 0.07);
     c.phase = rng() * Math.PI * 2;
     c.collected = false;
     c.anim = -1;
@@ -335,13 +363,14 @@ export function createTimeTrial({ scene, world, player, ui, audio, effects } = {
           randomUnitVector(rng, _cand);
           if (angleBetweenDirs(_cand, startDir) < L.startA) continue;
           if (!safe(() => world.isFree(_cand, L.clear))) continue;
-          const base = groundR(_cand);
+          const base = groundBase(_cand);
+          if (!Number.isFinite(base)) continue;
           _a.copy(_cand).multiplyScalar(base + HOVER);
           if (ppos && _a.distanceTo(ppos) < PLAYER_MIN * (L.spacing / MIN_SPACING)) continue;
           const md = minDistTo(_a, count);
           if (md < L.spacing) continue;
           if (L.flat < 50 && !flatEnough(_cand, L.flat)) continue;
-          if (nearSecret(_cand)) continue;
+          if (nearSecret(_cand) || nearLandformSign(_cand)) continue;
           got++;
           // 分數：與其他晶石的最小距離（偏好分散）；加一點亂數避免總是最遠
           const score = Math.min(md, 60) * (0.75 + rng() * 0.5);

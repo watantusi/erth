@@ -1,5 +1,17 @@
 // 玩法內容：知識卡、NPC「嗶嗶」台詞、教學、勝利訊息（繁體中文・台灣用語）。
 // 知識卡：每個生態區 2 張，共 12 張。id 固定不變（存檔靠它對應）。
+// v4：所有提到秒數的台詞都由 config 常數產生（ICE_MELT_TIME、VOLCANO_TIME、TRIAL_MEDALS）；新增 8 則地形知識與測驗。
+import { ICE_MELT_TIME, VOLCANO_TIME, TRIAL_MEDALS } from './config.js';
+
+/** 把秒數寫成好讀的中文：85 →「85 秒」、120 →「2 分鐘」、170 →「2 分 50 秒」 */
+export function formatDuration(sec) {
+  const s = Math.max(0, Math.round(Number(sec) || 0));
+  if (s < 90) return `${s} 秒`;
+  const m = Math.floor(s / 60), r = s % 60;
+  return r ? `${m} 分 ${r} 秒` : `${m} 分鐘`;
+}
+const ICE_TEXT = formatDuration(ICE_MELT_TIME);
+const VOLCANO_TEXT = formatDuration(VOLCANO_TIME);
 
 export const FACTS = [
   // ---- 青青草原 ----
@@ -238,10 +250,10 @@ export const QUESTS = {
       '呼～好熱好熱…你好啊，我是駱駝阿沙…',
       '今天的太陽特別大，我好想吃一口冰涼涼的冰喔…',
       '聽說冰雪極地那邊有一塊大冰塊，可以拿一小塊。',
-      '不過冰在路上會慢慢融化，要在 2 分鐘內帶回來喔。幫我拿一塊好嗎？',
+      `不過冰在路上會慢慢融化，要在 ${ICE_TEXT}內帶回來喔。幫我拿一塊好嗎？`,
     ],
     later: ['呼～好…我在這裡曬太陽等你…'],
-    accept: '接下任務：從極地帶一塊冰回沙漠 🧊',
+    accept: `接下任務：從極地帶一塊冰回沙漠（${ICE_TEXT}內）🧊`,
     remind: () => ['冰雪極地的冰塊旁邊，就可以拿到冰喔。', '拿到以後要快點跑回來，太陽會把冰曬化的…'],
     complete: [
       '哇～冰涼涼的！呼～整隻駱駝都活過來了！',
@@ -285,10 +297,10 @@ export const QUESTS = {
       '嗶咻！偵測到訪客。我是地質研究機器人，岩岩博士。',
       '我正在研究這座火山，需要 3 個量測點的數據。',
       '可是我的輪子爬不上去…根據計算，你的跳躍能力剛剛好！',
-      '請在 60 秒內，依照 1、2、3 的順序踩過量測點。可以協助嗎？',
+      `請在 ${VOLCANO_TEXT}內，依照 1、2、3 的順序踩過量測點。可以協助嗎？`,
     ],
     later: ['了解。研究可以等待，嗶咻。'],
-    accept: '接下任務：60 秒內依序踩過 3 個量測點 🚩',
+    accept: `接下任務：${VOLCANO_TEXT}內依序踩過 3 個量測點 🚩`,
     remind: () => ['量測點在火山的平台上，旗子上有號碼。', '踩到 1 號就開始計時，嗶咻！'],
     complete: [
       '嗶嗶嗶！數據接收完成！資料非常完美！',
@@ -297,7 +309,7 @@ export const QUESTS = {
     ],
     after: ['火山目前很平靜，數據正常，嗶咻。', '熔岩冷卻以後，會變成黑黑的玄武岩喔。', '你的跳躍數據，我也存起來了，嗶咻！'],
     preHint: '這是一支量測旗…岩岩博士好像需要幫忙 🤖',
-    started: '量測開始！60 秒內依序踩過 3 個量測點 ⏱️',
+    started: `量測開始！${VOLCANO_TEXT}內依序踩過 3 個量測點 ⏱️`,
     stepped: (n) => `${n} 號量測點完成！`,
     wrongOrder: (n) => `要先踩 ${n} 號量測點喔！`,
     timeout: '時間到了…量測點重新開始，再試一次吧！',
@@ -440,3 +452,121 @@ export function fragmentBonusText(item) {
     text: `指南針已經滿級了，多出來的地圖碎片變成了小驚喜：${item.icon}「${item.name}」！打開 🎒 衣櫥換上看看吧 ✨`,
   };
 }
+
+// ======================================================================
+// v4：地形知識牌（world.landforms 的 id 對應這裡；id 固定不變，存檔靠它對應）
+// name / icon 是備用值（world.landforms 有提供時以 world 為主）；text 每則 ≤ 70 字
+// ======================================================================
+export const LANDFORMS = {
+  mountain: {
+    id: 'mountain', name: '高山', icon: '⛰️', biome: 'forest',
+    title: '高山是被擠出來的',
+    text: '地球的板塊互相推擠，地面被慢慢擠高，經過幾百萬年就成了高山。山越高越冷，所以山頂常常積著雪。',
+  },
+  river: {
+    id: 'river', name: '河流與瀑布', icon: '🏞️', biome: 'forest',
+    title: '水往低處流',
+    text: '雨水和融化的雪從高處往低處流，匯集成河流。河水流過懸崖或高低落差很大的地方，就變成嘩啦啦的瀑布。',
+  },
+  lake: {
+    id: 'lake', name: '湖泊', icon: '🛶', biome: 'meadow',
+    title: '大地的水盆',
+    text: '陸地上低窪的地方，接住了雨水、河水和地下水，積滿水後就成了湖泊。很多動物都靠湖水喝水、生活。',
+  },
+  canyon: {
+    id: 'canyon', name: '峽谷', icon: '🏜️', biome: 'desert',
+    title: '河流切開的大裂谷',
+    text: '河流花了幾百萬年，一點一點往下侵蝕岩石，切出又深又陡的峽谷。岩壁上一層層的顏色，是不同時期堆積的沉積岩層。',
+  },
+  glacier: {
+    id: 'glacier', name: '冰河', icon: '🧊', biome: 'polar',
+    title: '會流動的冰',
+    text: '高山和極地的積雪一年年堆積，被壓得越來越緊，變成厚厚的冰。冰非常重，會像一條很慢很慢的河，往低處緩慢流動。',
+  },
+  terraces: {
+    id: 'terraces', name: '梯田', icon: '🌾', biome: 'meadow',
+    title: '山坡上的階梯',
+    text: '梯田是人們在山坡上開墾出來、一階一階的農田。每一階都是平的，可以留住雨水和泥土，減少水土流失。',
+  },
+  arch: {
+    id: 'arch', name: '海蝕拱門', icon: '🌉', biome: 'ocean',
+    title: '海浪雕出的拱門',
+    text: '海浪日夜拍打海邊的岩石，先在比較脆弱的地方挖出海蝕洞，洞越挖越深、把岩石打穿，就成了海蝕拱門。',
+  },
+  delta: {
+    id: 'delta', name: '三角洲', icon: '🔺', biome: 'ocean',
+    title: '河口的泥沙平原',
+    text: '河流快流進大海時，水流變慢，一路帶來的泥沙就在河口堆積下來，慢慢堆成扇形或三角形的平地，叫做三角洲。',
+  },
+};
+export const LANDFORM_ORDER = ['mountain', 'river', 'lake', 'canyon', 'glacier', 'terraces', 'arch', 'delta'];
+export const landformInfo = (id) => LANDFORMS[id] || null;
+
+export const LANDFORM_QUIZZES = {
+  mountain: {
+    question: '高山是怎麼形成的？',
+    choices: ['地球的板塊互相推擠，把地面慢慢擠高', '大風在一天之內把沙子堆起來', '下大雨把地面泡得膨脹起來'],
+    answer: 0,
+    explain: '板塊推擠的速度很慢，但經過幾百萬年，就能把地面擠成高高的山脈，像喜馬拉雅山和台灣的中央山脈都是這樣來的。',
+  },
+  river: {
+    question: '河流裡的水，會往哪個方向流？',
+    choices: ['從低的地方往高的地方流', '從高的地方往低的地方流', '一直停在原地不動'],
+    answer: 1,
+    explain: '水會受重力往下流。雨水和融雪從山上往低處流，一路匯集成河，最後流進湖泊或大海。',
+  },
+  lake: {
+    question: '湖泊是怎麼形成的？',
+    choices: ['海浪把沙子堆成一個圓圈', '雲把水倒在山頂上', '陸地上低窪的地方積滿了水'],
+    answer: 2,
+    explain: '低窪的地方接住了雨水、河水和地下水，水積起來流不出去，就成了湖泊。',
+  },
+  canyon: {
+    question: '峽谷又深又陡的岩壁，是怎麼切出來的？',
+    choices: ['河流花很長的時間慢慢侵蝕岩石', '地震一下子就把地面裂開', '人們用挖土機挖出來的'],
+    answer: 0,
+    explain: '河水帶著沙石不停沖刷，一點一點往下侵蝕，幾百萬年後就切出深深的峽谷，也露出一層層的沉積岩層。',
+  },
+  glacier: {
+    question: '冰河的冰，是由什麼變成的？',
+    choices: ['海水直接結成的冰', '一年年堆積、被壓緊的積雪', '從天上掉下來的大冰雹'],
+    answer: 1,
+    explain: '積雪越堆越厚，下面的雪被壓得越來越緊，就變成冰。冰河會沿著山谷，緩慢地往低處流動。',
+  },
+  terraces: {
+    question: '在山坡上開墾梯田，有什麼好處？',
+    choices: ['讓山變得更高', '讓河水流得更快', '留住雨水和泥土，減少水土流失'],
+    answer: 2,
+    explain: '一階一階平平的田，可以讓雨水慢下來、留在田裡，泥土比較不會被沖走，也方便種稻子。',
+  },
+  arch: {
+    question: '海蝕拱門是誰「雕刻」出來的？',
+    choices: ['日夜拍打岩石的海浪', '在海邊挖洞的螃蟹', '用鑿子雕刻的工人'],
+    answer: 0,
+    explain: '海浪不停沖擊岩石，先挖出海蝕洞，洞越來越深、把岩石打穿，就形成了拱門的形狀。',
+  },
+  delta: {
+    question: '三角洲的泥沙，是從哪裡來的？',
+    choices: ['風從沙漠吹過來的', '河流從上游一路帶下來的', '火山噴出來的'],
+    answer: 1,
+    explain: '河流從上游帶著泥沙往下流，到了河口水流變慢，泥沙就沉積下來，越堆越大，形成三角洲。',
+  },
+};
+export const quizForLandform = (id) => LANDFORM_QUIZZES[id] || null;
+
+// ======================================================================
+// v4：提示訊息
+// ======================================================================
+const medalLine = () => {
+  const m = TRIAL_MEDALS || {};
+  return `🥇 ${formatDuration(m.gold)}內・🥈 ${formatDuration(m.silver)}內・🥉 ${formatDuration(m.bronze)}內`;
+};
+export const V4_MESSAGES = {
+  landformHint: '看看',
+  landformBiome: (name) => `地形・${name}`,
+  landformRead: (n, total) => `地形知識收進 📖 圖鑑了！（${n}/${total}）`,
+  landformAll: (total) => `${total} 種地形全部看過了！你是地形小博士 🗺️`,
+  trialMedals: medalLine(),
+  characterChanged: (name) => `換成「${name}」了！`,
+  npcLandform: '嗶嗶！看到頭上有藍色「?」的地形知識牌，走過去看看吧 🗺️',
+};

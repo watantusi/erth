@@ -1,12 +1,15 @@
 // 分身 2：角色與物理 —— 小旅人角色模型、程序動畫、球面星球物理。
 // v2：平台（側面碰撞、撞頭、彈跳蘑菇、邊緣寬容）、可變跳躍高度、頭頂搬運物。
+// v4：速度倍率（setSpeedScale）、配合較慢速度重調的加減速與步伐節奏、5 位可選角色（setCharacter）。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
-  GRAVITY, WALK_SPEED, RUN_SPEED, JUMP_SPEED, PLAYER_RADIUS, PLANET_RADIUS, PALETTE, SEA_LEVEL,
+  GRAVITY, WALK_SPEED, RUN_SPEED, JUMP_SPEED, PLAYER_RADIUS, PLANET_RADIUS, PALETTE, SEA_LEVEL, CHARACTERS,
 } from './config.js';
 import { clamp, damp, tangentBasis } from './utils.js';
-import { createItem } from './characters.js';
+import { createItem, CHARACTER_INFO } from './characters.js';
+
+export { CHARACTER_INFO };
 
 // ---- 調整參數 ----
 const COYOTE_TIME = 0.1;
@@ -15,10 +18,15 @@ const WATER_SPEED = 0.6;
 const WATER_JUMP = 0.72;
 const FALL_GRAVITY_MULT = 1.18;  // 下落時重力稍大，跳躍更俐落
 const MAX_FALL_SPEED = 40;
-const ACCEL_GROUND = 11;         // 指數平滑速率（加速）
-const DECEL_GROUND = 15;         // 指數平滑速率（減速）
-const ACCEL_AIR = 4.6;           // v2：空中控制比 v1 好一點，方便落在半徑 1 的平台上
+// v4：速度放慢後加減速稍微俐落一點（起步約 0.17 秒到 90%、放開約 0.13 秒停下），空中控制也稍好
+const ACCEL_GROUND = 13.5;       // 指數平滑速率（加速）
+const DECEL_GROUND = 17.5;       // 指數平滑速率（減速）
+const ACCEL_AIR = 5.4;           // v2：空中控制比 v1 好一點，方便落在半徑 1 的平台上（v4 再好一點）
 const DECEL_AIR = 2.4;
+// v4 步伐：每步的距離（世界單位）。比 v3 短，讓較慢的速度仍有輕快的步頻、腳不打滑
+const STRIDE_WALK = 0.74;
+const STRIDE_RUN = 1.02;
+const STRIDE_WATER = 0.62;
 const TURN_RATE_GROUND = 14;
 const TURN_RATE_AIR = 6;
 const LAND_SOUND_AIRTIME = 0.15;
@@ -149,10 +157,13 @@ function buildCharacter() {
     part(sphere(0.125, 9, 6), COL.boot, { s: [1, 0.72, 1.3], p: [0, -0.2, 0.035] }),
   ]);
   const legs = [];
+  const W = []; // v4：小旅人（預設角色）專屬的 mesh，換角色時隱藏
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
     pivot.position.set(0.14 * sx, 0.29, 0);
-    pivot.add(new THREE.Mesh(legGeo, bodyMat));
+    const m = new THREE.Mesh(legGeo, bodyMat);
+    pivot.add(m);
+    W.push(m);
     rig.add(pivot);
     legs.push(pivot);
   }
@@ -169,6 +180,7 @@ function buildCharacter() {
   const bodyGeo = merge([coatPart, scarfPart]);
   const body = new THREE.Mesh(bodyGeo, bodyMat);
   torso.add(body);
+  W.push(body);
 
   // 探險背包 + 睡袋卷
   const packGeo = merge([
@@ -179,6 +191,7 @@ function buildCharacter() {
   ]);
   const pack = new THREE.Mesh(packGeo, bodyMat);
   torso.add(pack);
+  W.push(pack);
 
   // v3：圍巾尾巴（垂在右前胸，跑步時往後飄；顏色跟著圍巾換）
   const scarfTail = new THREE.Group();
@@ -204,7 +217,9 @@ function buildCharacter() {
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
     pivot.position.set(0.31 * sx, 0.72, 0);
-    pivot.add(new THREE.Mesh(armGeo, bodyMat));
+    const m = new THREE.Mesh(armGeo, bodyMat);
+    pivot.add(m);
+    W.push(m);
     torso.add(pivot);
     arms.push(pivot);
   }
@@ -217,7 +232,9 @@ function buildCharacter() {
   const headGeo = merge([
     part(sphere(0.45, 16, 12), COL.coat, { s: [1.04, 0.96, 1], p: [0, HC + 0.03, -0.05] }),
   ]);
-  head.add(new THREE.Mesh(headGeo, bodyMat));
+  const hood = new THREE.Mesh(headGeo, bodyMat);
+  head.add(hood);
+  W.push(hood);
 
   // 眼睛（以眼睛中心為原點，縮放 Y 即眨眼）
   const eyeY = HC + 0.0;
@@ -249,7 +266,9 @@ function buildCharacter() {
     part(sphere(0.11, 8, 5), COL.leaf, { s: [1, 0.28, 0.58], r: [0, 0, -0.6], p: [0.095, 0.185, 0] }),
   ]);
   sproutGeo.rotateY(0.7); // 斜擺，從正面與側面都看得到葉子
-  sprout.add(new THREE.Mesh(sproutGeo, bodyMat));
+  const sproutMesh = new THREE.Mesh(sproutGeo, bodyMat);
+  sprout.add(sproutMesh);
+  W.push(sproutMesh);
   head.add(sprout);
 
   // v2：頭頂搬運物的掛點（底部中心貼著兜帽頂）
@@ -263,9 +282,15 @@ function buildCharacter() {
   hat.position.set(0, HC + 0.03, -0.05);
   head.add(hat);
 
+  const wanderer = makeSkin('wanderer', {
+    nodes: W, bodyGeo, scarfStart, scarfCount,
+    sproutPos: sprout.position.clone(), carryPos: carry.position.clone(), topY: HAT_TOP_DEFAULT,
+  });
+
   return {
     root, rig, torso, head, eyes, sprout, carry, legs, arms, shadow, shadowMat,
-    hat, bodyGeo, scarfStart, scarfCount, bodyMat, faceMat, scarfTail, tailGeo, tailFringe,
+    hat, bodyGeo, scarfStart, scarfCount, bodyMat, faceMat, skinMat, scarfTail, tailGeo, tailFringe,
+    wanderer,
   };
 }
 
@@ -538,6 +563,377 @@ function buildScarfStars(mat) {
 }
 
 // ---------------------------------------------------------------------------
+// v4 可選角色：共用同一套骨架（腿/身體/手臂/頭/小芽/帽子掛點/搬運掛點），每位角色只是掛在骨架上的另一組 mesh。
+// 第一次選到某角色時才建立（之後切換只改 visible，不再配置任何東西）。
+// ---------------------------------------------------------------------------
+const HOOD_C = [0, 0.26, -0.05];          // 兜帽球心（頭部座標）= 帽子掛點
+const SKIN_HAND = COL.skin;
+
+/** 角色描述：nodes = 這位角色專屬、要一起顯示/隱藏的物件 */
+function makeSkin(id, o) {
+  return {
+    id,
+    nodes: o.nodes,
+    bodyGeo: o.bodyGeo, scarfStart: o.scarfStart, scarfCount: o.scarfCount, scarfApplied: null,
+    sunny: o.sunny !== undefined ? o.sunny : COL.scarf,     // 預設「暖陽黃」圍巾在這位角色身上的顏色
+    sproutPos: o.sproutPos || null,                         // 頭頂小芽/天線的位置（null = 沒有）
+    carryPos: o.carryPos,                                   // 沒戴帽子時，頭頂搬運物的位置
+    topY: o.topY,                                           // 頭頂（不含耳朵/天線）高度，帽子與泡泡高度用
+    headExtra: o.headExtra || 0,                            // 表情泡泡額外抬高
+    hatScale: o.hatScale || 1, hatLift: o.hatLift || 0, hatFwd: o.hatFwd || 0,
+    hatAdjust: o.hatAdjust || {},                           // 每頂帽子的微調 { s, y, z }
+    ears: o.ears || null, earRest: o.earRest || 0, earBack: o.earBack || 0,
+    earHat: o.earHat || {}, earCarry: o.earCarry || 0,
+    tail: o.tail || null, tailKind: o.tailKind || null,
+    wings: o.wings || null,
+    jet: o.jet || null,
+    fits: {},                                               // 帽子 id → 合身資訊（第一次戴上時計算）
+  };
+}
+
+/** 依 y 高度取外套球面在正前方（或 x 偏移處）的 z，用來把小配件貼在衣服上 */
+function coatZ(y, x = 0) {
+  const k = 1 - (x / 0.36) ** 2 - ((y - 0.55) / 0.338) ** 2;
+  return 0.331 * Math.sqrt(Math.max(0, k));
+}
+/** 圍巾（每位角色都同一個位置與形狀，夜空星星與換色都共用） */
+const scarfPiece = () => hp(new THREE.TorusGeometry(0.26, 0.075, 6, 14), COL.scarf, null, [Math.PI / 2, 0, 0], [0, 0.83, 0]);
+/** 身體：list 的最後一段是圍巾，記下頂點範圍（換色用） */
+function bodyWithScarf(list) {
+  const sc = scarfPiece();
+  const scarfCount = sc.attributes.position.count;
+  list.push(sc);
+  const geo = hmerge(list);
+  return { geo, scarfStart: geo.attributes.position.count - scarfCount, scarfCount };
+}
+const coatShell = (hex) => hp(sphere(0.36, 12, 9), hex, [1, 0.94, 0.92], null, [0, 0.55, 0]);
+const hoodShell = (hex) => hp(sphere(0.45, 16, 12), hex, [1.04, 0.96, 1], null, [HOOD_C[0], HOOD_C[1], HOOD_C[2]]);
+function legGeoOf(pants, boot, extra = []) {
+  return hmerge([
+    hp(new THREE.CapsuleGeometry(0.105, 0.1, 3, 8), pants, null, null, [0, -0.1, 0]),
+    hp(sphere(0.125, 9, 6), boot, [1, 0.72, 1.3], null, [0, -0.2, 0.035]),
+    ...extra,
+  ]);
+}
+function armGeoOf(sleeve, hand, extra = []) {
+  return hmerge([
+    hp(new THREE.CapsuleGeometry(0.085, 0.13, 3, 8), sleeve, null, null, [0, -0.12, 0]),
+    hp(sphere(0.095, 8, 6), hand, null, null, [0, -0.25, 0]),
+    ...extra,
+  ]);
+}
+/** 把一片薄零件貼在以 c 為球心、半徑 r 的球面上 dir 的方向（本地 +Z = 球面法線），roll = 繞法線轉 */
+function onSphere(geo, c, dir, r, roll = 0) {
+  const d = _hv.set(dir[0], dir[1], dir[2]).normalize();
+  const zA = d.clone();
+  const xA = new THREE.Vector3(0, 1, 0).cross(zA).normalize();
+  const yA = zA.clone().cross(xA);
+  const m = new THREE.Matrix4().makeRotationZ(roll);
+  m.premultiply(new THREE.Matrix4().makeBasis(xA, yA, zA));
+  m.setPosition(c[0] + zA.x * r, c[1] + zA.y * r, c[2] + zA.z * r);
+  geo.applyMatrix4(m);
+  return geo;
+}
+
+/** 在骨架節點上掛 mesh，並記到 nodes */
+function attach(parent, geo, mat, nodes, pos = null) {
+  const m = new THREE.Mesh(geo, mat);
+  if (pos) m.position.set(pos[0], pos[1], pos[2]);
+  parent.add(m);
+  nodes.push(m);
+  return m;
+}
+function attachPivot(parent, pos, nodes) {
+  const g = new THREE.Group();
+  g.position.set(pos[0], pos[1], pos[2]);
+  parent.add(g);
+  nodes.push(g);
+  return g;
+}
+/** 骨架上每個肢體掛一份 */
+function attachLimbs(P, legGeo, armGeo, mat, nodes) {
+  for (const l of P.legs) attach(l, legGeo, mat, nodes);
+  for (const a of P.arms) attach(a, armGeo, mat, nodes);
+}
+
+let SKIN_MATS = null;
+function skinMats(P) {
+  if (!SKIN_MATS) {
+    SKIN_MATS = {
+      // 雲朵頭髮與翅膀：平滑著色 + 淡藍自發光，看起來軟綿綿
+      fluff: new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x5a6a8a }),
+      // 頭盔面罩玻璃（半透明，不寫深度）
+      glass: new THREE.MeshLambertMaterial({
+        color: 0xbfe6ff, emissive: 0x2a5a80, transparent: true, opacity: 0.26, depthWrite: false,
+      }),
+      glow: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }),
+      // 太空衣：微微自發光，背光時也是乾淨的白色
+      suit: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x2a3038 }),
+    };
+  }
+  return SKIN_MATS;
+}
+
+const SKIN_BUILD = {
+  // ---- 狐狸探險家：狐狸耳朵兜帽、蓬鬆的橘白大尾巴、綠色外套 ----
+  fox(P) {
+    const COAT = 0x55a868, COAT2 = 0x3f8c54, HOOD = 0xf08a3c, HOOD2 = 0xe3782c, WHITE = 0xfff4e4,
+      PAW = 0x4a3530, PANTS = 0xf4e3c3, TOG = 0xd9a066;
+    const nodes = [];
+    const mat = P.bodyMat;
+    attachLimbs(P, legGeoOf(PANTS, PAW), armGeoOf(COAT, PAW, [
+      hp(new THREE.TorusGeometry(0.083, 0.026, 4, 10), COAT2, null, [Math.PI / 2, 0, 0], [0, -0.19, 0]),
+    ]), mat, nodes);
+    // 外套：牛角扣 + 白色胸前絨毛 + 下擺深綠滾邊
+    const list = [coatShell(COAT)];
+    list.push(hp(new THREE.TorusGeometry(0.262, 0.03, 4, 18), COAT2, [1, 1, 0.93], [Math.PI / 2, 0, 0], [0, 0.31, 0]));
+    for (const y of [0.56, 0.44]) {
+      list.push(hp(new THREE.CylinderGeometry(0.032, 0.032, 0.03, 8), TOG, null, [Math.PI / 2 - (y - 0.55) * 2.2, 0, 0], [-0.07, y, coatZ(y, -0.07) + 0.008]));
+    }
+    list.push(hp(sphere(0.15, 10, 7), WHITE, [1, 0.75, 0.42], [-0.35, 0, 0], [0, 0.71, coatZ(0.71) - 0.03]));
+    const body = bodyWithScarf(list);
+    attach(P.torso, body.geo, mat, nodes);
+    // 兜帽 + 兩頰白色絨毛 + 額前小瀏海
+    attach(P.head, hmerge([
+      hoodShell(HOOD),
+      hp(sphere(0.12, 9, 7), WHITE, [1.05, 0.85, 0.7], [0, -0.7, 0.3], [-0.33, 0.1, 0.2]),
+      hp(sphere(0.12, 9, 7), WHITE, [1.05, 0.85, 0.7], [0, 0.7, -0.3], [0.33, 0.1, 0.2]),
+    ]), mat, nodes);
+    // 耳朵（三角形，白色內耳、深色耳尖）：以耳根為樞紐，戴帽子/頂冰塊時往外倒
+    const earGeo = hmerge([
+      hp(new THREE.ConeGeometry(0.145, 0.34, 4), HOOD, [1, 1, 0.52], [0, Math.PI / 4, 0], [0, 0.17, 0]),
+      hp(new THREE.ConeGeometry(0.085, 0.22, 4), WHITE, [1, 1, 0.4], [0, Math.PI / 4, 0], [0, 0.125, 0.033]),
+      hp(new THREE.ConeGeometry(0.05, 0.1, 4), PAW, [1, 1, 0.56], [0, Math.PI / 4, 0], [0, 0.305, 0]),
+    ]);
+    const ears = [];
+    for (const sx of [-1, 1]) {
+      const e = attachPivot(P.head, [0.25 * sx, 0.585, -0.1], nodes);
+      attach(e, earGeo, mat, []);
+      ears.push(e);
+    }
+    // 尾巴：一串漸大的絨毛球，尾端白色，往後上方翹
+    const tail = attachPivot(P.torso, [0, 0.3, -0.24], nodes);
+    attach(tail, hmerge([
+      hp(sphere(0.1, 9, 7), HOOD, null, null, [0, -0.01, -0.07]),
+      hp(sphere(0.17, 10, 8), HOOD, [1, 0.92, 1.15], [0.5, 0, 0], [0, 0.04, -0.21]),
+      hp(sphere(0.22, 11, 9), HOOD2, [1, 1.05, 1.05], [0.6, 0, 0], [0, 0.16, -0.37]),
+      hp(sphere(0.19, 10, 8), HOOD, [1, 1, 1], null, [0, 0.31, -0.45]),
+      hp(sphere(0.155, 10, 8), WHITE, null, null, [0, 0.45, -0.47]),
+      hp(new THREE.ConeGeometry(0.11, 0.17, 7), WHITE, null, [-0.4, 0, 0], [0, 0.6, -0.46]),
+    ]), mat, []);
+    return makeSkin('fox', {
+      nodes, bodyGeo: body.geo, scarfStart: body.scarfStart, scarfCount: body.scarfCount,
+      carryPos: new THREE.Vector3(0, 0.69, -0.04), topY: 0.69, headExtra: 0.06,
+      ears, earRest: 0.42, earCarry: 0.85,
+      earHat: { straw: 0.12, explorer: 0.2, beanie: 0.18, flower: 0.0, penguin: 0.42, crown: 0.0 },
+      tail, tailKind: 'fox',
+    });
+  },
+
+  // ---- 太空小子：白色太空衣、圓頭盔（面罩反光 + 小天線）、背上的小噴射背包 ----
+  astro(P) {
+    const SUIT = 0xf4f6fb, SUIT2 = 0xd3dbe8, SUIT3 = 0xb5c0d2, OR = 0xff8a3d, BLUE = 0x4f8fe0, GLOVE = 0xd6dde9,
+      BOOT = 0x7d8cab, DARK = 0x56607a;
+    const nodes = [];
+    const mat = P.bodyMat;
+    const M = skinMats(P);
+    attachLimbs(P, legGeoOf(SUIT, BOOT, [
+      hp(new THREE.TorusGeometry(0.104, 0.025, 4, 10), OR, null, [Math.PI / 2, 0, 0], [0, -0.135, 0]),
+    ]), armGeoOf(SUIT, GLOVE, [
+      hp(new THREE.TorusGeometry(0.085, 0.028, 4, 10), OR, null, [Math.PI / 2, 0, 0], [0, -0.19, 0]),
+    ]), M.suit, nodes);
+    // 太空衣：胸前控制面板（三顆按鈕）+ 橘色腰帶 + 藍色臂章
+    const list = [coatShell(SUIT)];
+    const py = 0.57, pz = coatZ(py) + 0.005;
+    list.push(hp(new THREE.BoxGeometry(0.22, 0.15, 0.05), SUIT2, null, [-0.12, 0, 0], [0, py, pz - 0.01]));
+    list.push(hp(new THREE.BoxGeometry(0.17, 0.035, 0.02), DARK, null, [-0.12, 0, 0], [0, py + 0.035, pz + 0.018]));
+    [[-0.055, 0xff5a5a], [0, 0xffd25e], [0.055, BLUE]].forEach(([x, c]) => {
+      list.push(hp(new THREE.CylinderGeometry(0.019, 0.019, 0.03, 8), c, null, [Math.PI / 2 - 0.12, 0, 0], [x, py - 0.025, pz + 0.02]));
+    });
+    list.push(hp(new THREE.TorusGeometry(0.313, 0.03, 4, 20), OR, [1, 1, 0.93], [Math.PI / 2, 0, 0], [0, 0.38, 0]));
+    const body = bodyWithScarf(list);
+    attach(P.torso, body.geo, M.suit, nodes);
+    // 頭盔：前面開口的白色球殼 + 灰色框 + 兩側橘色耳機
+    const HC3 = [0, 0.26, -0.03], HR = 0.5, OPEN = 0.82;
+    const shell = new THREE.SphereGeometry(HR, 20, 12, 0, Math.PI * 2, OPEN, Math.PI - OPEN);
+    shell.rotateX(Math.PI / 2);
+    const rimR = HR * Math.sin(OPEN), rimZ = HR * Math.cos(OPEN);
+    attach(P.head, hmerge([
+      hp(shell, SUIT, null, null, HC3),
+      hp(new THREE.TorusGeometry(rimR, 0.045, 6, 26), SUIT2, null, null, [HC3[0], HC3[1], HC3[2] + rimZ]),
+      hp(new THREE.CylinderGeometry(0.11, 0.11, 0.07, 12), OR, null, [0, 0, Math.PI / 2], [-HR + 0.01, HC3[1] - 0.02, HC3[2]]),
+      hp(new THREE.CylinderGeometry(0.11, 0.11, 0.07, 12), OR, null, [0, 0, Math.PI / 2], [HR - 0.01, HC3[1] - 0.02, HC3[2]]),
+      hp(new THREE.CylinderGeometry(0.06, 0.06, 0.03, 10), SUIT3, null, [0, 0, Math.PI / 2], [-HR - 0.035, HC3[1] - 0.02, HC3[2]]),
+      hp(new THREE.CylinderGeometry(0.06, 0.06, 0.03, 10), SUIT3, null, [0, 0, Math.PI / 2], [HR + 0.035, HC3[1] - 0.02, HC3[2]]),
+    ]), M.suit, nodes);
+    // 面罩玻璃（半透明）+ 左上兩道反光
+    const glass = new THREE.SphereGeometry(HR + 0.012, 18, 6, 0, Math.PI * 2, 0, OPEN + 0.04);
+    glass.rotateX(Math.PI / 2);
+    const gm = attach(P.head, hmerge([hp(glass, 0xffffff, null, null, HC3)]), M.glass, nodes);
+    gm.renderOrder = 2;
+    attach(P.head, hmerge([
+      onSphere(hp(sphere(0.07, 8, 4), 0xffffff, [1.5, 0.3, 0.12]), HC3, [-0.36, 0.42, 0.83], HR + 0.02, 0.85),
+      onSphere(hp(sphere(0.035, 6, 4), 0xffffff, [1.2, 0.45, 0.15]), HC3, [-0.2, 0.52, 0.83], HR + 0.02, 0.75),
+      onSphere(hp(sphere(0.02, 6, 4), 0xffffff, [1, 1, 0.2]), HC3, [0.32, -0.28, 0.9], HR + 0.02, 0),
+    ]), M.glow, nodes);
+    // 天線：掛在小芽樞紐上（共用小芽的彈簧擺動）
+    attach(P.sprout, hmerge([
+      hp(new THREE.CylinderGeometry(0.012, 0.018, 0.2, 5), SUIT3, null, null, [0, 0.1, 0]),
+      hp(new THREE.CylinderGeometry(0.035, 0.04, 0.03, 8), SUIT2, null, null, [0, 0.01, 0]),
+      hp(sphere(0.05, 8, 6), 0xff5a6a, null, null, [0, 0.225, 0]),
+      hp(sphere(0.018, 5, 4), 0xffffff, null, null, [-0.018, 0.245, 0.03]),
+    ]), mat, nodes);
+    // 噴射背包：兩支燃料罐 + 背板 + 噴嘴
+    const TZ = -0.43;
+    const tank = (x) => [
+      hp(new THREE.CylinderGeometry(0.1, 0.1, 0.3, 10), SUIT, null, null, [x, 0.5, TZ]),
+      hp(sphere(0.1, 10, 6), OR, [1, 0.8, 1], null, [x, 0.65, TZ]),
+      hp(new THREE.CylinderGeometry(0.102, 0.102, 0.045, 10), OR, null, null, [x, 0.42, TZ]),
+      hp(new THREE.CylinderGeometry(0.055, 0.085, 0.09, 8), DARK, null, null, [x, 0.315, TZ]),
+    ];
+    attach(P.torso, hmerge([
+      hp(new THREE.BoxGeometry(0.36, 0.36, 0.08), SUIT2, null, null, [0, 0.52, -0.35]),
+      ...tank(-0.125), ...tank(0.125),
+      hp(new THREE.BoxGeometry(0.07, 0.05, 0.02), 0x6fe0ff, null, null, [0, 0.6, -0.395]),
+      hp(new THREE.BoxGeometry(0.07, 0.03, 0.02), 0xff5a5a, null, null, [0, 0.53, -0.395]),
+    ]), M.suit, nodes);
+    // 噴射火焰：跳躍時噴一下（縮放 Y = 火焰長度）
+    const jet = attachPivot(P.torso, [0, 0.27, TZ], nodes);
+    const flame = (x) => [
+      hp(new THREE.ConeGeometry(0.075, 0.34, 8), 0xff8a2c, null, [Math.PI, 0, 0], [x, -0.17, 0]),
+      hp(new THREE.ConeGeometry(0.045, 0.2, 8), 0xfff3b0, null, [Math.PI, 0, 0], [x, -0.1, 0]),
+      hp(sphere(0.075, 7, 5), 0xffffff, null, null, [x - 0.035, -0.36, 0.02]),
+      hp(sphere(0.055, 6, 4), 0xf2f6ff, null, null, [x + 0.045, -0.4, -0.02]),
+    ];
+    attach(jet, hmerge([...flame(-0.125), ...flame(0.125)]), M.glow, []);
+    jet.visible = false;
+    return makeSkin('astro', {
+      nodes, bodyGeo: body.geo, scarfStart: body.scarfStart, scarfCount: body.scarfCount,
+      sproutPos: new THREE.Vector3(0.13, 0.745, -0.06),
+      carryPos: new THREE.Vector3(0, 0.755, -0.03), topY: 0.76, headExtra: 0.1,
+      hatScale: 1.1, hatLift: 0.0, hatFwd: 0.02,
+      jet,
+    });
+  },
+
+  // ---- 熊熊：熊耳朵咖啡色連帽衣、圓尾巴、背上的蜂蜜罐、蜂蜜色圍巾 ----
+  bear(P) {
+    const FUR = 0xae764a, FUR2 = 0x95623a, CREAM = 0xf3d8ad, PANTS = 0x5d82c2, BOOT = 0x6a4430,
+      HONEY = 0xf2a72c, HONEY2 = 0xffcf4a, LID = 0xe8545a, LID2 = 0xfff2e2, ROPE = 0x7a4e36;
+    const nodes = [];
+    const mat = P.bodyMat;
+    attachLimbs(P, legGeoOf(PANTS, BOOT, [
+      hp(new THREE.TorusGeometry(0.104, 0.028, 4, 10), 0x4a6ba8, null, [Math.PI / 2, 0, 0], [0, -0.13, 0]),
+    ]), armGeoOf(FUR, SKIN_HAND, [
+      hp(new THREE.TorusGeometry(0.083, 0.03, 4, 10), CREAM, null, [Math.PI / 2, 0, 0], [0, -0.19, 0]),
+    ]), mat, nodes);
+    // 連帽衣：奶油色肚子 + 口袋
+    const list = [coatShell(FUR)];
+    list.push(hp(sphere(0.17, 12, 9), CREAM, [1, 0.95, 0.26], [-0.2, 0, 0], [0, 0.46, coatZ(0.46) - 0.03]));
+    const body = bodyWithScarf(list);
+    attach(P.torso, body.geo, mat, nodes);
+    attach(P.head, hmerge([hoodShell(FUR)]), mat, nodes);
+    // 圓耳朵
+    const earGeo = hmerge([
+      hp(sphere(0.13, 10, 8), FUR, [1, 0.95, 0.6], null, [0, 0.07, 0]),
+      hp(sphere(0.078, 8, 6), CREAM, [1, 1, 0.4], null, [0, 0.07, 0.05]),
+    ]);
+    const ears = [];
+    for (const sx of [-1, 1]) {
+      const e = attachPivot(P.head, [0.31 * sx, 0.55, -0.07], nodes);
+      attach(e, earGeo, mat, []);
+      ears.push(e);
+    }
+    // 圓尾巴
+    const tail = attachPivot(P.torso, [0, 0.29, -0.25], nodes);
+    attach(tail, hmerge([hp(sphere(0.11, 10, 8), CREAM, null, null, [0, 0, -0.05])]), mat, []);
+    // 蜂蜜罐背包
+    attach(P.torso, hmerge([
+      hp(sphere(0.17, 12, 9), HONEY, [1, 0.9, 0.82], null, [0, 0.56, -0.44]),
+      hp(new THREE.CylinderGeometry(0.1, 0.12, 0.07, 12), 0xe0921f, null, null, [0, 0.71, -0.44]),
+      hp(new THREE.SphereGeometry(0.135, 12, 5, 0, Math.PI * 2, 0, Math.PI / 2), (x, y, z, f) => (sector(x, z - (-0.44), 10) % 2 ? LID : LID2),
+        [1, 0.55, 1], null, [0, 0.735, -0.44]),
+      hp(new THREE.TorusGeometry(0.11, 0.016, 4, 14), ROPE, null, [Math.PI / 2, 0, 0], [0, 0.74, -0.44]),
+      hp(sphere(0.045, 7, 5), HONEY2, [0.8, 1.5, 0.6], null, [0.07, 0.655, -0.31]),
+      hp(sphere(0.03, 6, 4), HONEY2, null, null, [0.07, 0.6, -0.305]),
+      hp(new THREE.BoxGeometry(0.15, 0.09, 0.02), LID2, null, [0.2, 0, 0], [-0.0, 0.53, -0.296]),
+      hp(new THREE.BoxGeometry(0.05, 0.42, 0.03), ROPE, null, [0.35, 0, -0.2], [-0.2, 0.62, -0.25]),
+      hp(new THREE.BoxGeometry(0.05, 0.42, 0.03), ROPE, null, [0.35, 0, 0.2], [0.2, 0.62, -0.25]),
+    ]), mat, nodes);
+    return makeSkin('bear', {
+      nodes, bodyGeo: body.geo, scarfStart: body.scarfStart, scarfCount: body.scarfCount,
+      sunny: 0xf5b22e,
+      carryPos: new THREE.Vector3(0, 0.69, -0.04), topY: 0.69, headExtra: 0.02,
+      ears, earRest: 0.75, earCarry: 0.6,
+      earHat: { straw: 0.25, explorer: 0.3, beanie: 0.12, flower: 0.0, penguin: 0.3, crown: 0.05 },
+      tail, tailKind: 'bear',
+    });
+  },
+
+  // ---- 雲朵仙子：蓬鬆雲朵頭髮、淺藍衣服、背上會拍動的小翅膀 ----
+  cloud(P) {
+    const OUT = 0xa6d6ff, OUT2 = 0x86c0f2, WHITE = 0xffffff, W2 = 0xeaf4ff, LEG = 0xd9d3fb, BOOT = 0xf8faff,
+      SOLE = 0x8cc6f0, STAR = 0xffd25e;
+    const nodes = [];
+    const mat = P.bodyMat;
+    const M = skinMats(P);
+    attachLimbs(P, legGeoOf(LEG, BOOT, [
+      hp(new THREE.SphereGeometry(0.128, 9, 4, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), SOLE, [1, 0.72, 1.3], null, [0, -0.2, 0.035]),
+    ]), armGeoOf(OUT, SKIN_HAND, [
+      hp(sphere(0.065, 8, 6), WHITE, [1.45, 0.8, 1.45], null, [0, -0.185, 0]),
+    ]), mat, nodes);
+    // 衣服：下擺一圈雲朵花邊 + 胸前小星星
+    const list = [coatShell(OUT)];
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2 + 0.3;
+      list.push(hp(sphere(0.075, 8, 6), i % 2 ? WHITE : W2, null, null, [Math.sin(a) * 0.255, 0.3 + (i % 2) * 0.012, Math.cos(a) * 0.235]));
+    }
+    list.push(hp(new THREE.OctahedronGeometry(0.055, 0), STAR, [1, 1, 0.45], [0, 0, 0.785], [0, 0.55, coatZ(0.55) + 0.01]));
+    list.push(hp(new THREE.CylinderGeometry(0.255, 0.27, 0.04, 16), OUT2, null, null, [0, 0.36, 0]));
+    const body = bodyWithScarf(list);
+    attach(P.torso, body.geo, mat, nodes);
+    // 雲朵頭髮：底層 + 一圈蓬蓬的雲團（正面留給臉）+ 星星髮夾
+    const hair = [hp(sphere(0.45, 16, 12), WHITE, [1.05, 0.97, 1.02], null, [0, 0.27, -0.06])];
+    const PUFFS = [
+      [0, 1, -0.1, 0.2], [0.55, 0.78, 0.05, 0.17], [-0.55, 0.78, 0.05, 0.17], [0.85, 0.3, -0.15, 0.17],
+      [-0.85, 0.3, -0.15, 0.17], [0.35, 0.55, -0.8, 0.18], [-0.35, 0.55, -0.8, 0.18], [0, 0.3, -1, 0.17],
+      [0.7, -0.05, -0.55, 0.14], [-0.7, -0.05, -0.55, 0.14], [0.25, 0.8, 0.5, 0.14], [-0.28, 0.78, 0.48, 0.15],
+      [0.0, 0.88, 0.32, 0.14], [0.72, 0.05, 0.42, 0.12], [-0.72, 0.05, 0.42, 0.12],
+    ];
+    PUFFS.forEach(([x, y, z, r], i) => {
+      const d = new THREE.Vector3(x, y, z).normalize();
+      hair.push(hp(sphere(r, 10, 8), i % 3 === 1 ? W2 : WHITE, null, null,
+        [d.x * 0.45 * 1.0, 0.27 + d.y * 0.42, -0.06 + d.z * 0.44]));
+    });
+    // 彩虹髮夾（右側）
+    [[0.085, 0xff7f93], [0.066, 0xffd25e], [0.047, 0x7fd0ff]].forEach(([r, c]) => {
+      hair.push(hp(new THREE.TorusGeometry(r, 0.0105, 4, 12, Math.PI), c, null, [0, 0.75, -0.42], [0.41, 0.5, 0.17]));
+    });
+    hair.push(hp(sphere(0.035, 7, 5), WHITE, null, null, [0.41 + 0.068, 0.5 - 0.06, 0.17 - 0.06]));
+    hair.push(hp(sphere(0.035, 7, 5), WHITE, null, null, [0.41 - 0.068, 0.5 + 0.05, 0.17 + 0.06]));
+    attach(P.head, hmerge(hair), M.fluff, nodes);
+    // 小翅膀（以翅根為樞紐，左右各一，羽毛從大到小）
+    const wingGeo = (sx) => hmerge([
+      hp(sphere(0.2, 10, 6), WHITE, [1, 0.58, 0.16], [0, 0, sx * 0.5], [sx * 0.18, 0.09, 0]),
+      hp(sphere(0.16, 9, 6), W2, [1, 0.5, 0.15], [0, 0, sx * 0.1], [sx * 0.17, -0.04, 0.005]),
+      hp(sphere(0.12, 8, 5), 0xcfe7ff, [1, 0.45, 0.14], [0, 0, -sx * 0.35], [sx * 0.12, -0.13, 0.01]),
+    ]);
+    const wings = [];
+    for (const sx of [-1, 1]) {
+      const w = attachPivot(P.torso, [0.08 * sx, 0.56, -0.3], nodes);
+      attach(w, wingGeo(sx), M.fluff, []);
+      wings.push(w);
+    }
+    return makeSkin('cloud', {
+      nodes, bodyGeo: body.geo, scarfStart: body.scarfStart, scarfCount: body.scarfCount,
+      carryPos: new THREE.Vector3(0, 0.84, -0.06), topY: 0.8, headExtra: 0.1,
+      hatScale: 1.1, hatLift: 0.1, hatFwd: 0.0,
+      wings,
+    });
+  },
+};
+
+// ---------------------------------------------------------------------------
 // createPlayer
 // ---------------------------------------------------------------------------
 export function createPlayer({ scene, world }) {
@@ -560,11 +956,15 @@ export function createPlayer({ scene, world }) {
   let carryKind = null, carryObj = null, carryScale = 1, carryTarget = 1, carryPop = 0;
   // v3 裝扮
   const cosmetics = { hat: null, scarf: 'sunny', trail: null };
-  const hatCache = {};                   // id → { mesh, tilt, sprout, sproutPos, carryPos, extra }
-  let hatInfo = null;                    // 目前戴的帽子（null = 沒戴）
+  const hatCache = {};                   // id → { mesh, tilt, sprout, top }（帽子幾何，所有角色共用）
+  let hatInfo = null;                    // 目前戴的帽子在目前角色身上的合身資訊（null = 沒戴）
   let scarfStars = null;
-  const SPROUT_POS = parts.sprout.position.clone();
-  const CARRY_POS = parts.carry.position.clone();
+  // v4：角色與速度倍率
+  const skins = { wanderer: parts.wanderer };
+  let skin = parts.wanderer;
+  let speedScale = 1;
+  let walkSpeed = WALK_SPEED, runSpeed = RUN_SPEED;
+  const HAT_BASE_POS = parts.hat.position.clone();
   let coyote = 0;
   let jumpBuffer = 0;
   let airTime = 0;
@@ -584,6 +984,9 @@ export function createPlayer({ scene, world }) {
     celebT: -1,
     prevSpeed: 0, accel: 0,
     tailX: -0.42,
+    // v4 角色專屬
+    earL: 0, earR: 0, earX: 0, twitchT: 2.5, twitch: 0, twitchSide: 1,
+    wag: 0, wagV: 0, flap: 0, flapPhase: 0, jet: 0,
   };
 
   const api = {
@@ -607,6 +1010,11 @@ export function createPlayer({ scene, world }) {
     // v3
     setCosmetics,
     get cosmetics() { return cosmetics; },
+    // v4
+    setCharacter,
+    get character() { return skin.id; },
+    setSpeedScale,
+    get speedScale() { return speedScale; },
   };
 
   const groundAt = (dir) => {
@@ -765,7 +1173,7 @@ export function createPlayer({ scene, world }) {
   }
 
   function getHeadPosition(out = new THREE.Vector3()) {
-    const extra = (carryObj ? 0.5 * carryScale : 0) + (hatInfo ? hatInfo.extra : 0);
+    const extra = (carryObj ? 0.5 * carryScale : 0) + (hatInfo ? hatInfo.extra : skin.headExtra);
     return out.copy(position).addScaledVector(up, HEAD_TOP + parts.rig.position.y + extra);
   }
 
@@ -800,36 +1208,107 @@ export function createPlayer({ scene, world }) {
     mesh.visible = false;
     parts.hat.add(mesh);
     const tilt = new THREE.Euler(def.tilt[0], def.tilt[1], def.tilt[2]);
-    // 帽頂中心（頭部座標）：搬運物放這裡；'raise' 的小芽也從這裡冒出來
-    const top = new THREE.Vector3(0, def.top, 0).applyEuler(tilt).add(parts.hat.position);
-    const info = {
-      id, mesh, tilt, sprout: def.sprout,
-      sproutPos: def.sprout === 'raise' ? top.clone().add(new THREE.Vector3(0, -0.04, 0)) : SPROUT_POS.clone(),
-      carryPos: top.y > CARRY_POS.y ? new THREE.Vector3(top.x, top.y + 0.005, top.z) : CARRY_POS.clone(),
-      extra: Math.max(0, top.y - HAT_TOP_DEFAULT),
-    };
+    const info = { id, mesh, tilt, sprout: def.sprout, top: def.top };
     hatCache[id] = info;
     return info;
   }
 
-  /** 小芽與頭頂搬運物的位置/可見度要配合帽子 */
+  /**
+   * v4：帽子戴在某位角色頭上的合身資訊（第一次才計算並快取）。
+   * 帽子掛點 = 兜帽球心 + 角色的抬高/前移，縮放 = 角色頭的大小（頭盔、雲朵頭髮比兜帽大）。
+   */
+  function getFit(sk, id) {
+    if (sk.fits[id]) return sk.fits[id];
+    const hat = getHat(id);
+    const adj = sk.hatAdjust[id] || {};
+    const sc = sk.hatScale * (adj.s || 1);
+    const pos = new THREE.Vector3(HAT_BASE_POS.x, HAT_BASE_POS.y + sk.hatLift + (adj.y || 0), HAT_BASE_POS.z + sk.hatFwd + (adj.z || 0));
+    // 帽頂中心（頭部座標）：搬運物放這裡；'raise' 的小芽也從這裡冒出來
+    const top = new THREE.Vector3(0, hat.top * sc, 0).applyEuler(hat.tilt).add(pos);
+    const baseSprout = sk.sproutPos || parts.wanderer.sproutPos;
+    const fit = {
+      id, hat, mesh: hat.mesh, tilt: hat.tilt, sprout: hat.sprout, pos, scale: sc,
+      sproutPos: hat.sprout === 'raise' ? top.clone().add(new THREE.Vector3(0, -0.04, 0)) : baseSprout.clone(),
+      carryPos: top.y > sk.carryPos.y ? new THREE.Vector3(top.x, top.y + 0.005, top.z) : sk.carryPos.clone(),
+      extra: Math.max(sk.headExtra, top.y - HAT_TOP_DEFAULT),
+      ear: sk.earHat[id] || 0,
+    };
+    sk.fits[id] = fit;
+    return fit;
+  }
+
+  /** 把目前的帽子（cosmetics.hat）戴到目前角色頭上 */
+  function applyHat() {
+    if (hatInfo) hatInfo.mesh.visible = false;
+    hatInfo = null;
+    const id = cosmetics.hat;
+    if (id) {
+      try { hatInfo = getFit(skin, id); } catch (e) { console.error(e); hatInfo = null; }
+    }
+    if (hatInfo) {
+      hatInfo.mesh.visible = true;
+      parts.hat.rotation.copy(hatInfo.tilt);
+      parts.hat.position.copy(hatInfo.pos);
+      parts.hat.scale.setScalar(hatInfo.scale);
+    }
+  }
+
+  /** 小芽（天線）與頭頂搬運物的位置/可見度要配合帽子與角色 */
   function syncHead() {
     const { sprout, carry } = parts;
     const h = hatInfo;
-    sprout.visible = !carryObj && !(h && h.sprout === 'hide');
-    sprout.position.copy(h ? h.sproutPos : SPROUT_POS);
-    const cp = h ? h.carryPos : CARRY_POS;
+    sprout.visible = !!skin.sproutPos && !carryObj && !(h && h.sprout === 'hide');
+    sprout.position.copy(h ? h.sproutPos : (skin.sproutPos || parts.wanderer.sproutPos));
+    const cp = h ? h.carryPos : skin.carryPos;
     carry.position.set(cp.x, cp.y, cp.z);
   }
 
+  /**
+   * v4：換角色（CHARACTERS 之一；未知 id 忽略）。第一次選到時建立模型，之後只切換 visible，
+   * 帽子/圍巾/搬運物/動畫狀態都保留。
+   */
+  function setCharacter(id) {
+    if (typeof id !== 'string' || !CHARACTERS.includes(id)) return;
+    if (id === skin.id) return;
+    let next = skins[id];
+    if (!next) {
+      const build = SKIN_BUILD[id];
+      if (!build) return;
+      try { next = build(parts); } catch (e) { console.error(e); return; }
+      for (const n of next.nodes) n.visible = false;
+      skins[id] = next;
+    }
+    for (const n of skin.nodes) n.visible = false;
+    skin = next;
+    for (const n of skin.nodes) n.visible = true;
+    if (skin.jet) skin.jet.visible = false;
+    setScarfColor(cosmetics.scarf);
+    applyHat();
+    syncHead();
+    anim.earL = anim.earR = skin.earRest;
+  }
+
+  /** v4：速度倍率（SPEED_SCALES 的值），乘在走路/跑步速度上；跳躍高度不變 */
+  function setSpeedScale(s) {
+    s = +s;
+    if (!Number.isFinite(s) || s <= 0) s = 1;
+    speedScale = clamp(s, 0.3, 2.5);
+    walkSpeed = WALK_SPEED * speedScale;
+    runSpeed = RUN_SPEED * speedScale;
+  }
+
   function setScarfColor(id) {
-    const hex = SCARF_COLORS[id] !== undefined ? SCARF_COLORS[id] : SCARF_COLORS.sunny;
+    let hex = SCARF_COLORS[id] !== undefined ? SCARF_COLORS[id] : SCARF_COLORS.sunny;
+    if (hex === SCARF_COLORS.sunny) hex = skin.sunny; // 例如熊熊的預設圍巾是蜂蜜色
     _hc.set(hex);
-    const attr = parts.bodyGeo.attributes.color;
-    const arr = attr.array;
-    const a0 = parts.scarfStart * 3, a1 = (parts.scarfStart + parts.scarfCount) * 3;
-    for (let i = a0; i < a1; i += 3) { arr[i] = _hc.r; arr[i + 1] = _hc.g; arr[i + 2] = _hc.b; }
-    attr.needsUpdate = true;
+    if (skin.scarfApplied !== hex) {
+      const attr = skin.bodyGeo.attributes.color;
+      const arr = attr.array;
+      const a0 = skin.scarfStart * 3, a1 = (skin.scarfStart + skin.scarfCount) * 3;
+      for (let i = a0; i < a1; i += 3) { arr[i] = _hc.r; arr[i + 1] = _hc.g; arr[i + 2] = _hc.b; }
+      attr.needsUpdate = true;
+      skin.scarfApplied = hex;
+    }
     const tattr = parts.tailGeo.attributes.color;
     const tarr = tattr.array;
     // 尾巴流蘇稍微深一點
@@ -856,15 +1335,8 @@ export function createPlayer({ scene, world }) {
     if (c.hat !== undefined) {
       const id = HAT_BUILD[c.hat] ? c.hat : null;
       if (id !== cosmetics.hat || (id && !hatInfo)) {
-        if (hatInfo) hatInfo.mesh.visible = false;
-        hatInfo = null;
-        if (id) {
-          try { hatInfo = getHat(id); } catch (e) { console.error(e); hatInfo = null; }
-        }
-        if (hatInfo) {
-          hatInfo.mesh.visible = true;
-          parts.hat.rotation.copy(hatInfo.tilt);
-        }
+        cosmetics.hat = id;
+        applyHat();
         cosmetics.hat = hatInfo ? id : null;
         syncHead();
       }
@@ -979,7 +1451,7 @@ export function createPlayer({ scene, world }) {
     const tl = _target.length();
     let targetSpeed = 0;
     if (tl > 1e-6 && wantMag > 0) {
-      targetSpeed = (wantRun ? RUN_SPEED : WALK_SPEED) * wantMag * (api.inWater ? WATER_SPEED : 1);
+      targetSpeed = (wantRun ? runSpeed : walkSpeed) * wantMag * (api.inWater ? WATER_SPEED : 1);
       _target.multiplyScalar(targetSpeed / tl);
     } else {
       _target.set(0, 0, 0);
@@ -1009,6 +1481,8 @@ export function createPlayer({ scene, world }) {
       anim.sq = 0.26;
       anim.sqV = 0;
       anim.sproutXV -= 6;
+      anim.jet = 1.25;
+      anim.flap = 1;
       fire('onJump');
     }
 
@@ -1097,6 +1571,8 @@ export function createPlayer({ scene, world }) {
     anim.sq = 0.36;
     anim.sqV = 2;
     anim.sproutXV -= 9;
+    anim.jet = 1.4;
+    anim.flap = 1;
     fire('onBounce');
   }
 
@@ -1173,14 +1649,15 @@ export function createPlayer({ scene, world }) {
     a.accel = damp(a.accel, (spd - a.prevSpeed) / Math.max(dt, 1e-4), 10, dt);
     a.prevSpeed = spd;
 
-    a.walk = damp(a.walk, g ? clamp(spd / WALK_SPEED, 0, 1) : 0, 10, dt);
-    a.run = damp(a.run, g ? clamp((spd - WALK_SPEED * 0.9) / (RUN_SPEED - WALK_SPEED * 0.9), 0, 1) : 0, 8, dt);
+    a.walk = damp(a.walk, g ? clamp(spd / walkSpeed, 0, 1) : 0, 10, dt);
+    a.run = damp(a.run, g ? clamp((spd - walkSpeed * 0.9) / (runSpeed - walkSpeed * 0.9), 0, 1) : 0, 8, dt);
     a.air = damp(a.air, g ? 0 : 1, g ? 14 : 8, dt);
     a.water = damp(a.water, api.inWater ? 1 : 0, 5, dt);
 
-    // 步伐：速度越快頻率越高
+    // 步伐：每走 stride 距離踏一步（步頻跟著地面速度，腳不打滑）；速度倍率大時步幅也稍微變大
     if (g && spd > 0.25) {
-      const stride = api.inWater ? 0.8 : 1.05 + 0.4 * a.run;
+      const stride = (api.inWater ? STRIDE_WATER : STRIDE_WALK + (STRIDE_RUN - STRIDE_WALK) * a.run)
+        * (0.65 + 0.35 * speedScale);
       a.phase += (spd * dt / stride) * Math.PI;
       const idx = Math.floor(a.phase / Math.PI);
       if (idx !== a.stepIndex) {
@@ -1230,14 +1707,14 @@ export function createPlayer({ scene, world }) {
     torso.rotation.y = a.twist;
 
     // 腿
-    const legAmp = (0.6 + 0.35 * a.run) * a.walk * (1 - 0.4 * a.water);
+    const legAmp = (0.72 + 0.33 * a.run) * a.walk * (1 - 0.4 * a.water);
     legs[0].rotation.x = s * legAmp - a.air * 0.55;
     legs[1].rotation.x = -s * legAmp + a.air * 0.25;
     legs[0].position.y = 0.29 + Math.max(0, -s) * 0.06 * a.walk;
     legs[1].position.y = 0.29 + Math.max(0, s) * 0.06 * a.walk;
 
     // 手臂
-    const armAmp = (0.55 + 0.45 * a.run) * a.walk * (1 - a.water);
+    const armAmp = (0.6 + 0.45 * a.run) * a.walk * (1 - a.water);
     const paddle = Math.sin(t * 7) * a.water;
     const idleSway = Math.sin(t * 2.4 + 0.6) * 0.04 * (1 - a.walk);
     const airLift = a.air * (0.9 + clamp(vRad * 0.04, -0.4, 0.4));
@@ -1284,7 +1761,7 @@ export function createPlayer({ scene, world }) {
     sprout.rotation.z = a.sproutZ;
 
     // 圍巾尾巴：垂在胸前，走路時隨步伐彈跳、往外甩，空中往上飄（只往前/外擺，不會穿進身體）
-    const flutter = clamp(spd / RUN_SPEED, 0, 1) * (g ? 1 : 0.5);
+    const flutter = clamp(spd / runSpeed, 0, 1) * (g ? 1 : 0.5);
     const tailX = -0.42 - bobWave * 0.35 * a.walk - flutter * 0.25 - a.air * clamp(-vRad * 0.05 + 0.2, 0, 0.7)
       - Math.max(0, Math.sin(t * 2.4)) * 0.03 * (1 - a.walk);
     a.tailX = damp(a.tailX, tailX, 12, dt);
@@ -1303,7 +1780,69 @@ export function createPlayer({ scene, world }) {
       carry.rotation.x = a.sproutX * 0.22 + Math.sin(a.phase * 2) * 0.05 * a.walk;
       carry.rotation.z = a.sproutZ * 0.3;
       carry.rotation.y = 0.45 + a.turn * 0.2;
-      carry.position.y = (hatInfo ? hatInfo.carryPos.y : CARRY_POS.y) + bobWave * 0.04 * a.walk;
+      carry.position.y = (hatInfo ? hatInfo.carryPos.y : skin.carryPos.y) + bobWave * 0.04 * a.walk;
+    }
+
+    if (skin.id !== 'wanderer') animateSkin(dt, t, s, spd, g, cheer);
+  }
+
+  /** v4：角色專屬的小動作（耳朵、尾巴、翅膀、噴射火焰） */
+  function animateSkin(dt, t, s, spd, g, cheer) {
+    const a = anim;
+    const sk = skin;
+    const sp = clamp(spd / runSpeed, 0, 1);
+    if (sk.ears) {
+      // 偶爾抖一下耳朵；戴帽子或頂冰塊時往外倒；跑步時往後貼
+      a.twitchT -= dt;
+      if (a.twitchT <= 0) {
+        a.twitchT = 1.6 + Math.random() * 3.2;
+        a.twitch = 1;
+        a.twitchSide = Math.random() < 0.5 ? -1 : 1;
+      }
+      a.twitch = Math.max(0, a.twitch - dt * 5);
+      const tw = Math.sin(a.twitch * Math.PI * 3) * 0.22 * a.twitch;
+      const base = sk.earRest + (hatInfo ? hatInfo.ear : 0) + (carryObj ? sk.earCarry : 0)
+        + a.air * clamp(-vRad * 0.02, -0.15, 0.2) - cheer * 0.2;
+      a.earL = damp(a.earL, base + (a.twitchSide < 0 ? tw : 0), 14, dt);
+      a.earR = damp(a.earR, base + (a.twitchSide > 0 ? tw : 0), 14, dt);
+      a.earX = damp(a.earX, -sp * 0.45 * (g ? 1 : 0.5) + Math.sin(a.phase * 2) * 0.06 * a.walk + clamp(a.sproutX * 0.2, -0.15, 0.15), 12, dt);
+      sk.ears[0].rotation.set(a.earX, 0, a.earL);
+      sk.ears[1].rotation.set(a.earX, 0, -a.earR);
+    }
+    if (sk.tail) {
+      // 尾巴彈簧：走路左右甩、起跳往下壓然後翹起
+      const wagTarget = sk.tailKind === 'fox'
+        ? Math.sin(t * 2.3) * 0.32 * (1 - a.walk) + s * 0.38 * a.walk + a.turn * 0.5
+        : Math.sin(t * 3.1) * 0.18 * (1 - a.walk) + s * 0.3 * a.walk;
+      a.wagV += (-70 * (a.wag - wagTarget) - 7 * a.wagV) * dt;
+      a.wag = clamp(a.wag + a.wagV * dt, -1, 1);
+      const lift = sk.tailKind === 'fox'
+        ? -sp * 0.5 * (g ? 1 : 0.4) + (g ? 0 : clamp(-vRad * 0.03, -0.35, 0.35)) + cheer * 0.4 + Math.sin(t * 1.7) * 0.05
+        : (g ? 0 : clamp(-vRad * 0.02, -0.2, 0.2));
+      sk.tail.rotation.set(lift, a.wag, sk.tailKind === 'fox' ? -a.wag * 0.35 : a.wag * 0.4);
+    }
+    if (sk.wings) {
+      // 小翅膀：地面上慢慢搧，空中快速拍動，起跳時用力拍一下
+      a.flap = Math.max(0, a.flap - dt * 2.2);
+      const rate = g ? 3.2 + sp * 4 + cheer * 10 : 16;
+      a.flapPhase += dt * rate;
+      const amp = g ? 0.12 + sp * 0.12 + cheer * 0.4 : 0.5 + a.flap * 0.3;
+      const f = Math.sin(a.flapPhase) * amp;   // 上下拍（繞前後軸）
+      const open = 0.55 - (g ? 0 : 0.2);       // 往後收的角度（空中張開一點）
+      sk.wings[0].rotation.set(0.1, -(open + f * 0.25), -(0.1 + f));
+      sk.wings[1].rotation.set(0.1, open + f * 0.25, 0.1 + f);
+    }
+    if (sk.jet) {
+      // 噴射背包：起跳時噴一大口，上升途中小火，落地熄火
+      const want = !g && vRad > 0 ? 0.45 : 0;
+      a.jet = Math.max(want, a.jet - dt * 3.2);
+      const k = a.jet > 1 ? 1 + (a.jet - 1) * 0.6 : a.jet;
+      const on = k > 0.04;
+      sk.jet.visible = on;
+      if (on) {
+        const fl = 0.85 + Math.sin(t * 47) * 0.1 + Math.sin(t * 31) * 0.06;
+        sk.jet.scale.set(0.6 + 0.4 * k, k * fl, 0.6 + 0.4 * k);
+      }
     }
   }
 

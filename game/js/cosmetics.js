@@ -1,5 +1,9 @@
 // 分身 4：裝扮（v3）—— 目錄、解鎖規則、目前穿戴、存檔。由 gameplay.js 建立（模組內部 API）。
 // 對外合約透過 gameplay.getWardrobe / equip / getEquipped 提供。
+// v4：獎牌門檻文字讀 config.TRIAL_MEDALS；⭐ 也可以從地形測驗得到。
+import { TRIAL_MEDALS } from './config.js';
+
+const medalSec = (m) => (TRIAL_MEDALS && Number.isFinite(TRIAL_MEDALS[m]) ? `（${TRIAL_MEDALS[m]} 秒內完成）` : '');
 
 export const SLOTS = [
   { id: 'hat', name: '帽子' },
@@ -28,20 +32,20 @@ export const COSMETICS = [
   { id: 'explorer', slot: 'hat', name: '探險帽', icon: '🤠', rule: { type: 'acorn', biome: 'desert' }, hint: '找到金色沙漠的金色橡實' },
   { id: 'beanie', slot: 'hat', name: '毛線帽', icon: '🧶', rule: { type: 'fragments', n: 5 }, hint: '集到第 5 片地圖碎片' },
   { id: 'flower', slot: 'hat', name: '花圈', icon: '🌸', rule: { type: 'acorn', biome: 'meadow' }, hint: '找到青青草原的金色橡實' },
-  { id: 'penguin', slot: 'hat', name: '企鵝帽', icon: '🐧', rule: { type: 'medal', medal: 'gold' }, hint: '計時挑戰拿到金牌' },
+  { id: 'penguin', slot: 'hat', name: '企鵝帽', icon: '🐧', rule: { type: 'medal', medal: 'gold' }, hint: '計時挑戰拿到金牌' + medalSec('gold') },
   { id: 'crown', slot: 'hat', name: '皇冠', icon: '👑', rule: { type: 'victory' }, hint: '讓星球恢復色彩（通關）' },
   // ---- 圍巾 ----
   { id: 'sunny', slot: 'scarf', name: '陽光黃圍巾', icon: '🟡', rule: { type: 'default' }, hint: '旅行一開始就有的圍巾' },
-  { id: 'sky', slot: 'scarf', name: '天空藍圍巾', icon: '🔵', rule: { type: 'stars', n: 6 }, hint: '答對測驗，集滿 6 顆 ⭐' },
+  { id: 'sky', slot: 'scarf', name: '天空藍圍巾', icon: '🔵', rule: { type: 'stars', n: 6 }, hint: '答對測驗（知識晶石或地形知識牌），集滿 6 顆 ⭐' },
   { id: 'mint', slot: 'scarf', name: '薄荷綠圍巾', icon: '🟢', rule: { type: 'fragments', n: 6 }, hint: '集到第 6 片地圖碎片' },
-  { id: 'rose', slot: 'scarf', name: '玫瑰粉圍巾', icon: '🌹', rule: { type: 'medal', medal: 'bronze' }, hint: '計時挑戰拿到銅牌' },
+  { id: 'rose', slot: 'scarf', name: '玫瑰粉圍巾', icon: '🌹', rule: { type: 'medal', medal: 'bronze' }, hint: '計時挑戰拿到銅牌' + medalSec('bronze') },
   { id: 'lava', slot: 'scarf', name: '熔岩紅圍巾', icon: '🔴', rule: { type: 'acorn', biome: 'volcano' }, hint: '找到火山高地的金色橡實' },
   { id: 'night', slot: 'scarf', name: '星夜紫圍巾', icon: '🟣', rule: { type: 'acorn', biome: 'polar' }, hint: '找到冰雪極地的金色橡實（只在夜晚的極光下出現）' },
   // ---- 腳印特效 ----
   { id: 'leaf', slot: 'trail', name: '葉子腳印', icon: '🍃', rule: { type: 'acorn', biome: 'forest' }, hint: '找到翠綠森林的金色橡實' },
-  { id: 'star', slot: 'trail', name: '星光腳印', icon: '⭐', rule: { type: 'stars', n: 12 }, hint: '答對全部 12 題測驗，集滿 12 顆 ⭐' },
+  { id: 'star', slot: 'trail', name: '星光腳印', icon: '⭐', rule: { type: 'stars', n: 12 }, hint: '答對測驗（知識晶石或地形知識牌），集滿 12 顆 ⭐' },
   { id: 'bubble', slot: 'trail', name: '泡泡腳印', icon: '🫧', rule: { type: 'acorn', biome: 'ocean' }, hint: '找到蔚藍海洋的金色橡實' },
-  { id: 'snow', slot: 'trail', name: '雪花腳印', icon: '❄️', rule: { type: 'medal', medal: 'silver' }, hint: '計時挑戰拿到銀牌' },
+  { id: 'snow', slot: 'trail', name: '雪花腳印', icon: '❄️', rule: { type: 'medal', medal: 'silver' }, hint: '計時挑戰拿到銀牌' + medalSec('silver') },
 ];
 
 const BY_ID = new Map(COSMETICS.map((c) => [c.id, c]));

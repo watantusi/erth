@@ -1,13 +1,14 @@
 // 分身 4：玩法（知識晶石、幼苗種子、荒地種樹、NPC「嗶嗶」、教學、勝利、存檔）
 // v2：平台挑戰頂端的晶石、指南針等級（地圖碎片）、嗶嗶訊號、任務居民（quests.js）
 // v3：知識測驗、裝扮（cosmetics.js）、金色橡實、計時挑戰（timetrial.js）
+// v4：可選角色（存檔）、地形知識牌（world.landforms → 知識卡 + 測驗 + 圖鑑「地形」）
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   BIOMES, WORLD_SEED, PICKUP_RADIUS, PALETTE, START_BIOME, SEA_LEVEL,
   CRYSTALS_PER_BIOME, SEEDLING_PLOTS,
   PING_DURATION, PING_COOLDOWN, COMPASS_LEVELS, RADAR_RANGE, TOTAL_QUESTS,
-  TRIAL_MEDALS,
+  TRIAL_MEDALS, INTERACT_RADIUS, CHARACTERS,
 } from './config.js';
 import {
   mulberry32, randomDirNear, angleBetweenDirs, getBiomeById, biomeCenters,
@@ -17,6 +18,7 @@ import {
   FACTS, factsForBiome, NPC_LINES, NPC_EMOTE_REPLIES, NPC_DEFAULT_REPLIES,
   NPC_IDLE_EMOTES, TUTORIAL, MESSAGES, VICTORY, FRAGMENT_TEXTS, fragmentTitle,
   quizForFact, V3_MESSAGES, fragmentBonusText,
+  landformInfo, quizForLandform, LANDFORM_ORDER, V4_MESSAGES,
 } from './content.js';
 import { createQuests } from './quests.js';
 import { createItem } from './characters.js';
@@ -332,6 +334,36 @@ function medalForTime(sec) {
 }
 const medalRank = (m) => (m && MEDAL_RANK[m]) || 0;
 
+// ---- v4：角色 ----
+const CHARACTER_IDS = Array.isArray(CHARACTERS) && CHARACTERS.length ? CHARACTERS : ['wanderer'];
+const DEFAULT_CHARACTER = CHARACTER_IDS.includes('wanderer') ? 'wanderer' : CHARACTER_IDS[0];
+const validCharacter = (id) => typeof id === 'string' && CHARACTER_IDS.includes(id);
+
+// ---- v4：地形知識牌 ----
+const SIGN_KEEPOUT = 2.4;      // 晶石、種子、荒地、居民、任務物品離知識牌至少這麼遠（世界單位）
+const SIGN_MARK_HEIGHT = 2.5;  // 「?」標記離地高度
+const SIGN_MARK_DIST2 = 60 * 60;
+let QMARK_TEX = null;
+function questionTexture() {
+  if (QMARK_TEX) return QMARK_TEX;
+  const S = 64;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.beginPath(); ctx.arc(S / 2 + 1.5, S / 2 + 2.5, 26, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#4fb3ff';
+  ctx.beginPath(); ctx.arc(S / 2, S / 2, 26, 0, Math.PI * 2); ctx.fill();
+  ctx.lineWidth = 4; ctx.strokeStyle = '#ffffff'; ctx.stroke();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 38px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('?', S / 2, S / 2 + 2);
+  QMARK_TEX = new THREE.CanvasTexture(cv);
+  QMARK_TEX.colorSpace = THREE.SRGBColorSpace;
+  return QMARK_TEX;
+}
+
 // ======================================================================
 export function createGameplay({ scene, world, player, ui, audio, effects }) {
   const root = new THREE.Group();
@@ -410,6 +442,34 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       const p = toPoint(v);
       if (p) keepOut.push({ dir: p.normalize(), dist: 2.6 });
     }
+  }
+  // v4：地形知識牌（world.landforms；沒有就整個功能跳過）
+  const landforms = [];
+  {
+    const src = Array.isArray(world.landforms) ? world.landforms : [];
+    const seen = new Set();
+    for (const lf of src) {
+      if (!lf || typeof lf.id !== 'string' || seen.has(lf.id)) continue;
+      const info = landformInfo(lf.id);
+      if (!info) continue; // 沒有知識內容的地形不做知識牌
+      let sign = null;
+      try { sign = toPoint(lf.sign) || toPoint(lf.center); } catch { sign = null; }
+      if (!sign) continue;
+      seen.add(lf.id);
+      const signDir = sign.clone().normalize();
+      let biome = getBiomeById(lf.biome) || null;
+      if (!biome) { try { biome = world.getBiome(signDir) || null; } catch { biome = null; } }
+      landforms.push({
+        id: lf.id, info, biome, sign, signDir,
+        name: typeof lf.name === 'string' && lf.name ? lf.name : info.name,
+        icon: typeof lf.icon === 'string' && lf.icon ? lf.icon : info.icon,
+        read: false, autoShown: false, dist2: 1e9, phase: 0, index: 0,
+      });
+    }
+    const order = (id) => { const k = LANDFORM_ORDER.indexOf(id); return k < 0 ? 99 : k; };
+    landforms.sort((a, b) => order(a.id) - order(b.id));
+    landforms.forEach((lf, i) => { lf.index = i; lf.phase = i * 1.7; });
+    for (const lf of landforms) keepOut.push({ dir: lf.signDir, dist: SIGN_KEEPOUT });
   }
   function keptOut(dir, extra) {
     for (let i = 0; i < keepOut.length; i++) {
@@ -797,6 +857,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       if (c && r < 0.55) line = fillLine(pick(NPC_LINES.crystal), c.biome);
       else if (unplanted > 0 && state.seedsCarried > 0 && r < 0.85) line = pick(NPC_LINES.plant);
       else if (unplanted > 0 && state.seedsCarried === 0 && r < 0.85) line = pick(NPC_LINES.needSeed);
+      else if (landforms.some((lf) => !lf.read) && Math.random() < 0.5) line = V4_MESSAGES.npcLandform;
       else line = pick(NPC_LINES.general);
     }
     npc.hintCount++;
@@ -1026,6 +1087,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     scene: root, world, player, ui, audio, effects,
     onFragment: (def) => onFragment(def),
     avoid: placed.map((p) => p.dir),
+    avoidZones: landforms.map((lf) => ({ dir: lf.signDir, dist: SIGN_KEEPOUT })),
   });
   const TOTAL_Q = TOTAL_QUESTS || 6;
   const countQuests = () => quests.doneCount();
@@ -1045,8 +1107,16 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
   // v3：知識測驗（⭐ = 答對的題數）
   // ==================================================================
   const quiz = Object.create(null); // factId → 'correct' | 'wrong'
-  const TOTAL_STARS = crystals.filter((c) => quizForFact(c.fact.id)).length || crystals.length;
-  const countStars = () => { let n = 0; for (const c of crystals) if (quiz[c.fact.id] === 'correct') n++; return n; };
+  const lfQuiz = Object.create(null); // v4：landformId → 'correct' | 'wrong'
+  const TOTAL_STARS = (crystals.filter((c) => quizForFact(c.fact.id)).length || crystals.length)
+    + landforms.filter((lf) => quizForLandform(lf.id)).length;
+  const countStars = () => {
+    let n = 0;
+    for (const c of crystals) if (quiz[c.fact.id] === 'correct') n++;
+    for (const lf of landforms) if (lfQuiz[lf.id] === 'correct') n++;
+    return n;
+  };
+  const countLandforms = () => { let n = 0; for (const lf of landforms) if (lf.read) n++; return n; };
   const isThenable = (p) => !!p && typeof p.then === 'function';
   // 知識卡 → 測驗的流程進行中時，gameplay.update 先不跑（計時器、撿取暫停），確保勝利/碎片彈窗排在測驗之後
   let flowBusy = 0, flowToken = 0, flowIdle = 0, retryBusy = false;
@@ -1258,6 +1328,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       fragments: state.fragments,
       stars: countStars(), totalStars: TOTAL_STARS,
       acorns: countAcorns(), totalAcorns: acorns.length,
+      landforms: countLandforms(), totalLandforms: landforms.length, // v4：額外收集，不列入勝利
       done: c >= crystals.length && tr >= plots.length && q >= TOTAL_Q,
     };
   }
@@ -1299,9 +1370,11 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       if (token === flowToken) flowBusy = Math.max(0, flowBusy - 1);
     }
   }
-  /** 出題；回傳 { correct, choice } 或 null（沒有測驗介面、沒作答） */
-  async function askQuiz(fact, token, isRetry) {
-    const q = quizForFact(fact.id);
+  /** 出題；回傳 { correct, choice } 或 null（沒有測驗介面、沒作答）。kind: 'fact'（晶石）| 'landform'（地形） */
+  async function askQuiz(fact, token, isRetry, kind = 'fact') {
+    const isLf = kind === 'landform';
+    const q = isLf ? quizForLandform(fact.id) : quizForFact(fact.id);
+    const store = isLf ? lfQuiz : quiz;
     if (!q || !ui || typeof ui.showQuiz !== 'function') return null;
     let res;
     try {
@@ -1312,9 +1385,9 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     if (!res || typeof res !== 'object') return null; // 沒作答（例如彈窗被清掉）
     const choice = Number.isInteger(res.choice) ? res.choice : -1;
     const correct = typeof res.correct === 'boolean' ? res.correct : choice === q.answer;
-    const prev = quiz[fact.id];
+    const prev = store[fact.id];
     if (correct) {
-      quiz[fact.id] = 'correct';
+      store[fact.id] = 'correct';
       play('correct');
       if (prev !== 'correct') {
         toast(V3_MESSAGES.quizCorrect(countStars(), TOTAL_STARS), 2400);
@@ -1322,7 +1395,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
         pushProgress();
       }
     } else {
-      if (prev !== 'correct') quiz[fact.id] = 'wrong';
+      if (prev !== 'correct') store[fact.id] = 'wrong';
       play('wrong');
       if (!isRetry && prev === undefined) toast(V3_MESSAGES.quizWrong, 2800);
     }
@@ -1330,18 +1403,135 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
   }
   function retryQuiz(id) {
     const c = crystals.find((x) => x.fact.id === id || x.id === id);
-    if (!c || !c.collected || quiz[c.fact.id] === 'correct' || retryBusy) return Promise.resolve(null);
+    // v4：圖鑑「地形」分頁的重答
+    const lf = c ? null : landforms.find((x) => x.id === id);
+    if (lf) {
+      if (!lf.read || lfQuiz[lf.id] === 'correct' || retryBusy) return Promise.resolve(null);
+    } else if (!c || !c.collected || quiz[c.fact.id] === 'correct' || retryBusy) return Promise.resolve(null);
     retryBusy = true;
     const token = flowToken;
     flowBusy++;
     flowIdle = 0;
-    return askQuiz(c.fact, token, true)
+    return askQuiz(lf ? { id: lf.id, icon: lf.icon } : c.fact, token, true, lf ? 'landform' : 'fact')
       .catch((e) => { console.warn('[gameplay] 重答失敗', e); return null; })
       .finally(() => {
         retryBusy = false;
         if (token === flowToken) flowBusy = Math.max(0, flowBusy - 1);
       });
   }
+
+  // ==================================================================
+  // v4：地形知識牌（靠近 → 「看看」；第一次靠近自動打開一次）
+  // ==================================================================
+  const signMarkers = (() => {
+    if (!landforms.length) return null;
+    const geo = new THREE.BufferGeometry();
+    const attr = new THREE.BufferAttribute(new Float32Array(landforms.length * 3), 3);
+    attr.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('position', attr);
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 40);
+    const mat = new THREE.PointsMaterial({
+      map: questionTexture(), size: 1.1, sizeAttenuation: true, transparent: true,
+      depthWrite: false, alphaTest: 0.05, toneMapped: false,
+    });
+    const pts = new THREE.Points(geo, mat); // 8 個標記 = 1 個 draw call
+    pts.frustumCulled = false;
+    pts.renderOrder = 6;
+    pts.name = 'landform-signs';
+    root.add(pts);
+    return { pts, attr };
+  })();
+  /** 每幀：標記位置（已讀 / 計時挑戰中 / 太遠 → 藏到星球中心，被地面擋住） */
+  function updateSignMarkers(t) {
+    if (!signMarkers) return;
+    const pp = player.position;
+    const arr = signMarkers.attr.array;
+    for (const lf of landforms) {
+      lf.dist2 = lf.sign.distanceToSquared(pp);
+      const k = lf.index * 3;
+      if (lf.read || inTrial || lf.dist2 > SIGN_MARK_DIST2) { arr[k] = arr[k + 1] = arr[k + 2] = 0; continue; }
+      const r = lf.sign.length() + SIGN_MARK_HEIGHT + Math.sin(t * 2.6 + lf.phase) * 0.12;
+      arr[k] = lf.signDir.x * r; arr[k + 1] = lf.signDir.y * r; arr[k + 2] = lf.signDir.z * r;
+    }
+    signMarkers.attr.needsUpdate = true;
+  }
+  const SIGN_R2 = INTERACT_RADIUS * INTERACT_RADIUS;
+  /** INTERACT_RADIUS 內最近的知識牌或 null */
+  function nearestSign() {
+    if (!landforms.length) return null;
+    const pp = player.position;
+    let best = null, bd = SIGN_R2;
+    for (const lf of landforms) {
+      const d2 = lf.sign.distanceToSquared(pp);
+      if (d2 < bd) { bd = d2; best = lf; }
+    }
+    return best;
+  }
+  const modalOpen = () => { try { return !!(ui && typeof ui.isModalOpen === 'function' && ui.isModalOpen()); } catch { return false; } };
+  const questsBusy = () => { try { return !!(quests.isBusy && quests.isBusy()); } catch { return false; } };
+  function updateLandforms(t) {
+    if (!landforms.length) return;
+    updateSignMarkers(t);
+    if (inTrial || flowBusy > 0 || questsBusy()) return;
+    const lf = nearestSign();
+    if (!lf || lf.read || lf.autoShown) return;
+    // 任務居民優先：居民就在旁邊時先不自動打開
+    let npcNear = null;
+    try { npcNear = quests.getInteractHint(); } catch { npcNear = null; }
+    if (npcNear || modalOpen()) return;
+    runLandformFlow(lf);
+  }
+  /** 地形知識卡 → 測驗（答對得 ⭐） */
+  async function runLandformFlow(lf) {
+    const token = flowToken;
+    flowBusy++;
+    flowIdle = 0;
+    const first = !lf.read;
+    lf.read = true;
+    lf.autoShown = true;
+    if (first) pushProgress();
+    let asked = null;
+    try {
+      play('ui');
+      let r;
+      try {
+        // kind / landformId 是額外欄位（合約外、可忽略）：讓 ui 可以把「找到知識晶石」換成地形的標題
+        r = ui.showFact({
+          icon: lf.icon, title: lf.info.title, text: lf.info.text, biomeName: V4_MESSAGES.landformBiome(lf.name),
+          kind: 'landform', landformId: lf.id,
+        });
+      } catch (e) { console.warn('[gameplay]', e); }
+      if (isThenable(r)) { try { await r; } catch { /* 忽略 */ } }
+      if (token !== flowToken) return;
+      if (lfQuiz[lf.id] !== 'correct') asked = await askQuiz({ id: lf.id, icon: lf.icon }, token, !first, 'landform');
+    } catch (e) {
+      console.warn('[gameplay] 地形知識卡流程錯誤', e);
+    } finally {
+      if (token === flowToken) {
+        flowBusy = Math.max(0, flowBusy - 1);
+        if (first) {
+          const n = countLandforms(), total = landforms.length;
+          schedule(asked ? 2.6 : 0.3, () => toast(V4_MESSAGES.landformRead(n, total), 2600));
+          if (n === total) schedule(asked ? 5.4 : 3.1, () => toast(V4_MESSAGES.landformAll(total), 3000));
+        }
+      }
+    }
+  }
+
+  // ==================================================================
+  // v4：角色（只是外觀）
+  // ==================================================================
+  let character = DEFAULT_CHARACTER;
+  function applyCharacter() {
+    if (player && typeof player.setCharacter === 'function') safe(() => player.setCharacter(character));
+  }
+  function setCharacter(id) {
+    if (!validCharacter(id)) return false;
+    character = id;
+    applyCharacter();
+    return true;
+  }
+  const getCharacter = () => character;
 
   function pickSeed(s) {
     s.picked = true;
@@ -1589,6 +1779,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     updateNpcs(dt, t);
     safe(() => quests.update(dt, t));
     updateAcorns(dt, t, !inTrial);
+    safe(() => updateLandforms(t));
 
     // v3：解鎖通知（等沒有彈窗、不在計時挑戰中時）
     if (pendingUnlocks.length && !inTrial && flowBusy === 0) flushUnlocks();
@@ -1724,12 +1915,20 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     return getNavInfo().target;
   }
 
-  // ---- 互動（任務居民） ----
+  // ---- 互動（任務居民優先，其次是地形知識牌） ----
   function getInteractHint() {
-    return quests.getInteractHint();
+    const qh = quests.getInteractHint();
+    if (qh) return qh;
+    if (!landforms.length || flowBusy > 0 || trialActive() || questsBusy()) return null;
+    return nearestSign() ? V4_MESSAGES.landformHint : null;
   }
   function interact() {
-    return quests.interact();
+    if (quests.interact()) return true;
+    if (!landforms.length || flowBusy > 0 || trialActive() || questsBusy() || modalOpen()) return false;
+    const lf = nearestSign();
+    if (!lf) return false;
+    runLandformFlow(lf);
+    return true;
   }
 
   // ==================================================================
@@ -1758,8 +1957,10 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     }
     const quizOut = {};
     for (const c of crystals) if (quiz[c.fact.id]) quizOut[c.fact.id] = quiz[c.fact.id];
+    const lfQuizOut = {};
+    for (const lf of landforms) if (lfQuiz[lf.id]) lfQuizOut[lf.id] = lfQuiz[lf.id];
     return {
-      v: 3,
+      v: 4,
       crystals: crystals.filter((c) => c.collected).map((c) => c.id),
       seeds: seeds.filter((s) => s.picked).map((s) => s.id),
       plots: plots.filter((p) => p.planted).map((p) => p.id),
@@ -1775,12 +1976,17 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       cosmetics: cosmetics.getSaveData(),
       medal: currentMedal(),
       trial: trialData === undefined ? null : trialData,
+      // v4
+      character,
+      landforms: landforms.filter((lf) => lf.read).map((lf) => lf.id),
+      landformQuiz: lfQuizOut,
     };
   }
 
   function applyState({
     crystalIds, seedIds, plotIds, seedsCarried, timeSec, victoryShown, fragments = 0, questData = null,
     quizData = null, acornIds = new Set(), medal = null, trialData = null, cosmeticsData = null,
+    landformIds = new Set(), landformQuizData = null, characterId = undefined,
   }) {
     timers.length = 0;
     winStarted = false;
@@ -1820,6 +2026,17 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     }
     for (const a of acorns) a.found = acornIds.has(a.id);
     setAcornsStatic();
+    // v4：地形知識牌與測驗
+    for (const k of Object.keys(lfQuiz)) delete lfQuiz[k];
+    for (const lf of landforms) {
+      lf.read = landformIds.has(lf.id);
+      lf.autoShown = lf.read;
+      const v = landformQuizData && typeof landformQuizData === 'object' ? landformQuizData[lf.id] : undefined;
+      if (lf.read && (v === 'correct' || v === 'wrong')) lfQuiz[lf.id] = v;
+    }
+    // v4：角色（undefined = 保留目前的，例如重新開始；不合法 → 預設）
+    if (characterId !== undefined) character = validCharacter(characterId) ? characterId : DEFAULT_CHARACTER;
+    applyCharacter();
     bestMedal = MEDAL_RANK[medal] ? medal : null;
     trialSaveCache = trialData;
     if (trial && typeof trial.loadSaveData === 'function') {
@@ -1856,6 +2073,10 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
         medal: typeof data.medal === 'string' ? data.medal : null,
         trialData: data.trial && typeof data.trial === 'object' ? data.trial : null,
         cosmeticsData: data.cosmetics && typeof data.cosmetics === 'object' ? data.cosmetics : null,
+        // v4（v1–v3 存檔沒有 → 預設角色、地形都還沒看過）
+        landformIds: ids(data.landforms),
+        landformQuizData: data.landformQuiz && typeof data.landformQuiz === 'object' ? data.landformQuiz : null,
+        characterId: validCharacter(data.character) ? data.character : DEFAULT_CHARACTER,
       });
     } catch (e) {
       console.warn('[gameplay] 讀檔失敗，忽略', e);
@@ -1863,14 +2084,20 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
   }
 
   function reset() {
-    // 完全重來：進度、測驗、橡實、裝扮、計時挑戰紀錄全部清除
+    // 完全重來：進度、測驗、橡實、裝扮、地形、計時挑戰紀錄全部清除（角色外觀保留，新遊戲的選角畫面會預選它）
     applyState({ crystalIds: new Set(), seedIds: new Set(), plotIds: new Set(), seedsCarried: 0, timeSec: 0, victoryShown: false, fragments: 0, questData: null });
   }
 
   // ==================================================================
   // v3：對外 API（衣櫥、圖鑑、計時挑戰）
   // ==================================================================
-  const getWardrobe = () => cosmetics.getWardrobe();
+  const getWardrobe = () => {
+    const w = cosmetics.getWardrobe();
+    // v4：附上角色（UI 用 main 的 callbacks.getCharacters；這裡只是方便）
+    w.character = character;
+    w.characters = CHARACTER_IDS.map((id) => ({ id, selected: id === character }));
+    return w;
+  };
   const equip = (slot, id) => cosmetics.equip(slot, id);
   const getEquipped = () => cosmetics.getEquipped();
 
@@ -1891,8 +2118,18 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       hint: a.found ? '' : a.hint,
     }));
     const best = trialBest();
+    // v4：地形
+    const landformList = landforms.map((lf) => ({
+      id: lf.id, name: lf.name, icon: lf.icon,
+      biome: lf.biome ? lf.biome.id : (lf.info.biome || ''), biomeName: lf.biome ? lf.biome.name : '',
+      biomeIcon: lf.biome ? lf.biome.icon : '',
+      collected: lf.read, title: lf.info.title, text: lf.info.text,
+      quiz: lfQuiz[lf.id] || 'none',
+    }));
     return {
       facts,
+      landforms: landformList,
+      landformsRead: countLandforms(), totalLandforms: landforms.length,
       stars: countStars(), totalStars: TOTAL_STARS,
       acorns: {
         found: countAcorns(), total: acorns.length,
@@ -1933,6 +2170,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
   safe(() => world.setRestoration(0));
   checkUnlocks(true);
   cosmetics.apply();
+  updateSignMarkers(0);
 
   return {
     update,
@@ -1954,7 +2192,10 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     canTimeTrial,
     startTimeTrial,
     cancelTimeTrial,
+    // v4
+    getCharacter,
+    setCharacter,
     // 測試/除錯用（非合約）
-    _debug: { crystals, seeds, plots, npcs, root, quests, state, nav, quiz, acorns, cosmetics, get trial() { return trial; }, pendingUnlocks },
+    _debug: { crystals, seeds, plots, npcs, root, quests, state, nav, quiz, lfQuiz, landforms, acorns, cosmetics, get trial() { return trial; }, pendingUnlocks },
   };
 }
