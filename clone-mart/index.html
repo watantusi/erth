@@ -567,10 +567,10 @@ const SHELVES = [
 const SHELF = Object.fromEntries(SHELVES.map(s => [s.id, s]));
 
 const ROLES = [   // the five AI clones, unlocked by total stars; each runs its own recipes when you are not controlling it
-  {id:'barista', name:'咖啡分身', icon:'☕', color:0xc98b5a, css:'#c98b5a', need:0,  recipes:['coffee','noodle'],          home:{x:7.9, z:2.0},  desc:'沖咖啡、泡泡麵'},
-  {id:'cook',    name:'熱食分身', icon:'🍱', color:0xff9f43, css:'#ff9f43', need:2,  recipes:['bento','oden'],             home:{x:-6.2, z:3.0}, desc:'微波便當、煮關東煮'},
-  {id:'griller', name:'烤台分身', icon:'🌭', color:0xff6058, css:'#ff6058', need:4,  recipes:['hotdog','hotdogset'],       home:{x:-7.4, z:2.6}, desc:'烤香腸、夾大亨堡和套餐'},
-  {id:'prep',    name:'備料分身', icon:'🔪', color:0x34d6a6, css:'#34d6a6', need:7,  recipes:['fruitcup','onigiri','drink','snack'], home:{x:-3.4, z:2.9}, desc:'切水果、捏飯糰、拿飲料零食'},
+  {id:'barista', name:'咖啡分身', icon:'☕', color:0xc98b5a, css:'#c98b5a', need:0,  recipes:['coffee','noodle','bubbletea'], home:{x:7.9, z:2.0},  desc:'沖咖啡、泡泡麵、搖珍奶'},
+  {id:'cook',    name:'熱食分身', icon:'🍱', color:0xff9f43, css:'#ff9f43', need:2,  recipes:['bento','oden','guabao'],    home:{x:-6.2, z:3.0}, desc:'微波便當、煮關東煮、包刈包'},
+  {id:'griller', name:'烤台分身', icon:'🌭', color:0xff6058, css:'#ff6058', need:4,  recipes:['hotdog','hotdogset','corn'], home:{x:-7.4, z:2.6}, desc:'烤香腸、夾大亨堡和套餐、烤玉米'},
+  {id:'prep',    name:'備料分身', icon:'🔪', color:0x34d6a6, css:'#34d6a6', need:7,  recipes:['fruitcup','onigiri','drink','snack','delivery'], home:{x:-3.4, z:2.9}, desc:'切水果、捏飯糰、拿飲料零食、送外送袋'},
   {id:'cleaner', name:'清潔分身', icon:'🧯', color:0x4da3ff, css:'#4da3ff', need:10, recipes:[],                           home:{x:-1.0, z:2.8}, desc:'拖地、丟失敗品、滅火、修理'},
 ];
 const ROLE = Object.fromEntries(ROLES.map(r => [r.id, r]));
@@ -2106,8 +2106,19 @@ const ITEMS = {
   burnt:{n:'失敗品', ic:'💀'},        ext:{n:'滅火器', ic:'🧯'},
   rice:{n:'白飯', ic:'🍚'},           nori:{n:'海苔', ic:'🟩'},
   onigiri:{n:'飯糰', ic:'🍙'},        hotdogset:{n:'熱狗套餐', ic:'🛍️'},
+  // chapter 2: delivery bags
+  bag:{n:'外送袋', ic:'👜'},          bag_sealed:{n:'封好的外送袋', ic:'📦'},
+  // chapter 3: night-market food
+  tea:{n:'紅茶', ic:'🍵'},            pearls:{n:'珍珠', ic:'⚫'},
+  tea_pearl:{n:'加珍珠的紅茶', ic:'🥤'}, bubbletea:{n:'珍珠奶茶', ic:'🧋'},
+  corn_raw:{n:'生玉米', ic:'🌽'},     corn_half:{n:'烤好一面的玉米', ic:'🌗'},
+  corn_flip:{n:'翻面的玉米', ic:'🌓'}, corn:{n:'烤玉米', ic:'🌽'},
+  bao:{n:'刈包皮', ic:'🫓'},          pork:{n:'滷肉', ic:'🍖'},
+  bao_pork:{n:'夾肉的刈包', ic:'🥙'}, peanut:{n:'花生粉', ic:'🥜'},
+  guabao:{n:'刈包', ic:'🌮'},
 };
-const COMBOS = [['bun','sausage_cooked','hotdog'], ['rice','nori','onigiri'], ['hotdog','drink','hotdogset']];
+const COMBOS = [['bun','sausage_cooked','hotdog'], ['rice','nori','onigiri'], ['hotdog','drink','hotdogset'],
+  ['tea','pearls','tea_pearl'], ['bao','pork','bao_pork'], ['bao_pork','peanut','guabao']];
 function combine(a, b){ for (const [x,y,r] of COMBOS) if ((a===x && b===y) || (a===y && b===x)) return r; return null; }
 
 const RECIPES = {
@@ -2121,8 +2132,20 @@ const RECIPES = {
   fruitcup:{n:'水果杯', ic:'🍓', item:'fruitcup', pts:30, time:75, steps:['🍎水果','🔪長按切']},
   onigiri: {n:'飯糰',   ic:'🍙', item:'onigiri',  pts:20, time:65, steps:['🍚飯鍋','🟩海苔']},
   hotdogset:{n:'熱狗套餐', ic:'🛍️', item:'hotdogset', pts:60, time:105, steps:['🌭大亨堡','🥤冰箱']},
+  // chapter 3 (節慶夜市): ch marks recipes that need the later stations; the endless level keeps the chapter-1 menu
+  bubbletea:{n:'珍珠奶茶', ic:'🧋', item:'bubbletea', pts:35, time:80, steps:['🍵紅茶','⚫珍珠','🧋長按搖'], ch:3},
+  corn:    {n:'烤玉米', ic:'🌽', item:'corn',     pts:40, time:90, steps:['🌽玉米','♨️烤架','🔄長按翻面'], ch:3},
+  guabao:  {n:'刈包',   ic:'🌮', item:'guabao',   pts:35, time:85, steps:['🫓蒸籠','🍖滷肉','🥜花生粉'], ch:3},
 };
+// multi-item tickets (not real recipes, so they stay out of Object.keys / ALL_RECIPES): o.items lists the recipes on the ticket.
+//   delivery — 外送單: pack every item into one bag at the 打包台, then hand the sealed bag to the rider at the 外送取餐架
+//   combo    — 夜市雙拼: two different items, each handed in at the pass; the ticket is done when both are in
+Object.defineProperties(RECIPES, {
+  delivery:{value:{n:'外送', ic:'🛵', item:'bag_sealed', pts:60, time:100, steps:['🍱做好每一樣','👜打包台','🛵取餐架'], multi:true}},
+  combo:   {value:{n:'夜市雙拼', ic:'🎏', item:null, pts:70, time:100, steps:['兩樣都做好','🛎️出餐台'], multi:true}},
+});
 const ALL_RECIPES = Object.keys(RECIPES);
+const CH1_RECIPES = ALL_RECIPES.filter(r => !RECIPES[r].ch);
 // Each level has one twist (tw = short label on the level card, twist = the line on the prep screen):
 //   script — fixed tutorial tickets, one at a time, clock paused (tutMul = timer multiplier)
 //   bulk   — 團購單: some tickets need 2 of the same item (p = chance, rec = which recipes)
@@ -2156,7 +2179,58 @@ const LEVELS = [
    storm:{every:46, n:2},
    tw:'⚡ 颱風跳電', twist:'⚡ 颱風一來就跳電，一次壞兩台機器，畫面會先警告。',
    desc:'機器故障 ⚡ 時不會運作，空手長按「動作」修好它。'},
-  {n:'24H 無限營業', hour:20,   len:0, endless:true, rec:ALL_RECIPES, every:[8,10], max:5, clones:5, spills:1, outage:45, stars:[3600,4500,5300],
+  // ---- chapter 2 外送大作戰: delivery tickets (dlv: p = chance a new ticket is a delivery, rec = what goes in the bags, n = items per bag,
+  //      max = deliveries at once (≤ the 2 packing spots), express = chance of a ⚡ rider who comes at once, eta = rider lateness ×, strict = wrong items cost points)
+  {id:'c2-1', ch:2, n:'外送平台上線', hour:10, len:180, rec:['coffee','onigiri','drink','snack','delivery'], every:[8,11], max:4, clones:2, spills:0, stars:[800,920,1050],
+   dlv:{p:0.35, rec:['coffee','onigiri','drink','snack'], n:[2,2]}, script:['delivery'], tutItems:['drink','snack'], tutMul:2.5,
+   tw:'🛵 外送教學', twist:'🛵 第一張外送單是教學：計時暫停，慢慢把東西裝袋、交給外送員（拿到 ★ 後重玩會跳過）。',
+   desc:'外送單要好幾樣：做好一樣就拿到門口的打包台裝進外送袋，裝滿自動封袋，再交給取餐架的外送員。'},
+  {id:'c2-2', ch:2, n:'早餐外送尖峰', hour:7, len:190, rec:['coffee','onigiri','noodle','drink','delivery'], every:[7.5,10], max:4, clones:1, spills:0, stars:[370,580,850],
+   dlv:{p:0.3, rec:['coffee','onigiri','noodle','drink'], n:[2,2]}, rush:[{at:0.4, len:45, k:0.5, add:1, ic:'📱', name:'外送尖峰', dl:0.85}],
+   tw:'📱 外送尖峰', twist:'📱 上班前大家都用 App 點早餐：中段 45 秒，外送單一張接一張！',
+   desc:'外送員到了會站在門口等，頭上的時間條跑完就會生氣離開。'},
+  {id:'c2-3', ch:2, n:'急件外送', hour:12, len:200, rec:['bento','hotdog','coffee','drink','delivery'], every:[7,9.5], max:4, clones:2, spills:0, stars:[300,670,1050],
+   dlv:{p:0.4, rec:['bento','hotdog','coffee','drink'], n:[2,2], express:0.5},
+   tw:'⚡ 急件外送員', twist:'⚡ 有一半的外送是「急件」：一下單外送員就到門口，等不久，但分數多 50%！',
+   desc:'急件的票卡寫著 ⚡，先做它。便當和香腸做好要馬上拿，不然會燒焦。'},
+  {id:'c2-4', ch:2, n:'雨天外送', hour:17, len:200, rec:['oden','noodle','coffee','hotdog','delivery'], every:[7,9.5], max:4, clones:3, spills:0.4, stars:[630,1000,1390],
+   dlv:{p:0.5, rec:['oden','noodle','coffee','hotdog'], n:[2,3], eta:1.4}, rain:{every:40, n:3},
+   tw:'☔ 雨天外送', twist:'☔ 下雨天大家都叫外送：一半的單是外送，有的一袋要三樣；地上也一直濕，外送員騎得慢會晚點到。',
+   desc:'三樣的外送袋最值錢，分身做好的東西也會自己拿去裝袋。'},
+  {id:'c2-5', ch:2, n:'包錯要賠', hour:20, len:210, rec:['fruitcup','onigiri','bento','drink','snack','delivery'], every:[6.5,9], max:5, clones:3, spills:0.5, stars:[1100,1200,1310],
+   dlv:{p:0.45, rec:['fruitcup','onigiri','bento','drink','snack'], n:[2,3], strict:true},
+   tw:'❌ 包錯扣分', twist:'❌ 今天打包台不幫你擋：放錯東西進外送袋會直接扣分，看清楚票卡上還缺什麼再裝！',
+   desc:'票卡上打勾的是已經裝進袋子的。'},
+  {id:'c2-6', ch:2, n:'外送大作戰', hour:21.5, len:240, rec:['coffee','noodle','bento','oden','hotdog','onigiri','drink','delivery'], every:[6,8.5], max:5, clones:3, spills:0.8, stars:[1370,1780,2210],
+   dlv:{p:0.45, rec:['coffee','noodle','bento','oden','hotdog','onigiri','drink'], n:[2,3], express:0.3}, rush:[{at:0.35, len:35, k:0.5, add:1, ic:'📱', name:'外送尖峰', dl:0.8}, {at:0.75, len:35, k:0.5, add:1, ic:'📱', name:'外送尖峰', dl:0.8}],
+   tw:'🛵 外送狂潮', twist:'🛵 兩個外送平台同時上線：⚡ 急件、三樣一袋的大單和兩波外送尖峰全部來！',
+   desc:'第二章的最終關。分身會自己做、自己裝袋；你負責補位和把袋子交出去。'},
+  // ---- chapter 3 節慶夜市: new stations (搖杯, 烤玉米架, 刈包攤); combo = 雙拼單 (p, rec), blackout = 燈籠停電 (every s, len s)
+  {id:'c3-1', ch:3, n:'夜市開張', hour:18, len:180, rec:['bubbletea','corn','drink','snack'], every:[8,11], max:4, clones:2, spills:0, stars:[650,950,1260],
+   script:['bubbletea','corn'], tutMul:2.5,
+   tw:'📘 夜市教學', twist:'📘 前兩張單教你做珍珠奶茶和烤玉米：一張一張來、計時暫停（拿到 ★ 後重玩會跳過）。',
+   desc:'珍奶：倉庫的紅茶桶拿紅茶，去珍珠鍋加珍珠，放進搖杯長按「動作」搖勻。烤玉米：烤好一面要長按「動作」翻面，不翻會燒焦！'},
+  {id:'c3-2', ch:3, n:'煙火秀', hour:19, len:200, rec:['bubbletea','corn','hotdog','drink'], every:[7,10], max:4, clones:2, spills:0.3, stars:[1360,1500,1660],
+   rush:[{at:0.3, len:30, k:0.45, add:1, ic:'🎆', name:'煙火秀'}, {at:0.72, len:30, k:0.45, add:1, ic:'🎆', name:'煙火秀'}],
+   tw:'🎆 煙火秀', twist:'🎆 放煙火的時候人潮湧進來：有兩波 30 秒的煙火尖峰！',
+   desc:'烤玉米架是炭火，烤好一面就要翻，不然會焦掉；大亨堡別忘了顧。'},
+  {id:'c3-3', ch:3, n:'刈包雙拼', hour:19.5, len:200, rec:['guabao','corn','oden','bubbletea','combo'], every:[7.5,10], max:4, clones:3, spills:0.3, stars:[1940,2250,2650],
+   combo:{p:0.35, rec:['guabao','corn','oden','bubbletea']},
+   tw:'🎏 雙拼單', twist:'🎏 夜市雙拼單：一張單要兩樣不同的東西，兩樣都送到出餐台才算完成，分數加成！',
+   desc:'刈包：西北角的刈包攤，蒸籠拿刈包皮 → 夾滷肉 → 撒花生粉，三步就好。'},
+  {id:'c3-4', ch:3, n:'燈籠停電', hour:20.5, len:210, rec:['guabao','bubbletea','corn','coffee','bento'], every:[6.5,9], max:5, clones:3, spills:0.4, stars:[1890,2050,2210],
+   blackout:{every:45, len:10},
+   tw:'🏮 燈籠停電', twist:'🏮 夜市三不五時停電，只剩燈籠亮著：停電時插電的機器全停，炭烤、蒸籠和搖杯照樣能用！',
+   desc:'停電前會先閃燈警告：先把咖啡、便當放進機器，停電時改做夜市小吃。'},
+  {id:'c3-5', ch:3, n:'夜市外送', hour:21, len:210, rec:['bubbletea','corn','guabao','hotdogset','delivery'], every:[7,9.5], max:5, clones:3, spills:0.6, stars:[1240,1560,1930],
+   dlv:{p:0.4, rec:['bubbletea','corn','guabao','drink'], n:[2,2]},
+   tw:'🛵 夜市外送', twist:'🛵 夜市美食也能叫外送：珍奶、烤玉米、刈包都要裝袋交給外送員！',
+   desc:'外送袋在門口的打包台，外送員在旁邊的取餐架等。'},
+  {id:'c3-6', ch:3, n:'跨年夜', hour:22, len:240, rec:['bubbletea','corn','guabao','hotdog','coffee','oden','combo'], every:[6,8.5], max:5, clones:4, spills:1, stars:[2230,2660,3100],
+   combo:{p:0.3, rec:['bubbletea','corn','guabao','hotdog','coffee','oden']}, rush:[{every:60, len:20, k:0.45, add:1, ic:'🎆', name:'倒數煙火'}], vip:0.1,
+   tw:'🎇 跨年倒數', twist:'🎇 跨年夜：每分鐘一波倒數煙火尖峰，還有雙拼單和 👑 VIP！',
+   desc:'第三章的最終關。把分身分配到珍奶、烤玉米、刈包三條線，你去補最急的那條。'},
+  {id:'endless', n:'24H 無限營業', hour:20,   len:0, endless:true, rec:CH1_RECIPES, every:[8,10], max:5, clones:5, spills:1, outage:45, stars:[3600,4500,5300],
    vip:0.1, bulk:{p:0.12, rec:['coffee','onigiri','drink','snack','noodle']}, rush:[{every:150, len:30, k:0.5, add:1, ic:'🔥', name:'宵夜尖峰'}],
    tw:'🔥 全部都來', twist:'🔥 VIP、團購單、尖峰時段全部都會出現，而且越來越快。',
    desc:'錯過 5 張單就打烊，看你能撐多久！'},
@@ -2171,6 +2245,8 @@ const LEVEL_IDS_V1 = ['c1-1','c1-2','c1-3','c1-4','c1-5','c1-6','endless'];   //
 // chapters: `need` = stars earned in the previous chapter to open it; `theme` = applyTheme() id for its levels
 const CHAPTERS = [
   {id:1, n:'第一章　開店日記', ic:'🏪', theme:'default', need:0, desc:'學會分身便利店的基本功。'},
+  {id:2, n:'第二章　外送大作戰', ic:'🛵', theme:'delivery', need:10, desc:'外送單一袋好幾樣：在打包台裝袋，交給門口的外送員。'},
+  {id:3, n:'第三章　節慶夜市', ic:'🏮', theme:'festival', need:11, desc:'珍珠奶茶、烤玉米、刈包：夜市小吃上菜！'},
 ];
 const CHAPTER = id => CHAPTERS.find(c => c.id === id);
 // difficulty scales ticket timers, order rate, burn/fire timers, star thresholds and clone slots
@@ -2354,6 +2430,8 @@ const APPL = {
   micro:   {n:'微波爐', ins:{bento_cold:{out:'bento', t:4, burn:7}}, fire:6},
   grill:   {n:'烤台',   ins:{sausage:{out:'sausage_cooked', t:5, burn:7}}, fire:6},
   pot:     {n:'湯鍋',   ins:{oden_raw:{out:'oden', t:6, burn:10}}},
+  // chapter 3: charcoal corn grill — side one cooks, then hold 動作 to flip (corn_half burns if left unflipped), then side two
+  bbq:     {n:'烤玉米架', ins:{corn_raw:{out:'corn_half', t:4, burn:5}, corn_flip:{out:'corn', t:4, burn:8}}, fire:7},
 };
 const ISLAND = ['micro','grill','c1','pot','board','c2'];
 function applOutRule(id, type){ const a = APPL[id]; if (!a) return null; for (const k in a.ins) if (a.ins[k].out === type) return a.ins[k]; return null; }
@@ -2604,6 +2682,444 @@ function buildKitchenExtra(){
   blockRect(9.2,-5.0,10,-3.1);
   addSlot({id:'ricesrc', kind:'src', give:'rice', n:'飯鍋', x:9.6, y:1.2, z:-4.55, spot:{x:8.6, z:-4.55}, reach:1.3});
   addSlot({id:'norisrc', kind:'src', give:'nori', n:'海苔盒', x:9.6, y:1.05, z:-3.55, spot:{x:8.6, z:-3.55}, reach:1.3});
+}
+
+/* ---------------- chapters 2–3: delivery bags & riders, night-market stations ----------------
+   Multi-item tickets (o.items + o.done ✓ + o.pclaim = which clone makes each item):
+     外送 (o.dl): each item goes into one bag at the 打包台 (slot kind 'pack'); a full bag seals itself and goes to the rider
+                 at the 外送取餐架 (kind 'rider'). Riders are customers with c.rider: off-screen until o.eta, then they ride in
+                 and wait by the door (c.leg 0 → 1 street → 2 to their spot → 3 waiting). o.t / o.limit is their patience.
+     雙拼 (combo): each item is handed in at the pass; the ticket is done when every item is in.
+   Chapter-3 stations add hold-動作 rules (USE_RULES): shake the tea, flip the corn. */
+const ELEC = {coffee:1, hotwater:1, micro:1, grill:1, pot:1};   // stop during a 🏮 blackout; the charcoal 烤玉米架 keeps going
+function darkOff(sl){ return G.dark > 0 && !!ELEC[sl.id]; }
+const USE_RULES = {   // in → out after t seconds of 動作 (the board's fruit chop stays in useTick)
+  shaker:{in:'tea_pearl', out:'bubbletea', t:2.2, verb:'搖', done:'搖好了！'},
+  bbq:   {in:'corn_half', out:'corn_flip', t:0.6, verb:'翻面', done:'翻面！'},
+};
+function useRule(sl){ const u = sl && USE_RULES[sl.id]; return u && sl.item && sl.item.type === u.in && !sl.fire && !sl.broken ? u : null; }
+function useReady(sl){ return !!(sl && sl.item && !sl.fire && ((sl.kind === 'board' && sl.item.type === 'fruit') || useRule(sl))); }
+function useSoon(sl){   // still cooking into something to use here (the corn's first side)
+  const u = sl && USE_RULES[sl.id], a = sl && APPL[sl.id], r = a && sl.item && a.ins[sl.item.type];
+  return !!(u && r && r.out === u.in);
+}
+function partIndex(o, type){ if (!o.items) return -1; for (let k = 0; k < o.items.length; k++) if (!o.done[k] && RECIPES[o.items[k]].item === type) return k; return -1; }
+function wantsAtPass(type){ return orders.some(o => o.items ? (!o.dl && partIndex(o, type) >= 0) : RECIPES[o.rec].item === type); }
+function packSlots(){ return SLOTS.filter(sl => sl.kind === 'pack'); }
+function bagSlotOf(o){ return o.bag ? SLOTS.find(sl => sl.item === o.bag) || null : null; }
+function packSlotFor(o){ return o.bag ? bagSlotOf(o) : packSlots().find(sl => !sl.item && !sl.fire) || null; }
+function riderHere(o){ const c = o && o.cust; return !!(c && c.rider && c.leg >= 2 && c.state !== 'leave'); }
+// a delivery or 雙拼 ticket instead of a single recipe (pickRecipe)
+function pickMulti(L){
+  if (G.demo) return null;
+  if (L.dlv && SLOT.rack && orders.filter(o => o.dl).length < Math.min(L.dlv.max || 2, packSlots().length) && Math.random() < ((G.rush && G.rush.dl) || L.dlv.p)) return 'delivery';
+  if (L.combo && orders.filter(o => o.items && !o.dl).length < 2 && Math.random() < L.combo.p) return 'combo';
+  return null;
+}
+function setupMulti(o, L, tut, ramp){
+  const dl = o.rec === 'delivery', cfg = (dl ? L.dlv : L.combo) || {};
+  const pool = (cfg.rec || L.rec).filter(r => RECIPES[r] && !RECIPES[r].multi);
+  if (!pool.length) pool.push('drink', 'snack');
+  for (let i = pool.length - 1; i > 0; i--){ const j = Math.floor(Math.random()*(i + 1)), t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
+  const nr = cfg.n || [2,2], n = clamp(nr[0] + Math.floor(Math.random()*(nr[1] - nr[0] + 1)), 1, pool.length);
+  const items = tut && L.tutItems ? L.tutItems.slice() : pool.slice(0, n);
+  o.items = items; o.done = items.map(() => false); o.pclaim = items.map(() => null);
+  const sum = items.reduce((a, r) => a + RECIPES[r].pts, 0), tmax = Math.max(...items.map(r => RECIPES[r].time));
+  o.pts = Math.round((sum*(dl ? 1.3 : 1.25) + 10)/5)*5;
+  o.base = tmax + 20*(items.length - 1) + (dl ? 15 : 0);
+  o.limit = o.base*(ramp || 1)*(L.timeMul || 1);
+  if (dl){ o.dl = true; o.bag = null; o.eta = clamp(o.limit*0.3*(cfg.eta || 1), 4, 40); }
+}
+// ticket body of a multi ticket: the items with ✓, and when the rider comes
+function ticketItems(o){
+  const el = o.el; if (!el) return;
+  const c = o.cust, eta = !o.dl ? '' : riderHere(o) ? '🛵在等' : c && c.leg ? '🛵快到' : '🛵' + Math.max(0, Math.ceil(o.eta - o.t)) + '秒';
+  const key = o.done.join() + eta;
+  if (o._ik === key) return; o._ik = key;
+  const its = o.items.map((r, k) => `<b class="${o.done[k] ? 'ok' : ''}">${RECIPES[r].ic}${o.done[k] ? '✓' : ''}</b>`).join('');
+  const st = el.querySelector('.st'), si = el.querySelector('.si'), nm = el.querySelector('.nm');
+  if (st) st.innerHTML = its + (o.dl ? ' › 👜打包 › 🛵' : ' › 🛎️出餐');
+  if (si) si.innerHTML = its;
+  if (nm) nm.textContent = o.dl ? '外送 ' + eta : '雙拼 ' + o.items.length + ' 樣';
+}
+
+/* riders */
+const RIDER_IN = {x:1.95, z:6.15};   // just inside the door, facing the 外送取餐架; the next ones wait on the pavement
+function riderSpot(i){ return i <= 0 ? RIDER_IN : {x:2.4 + Math.min(i - 1, 1)*0.75, z:7.75}; }
+let riderGeo = null;
+function spawnRider(o){
+  const side = Math.random() < 0.5 ? -1 : 1;
+  const ch = makeChar({shirt:pick([0x34d6a6,0xff6058,0xffb020,0xe85d75]), pants:pick(PANTS), skin:pick(SKIN), hair:pick(HAIR), cap:0x2b2f38, scale:1.08});
+  if (!riderGeo) riderGeo = {box:new THREE.BoxGeometry(0.42,0.4,0.34), lid:new THREE.BoxGeometry(0.44,0.05,0.36), visor:new THREE.BoxGeometry(0.3,0.07,0.05)};
+  const part = (geo, c, x, y, z) => { const m = new THREE.Mesh(geo, mat(c)); m.position.set(x, y, z); m.castShadow = true; ch.g.add(m); return m; };
+  part(riderGeo.box, o.express ? 0xffcf3a : 0x34d6a6, 0, 1.0, -0.36);   // insulated delivery box on the back
+  part(riderGeo.lid, 0xffffff, 0, 1.22, -0.36);
+  part(riderGeo.visor, 0x14233d, 0, 1.44, 0.2);
+  const a = new Agent(ch, 3.3);
+  a.pos.set(side*15, 0, STREET_Z + 0.4);
+  ch.g.visible = false;
+  const c = {agent:a, ch, side, order:o, state:'arrive', qi:-1, tag:new Tag(''), emoteT:0, emote:'', entered:false, rider:true, leg:0, ri:-1};
+  customers.push(c);
+  return c;
+}
+function riderState(c, arrived){
+  const o = c.order, a = c.agent;
+  if (!c.leg){
+    if (o.t < o.eta) return;
+    c.leg = 1; c.ch.g.visible = true;
+    a.pos.set(c.side*13.5, 0, STREET_Z + 0.3);
+    a.path = [{x:c.side*9.3, z:STREET_Z}, {x:DOOR_OUT.x + 0.35, z:DOOR_OUT.z}];
+    refreshRiders();
+    return;
+  }
+  if (!arrived) return;
+  if (c.leg === 1){ c.leg = 2; const p = riderSpot(c.ri); a.goTo(p.x, p.z); return; }
+  if (c.leg === 2){ c.leg = 3; c.state = 'wait'; }
+  a.face(c.ri === 0 ? Math.PI/2 : Math.PI);
+}
+function refreshRiders(){
+  const rs = customers.filter(c => c.rider && c.leg > 0 && c.state !== 'leave').sort((x, y) => x.order.id - y.order.id);
+  rs.forEach((c, i) => {
+    if (c.ri === i) return;
+    c.ri = i;
+    if (c.leg >= 2){ const p = riderSpot(i); c.agent.goTo(p.x, p.z); c.leg = 2; c.state = 'arrive'; }
+  });
+}
+
+/* bags */
+function bagMesh(it){
+  const g = itemMesh(it.type);
+  if (it.type === 'bag') it.packed.forEach((t, i) => { const m = itemMesh(t); m.scale.setScalar(0.42); m.position.set(-0.08 + (i%3)*0.08, 0.18, i%2 ? 0.035 : -0.035); g.add(m); });
+  return g;
+}
+function refreshBag(it){
+  const old = it.mesh, parent = old.parent, g = bagMesh(it);
+  g.position.copy(old.position); g.rotation.copy(old.rotation); g.scale.copy(old.scale);
+  if (parent){ parent.remove(old); parent.add(g); }
+  it.mesh = g;
+}
+function dropBag(o){   // the ticket is over: its bag leaves the 打包台 / 取餐架 (one still in someone's hands stays there, to be binned)
+  const b = o.bag; if (!b) return;
+  o.bag = null; b.order = null;
+  const sl = SLOTS.find(x => x.item === b);
+  if (sl){ takeFromSlot(sl); dropItem(b); }
+}
+function packItem(s, sl){
+  const h = s.hold, L = G.level;
+  if (h.type === 'ext' || h.type === 'burnt') return nope(s, ITEMS[h.type].n + '不能裝進外送袋');
+  if (h.type === 'bag' || h.type === 'bag_sealed') return nope(s, '封好的袋子拿去門口的 🛵 取餐架');
+  let bag = sl.item;
+  if (bag && bag.type !== 'bag') return nope(s, '這袋封好了，先拿去給外送員');
+  let o = bag ? bag.order : null;
+  if (!o){   // open a new bag for the most urgent delivery that needs this (a clone's own ticket first)
+    const mine = s.ai && s.ai.part && s.ai.part.o;
+    for (const x of orders){
+      if (!x.dl || x.bag || partIndex(x, h.type) < 0 || (x.tut && s !== owner)) continue;
+      if (x === mine){ o = x; break; }
+      if (!o || x.t/x.limit > o.t/o.limit) o = x;
+    }
+    if (!o) return nope(s, orders.some(x => x.dl) ? '外送單不需要' + ITEMS[h.type].n : '現在沒有外送單');
+    bag = {type:'bag', cook:0, chop:0, order:o, packed:[], claim:null, by:null, mesh:null};
+    bag.mesh = bagMesh(bag);
+    o.bag = bag; placeOnSlot(sl, bag);
+  }
+  const k = partIndex(o, h.type);
+  if (k < 0){
+    if (L.dlv && L.dlv.strict && !o.tut && !G.demo){   // ❌ 包錯扣分: the wrong item is wasted and costs points
+      const pen = 20;
+      dropItem(releaseHold(s)); addMoney(-pen);
+      G.stats.wrong = (G.stats.wrong || 0) + 1; G.stats.wrongPen = (G.stats.wrongPen || 0) + pen;
+      floatText(sl.x, 1.9, sl.z, '包錯了！-' + fmt(pen), 'bad txt'); SFX.bad(); camShakeAdd(0.15); haptic(25);
+      tip('wrongbag', '❌ 包錯了！這關放錯東西進外送袋會扣分：只裝票卡上還沒打勾的。');
+      return true;
+    }
+    return nope(s, '這袋不需要' + ITEMS[h.type].n);
+  }
+  dropItem(releaseHold(s));
+  o.done[k] = true; bag.packed.push(h.type);
+  if (o.done.every(Boolean)) bag.type = 'bag_sealed';
+  refreshBag(bag);
+  SFX.put(s, sl); squash(s, 0.1);
+  if (bag.type === 'bag_sealed'){
+    SFX.combine(s); floatText(sl.x, 1.9, sl.z, '封袋！交給外送員', 'good txt');
+    tipWhile('sealed', '📦 外送袋封好了！拿起來，交給門口 🛵 取餐架的外送員。', () => orders.some(x => x.dl && x.bag && x.bag.type === 'bag_sealed'));
+  } else floatText(sl.x, 1.9, sl.z, '✓ ' + o.done.filter(Boolean).length + '/' + o.items.length, 'good txt');
+  decorateTicket(o, true);
+  return true;
+}
+function handBag(s, sl){
+  const h = s.hold;
+  if (!h){ if (!sl.item) return false; holdItem(s, takeFromSlot(sl)); SFX.grab(s, 'bag'); squash(s, 0.1); return true; }
+  if (h.type !== 'bag_sealed') return nope(s, h.type === 'bag' ? '袋子還沒裝完' : '取餐架只放封好的外送袋');
+  const o = h.order;
+  if (!o || orders.indexOf(o) < 0) return nope(s, '這袋的外送員已經走了，丟掉吧');
+  if (riderHere(o)){ dropItem(releaseHold(s)); completeOrder(o, s); return true; }
+  if (sl.item) return nope(s, '取餐架上已經有一袋了');
+  placeOnSlot(sl, releaseHold(s)); h.by = s; SFX.put(s, sl); squash(s, 0.08);
+  if (!G.demo) floatText(sl.x, 1.9, sl.z, '放好了，外送員快到', 'txt');
+  return true;
+}
+// interaction rules of the new stations; undefined = not ours, use the base rules
+function chapterGrab(s, sl){
+  if (!sl || sl.fire) return undefined;
+  const h = s.hold;
+  if (sl.kind === 'pack'){
+    if (h) return packItem(s, sl);
+    if (sl.item && sl.item.type === 'bag_sealed'){ holdItem(s, takeFromSlot(sl)); SFX.grab(s, 'bag'); squash(s, 0.1); return true; }
+    if (sl.item){ const o = sl.item.order; return nope(s, '還沒裝完，還差 ' + (o ? o.items.filter((r, k) => !o.done[k]).map(r => RECIPES[r].ic).join('') : '')); }
+    return false;
+  }
+  if (sl.kind === 'rider') return handBag(s, sl);
+  if (h && (h.type === 'bag' || h.type === 'bag_sealed')){
+    if (sl.kind === 'pass') return nope(s, '外送袋要拿到門口的 🛵 取餐架');
+    if (sl.kind === 'trash' && h.order){ const o = h.order; o.bag = null; o.done = o.done.map(() => false); h.order = null; }   // binned: its items must be made again
+  }
+  return undefined;
+}
+
+/* per-step chapter logic (from twistTick, also during tutorials) */
+function chapterTick(dt){
+  chapterAnim(dt);
+  if (G.demo) return;
+  const L = G.level, rk = SLOT.rack, b = rk && rk.item;
+  if (b && b.type === 'bag_sealed' && b.order && riderHere(b.order)) completeOrder(b.order, staff.includes(b.by) ? b.by : owner);   // the rider grabs the bag off the shelf
+  for (const o of orders) if (o.bag && o.bag.type === 'burnt'){ o.bag.order = null; o.bag = null; o.done = o.done.map(() => false); }   // a bag left on a burning counter
+  if (orders.some(o => o.dl && riderHere(o))) tipWhile('rider', '🛵 外送員到門口了！他頭上的時間條跑完就會走，快把封好的外送袋交給他。', () => orders.some(o => o.dl && riderHere(o)));
+  const bq = SLOT.bbq, sk = SLOT.shaker;
+  if (bq && bq.item && bq.item.type === 'corn_half') tipWhile('flip', '🔄 玉米烤好一面了！空手站在烤架前長按「動作」翻面，不翻會燒焦。', () => !!(bq.item && bq.item.type === 'corn_half'));
+  if (sk && sk.item && sk.item.type === 'tea_pearl') tipWhile('shake', '🧋 空手站在搖杯前長按「動作」搖一搖，搖好就是珍珠奶茶。', () => !!(sk.item && sk.item.type === 'tea_pearl'));
+  // 🏮 lantern blackout: electric machines pause for a while, the screen goes dark
+  if (L.blackout && G.tut < 0){
+    if (G.dark > 0){ G.dark -= dt; if (G.dark <= 0){ G.dark = 0; setDark(false); toast('💡 來電了！機器又動了', 'good'); } }
+    else {
+      G.darkT -= dt;
+      if (G.darkT <= 4 && G.warnAt !== 'dark'){ G.warnAt = 'dark'; toast('🏮 燈在閃…快停電了', ''); }
+      if (G.darkT <= 0){
+        G.darkT = L.blackout.every*rand(0.85, 1.15); G.warnAt = 0; G.dark = L.blackout.len; G.stats.events++;
+        setDark(true); flashBig('🏮 停電！'); camShakeAdd(0.2); SFX.zap();
+        tip('dark', '🏮 停電了！插電的機器（咖啡機、熱水機、微波爐、烤台、湯鍋）暫停，炭火烤玉米架、蒸籠和搖杯照樣能用。');
+      }
+    }
+  }
+}
+let darkEl = null;
+function setDark(on){
+  if (!darkEl){ if (!on) return; darkEl = document.createElement('div'); darkEl.id = 'chDark'; canvas.after(darkEl); }
+  darkEl.classList.toggle('on', !!on);
+}
+const CHK = {coal:null};
+function chapterAnim(dt){
+  const sk = SLOT.shaker, bq = SLOT.bbq;
+  if (sk && sk.item){ sk.useT = (sk.useT || 0) - dt; sk.item.mesh.rotation.z = sk.useT > 0 ? Math.sin(clock*38)*0.3 : 0; }
+  if (CHK.coal && bq) CHK.coal.emissiveIntensity = bq.item && !bq.fire ? 0.85 + 0.25*Math.sin(clock*7) : 0.35;
+}
+const CH_CSS = `
+.tk.tk-dl{border-color:#1fa37a;background:#eafff6}
+.tk.tk-combo{border-color:#e85d75;background:#fff1f4}
+.tk-dl .tkx{background:#34d6a6}
+.tk-combo .tkx{background:#ff9fb2}
+.tk .st b,.tk .si b{font-weight:900;font-style:normal}
+.tk .st b.ok,.tk .si b.ok{opacity:.5}
+#chDark{position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .7s ease;
+  background:radial-gradient(ellipse at 50% 58%,rgba(255,170,70,.1) 0%,rgba(10,12,34,.52) 50%,rgba(3,4,16,.82) 100%)}
+#chDark.on{opacity:1}
+@media (prefers-reduced-motion:reduce){ #chDark{transition:none} }
+`;
+
+/* 外送專區 (chapter 2): two packing spots and the rider shelf against the front wall, right of the door.
+   Also installs the delivery rules on top of grab / the HUD labels (wrappers, so the base rules stay as they are). */
+function buildKitchenCh2(){
+  const st = document.createElement('style'); st.id = 'chapterCss'; st.textContent = CH_CSS; document.head.appendChild(st);
+  const BG = {bag:new THREE.BoxGeometry(0.28,0.3,0.2).translate(0,0.15,0), rim:new THREE.BoxGeometry(0.29,0.03,0.21), hole:new THREE.BoxGeometry(0.25,0.006,0.17),
+    fold:new THREE.BoxGeometry(0.29,0.07,0.07), sticker:new THREE.BoxGeometry(0.13,0.09,0.012), handle:new THREE.TorusGeometry(0.06,0.012,5,10,Math.PI)};
+  const prevMesh = itemMesh;
+  itemMesh = function(type){
+    if (type !== 'bag' && type !== 'bag_sealed') return prevMesh(type);
+    const g = new THREE.Group();
+    const add = (geo, c, x, y, z) => { const m = new THREE.Mesh(geo, mat(c)); m.position.set(x||0, y||0, z||0); m.castShadow = true; g.add(m); return m; };
+    add(BG.bag, 0xc9965a);
+    if (type === 'bag'){ add(BG.rim, 0xb07d45, 0, 0.3, 0); add(BG.hole, 0x4a2e16, 0, 0.312, 0); }
+    else { add(BG.fold, 0xb07d45, 0, 0.32, 0); add(BG.sticker, 0x34d6a6, 0, 0.19, 0.105); add(BG.handle, 0x8a5a2b, 0, 0.355, 0); }
+    return g;
+  };
+  // packing counter: free-standing in front of the window (staff work it from the north side, facing the door)
+  const g = new THREE.Group(); scene.add(g); pickables.push(g);
+  box(1.8,0.9,0.45, 0xf2f2ee, 4.65,0,5.175, g);
+  box(1.86,0.05,0.5, 0x9aa7b8, 4.65,0.9,5.175, g);
+  box(1.8,0.1,0.04, 0x34d6a6, 4.65,0.62,4.94, g, {cast:false});
+  box(1.8,0.1,0.04, 0x34d6a6, 4.65,0.62,5.41, g, {cast:false});
+  for (let i=0;i<5;i++) box(0.26,0.012,0.18, i%2 ? 0xc9965a : 0xb88a50, 4.7,0.95+i*0.013,5.3, g, {cast:false});   // flat bags waiting
+  for (const x of [4.3, 5.1]) box(0.4,0.008,0.32, 0x7fe0c0, x,0.951,5.16, g, {cast:false});   // where the bag goes
+  // rider shelf by the door: two wire tiers against the window
+  const r = new THREE.Group(); scene.add(r); pickables.push(r);
+  for (const x of [2.6, 3.4]) for (const z of [6.2, 6.55]) box(0.04,1.0,0.04, 0x6c7686, x,0,z, r);
+  for (const y of [0.4, 0.94]) box(0.86,0.04,0.42, 0x8a94a3, 3.0,y,6.375, r);
+  box(0.86,0.12,0.02, 0xff9f43, 3.0,0.98,6.17, r, {cast:false});
+  // the zone on the floor
+  const fz = new THREE.Mesh(new THREE.PlaneGeometry(3.6,1.1).rotateX(-Math.PI/2), new THREE.MeshBasicMaterial({color:0x34d6a6, transparent:true, opacity:0.16, depthWrite:false}));
+  fz.position.set(3.85, 0.011, 4.45); fz.renderOrder = 1; scene.add(fz);
+  labelSprite('打包台', '#34d6a6', 0.62, scene, 4.7, 1.55, 5.2);
+  labelSprite('外送取餐', '#ff9f43', 0.7, scene, 3.0, 1.75, 6.35);
+  blockRect(3.75,4.95,5.55,5.4);
+  blockRect(2.55,6.15,3.45,6.6);
+  addSlot({id:'rack',  kind:'rider', n:'外送取餐架', x:3.0, y:0.98, z:6.37, spot:{x:2.9, z:5.35}, reach:1.35});
+  addSlot({id:'pack1', kind:'pack',  n:'打包台', x:4.3, y:0.96, z:5.16, spot:{x:4.3, z:4.25}, reach:1.2});
+  addSlot({id:'pack2', kind:'pack',  n:'打包台', x:5.1, y:0.96, z:5.16, spot:{x:5.1, z:4.25}, reach:1.2});
+  // rules + labels on the new stations
+  const baseGrab = grab;
+  grab = function(s, sl){ const r = chapterGrab(s, sl); return r === undefined ? baseGrab(s, sl) : r; };
+  const baseGL = grabLabel;
+  grabLabel = function(s, sl){
+    if (sl && !sl.fire){
+      const h = s.hold, bagT = h && (h.type === 'bag' || h.type === 'bag_sealed');
+      if (sl.kind === 'pack') return !h ? (sl.item && sl.item.type === 'bag_sealed' ? '拿起' : '—') : (bagT || h.type === 'ext' || h.type === 'burnt') ? '—' : '裝袋';
+      if (sl.kind === 'rider') return !h ? (sl.item ? '拿起' : '—') : h.type === 'bag_sealed' ? (riderHere(h.order) ? '交給外送員' : '放上取餐架') : '—';
+      if (sl.kind === 'pass' && bagT) return '—';
+    }
+    return baseGL(s, sl);
+  };
+  const baseST = updateSlotTags;
+  updateSlotTags = function(){
+    baseST();
+    for (const sl of SLOTS){
+      if (sl.fire || sl.broken) continue;
+      const it = sl.item;
+      if (sl.kind === 'pack'){
+        if (it && it.order && it.type === 'bag'){ const o = it.order; sl.tag.icon('👜').setBar(o.done.filter(Boolean).length/o.items.length, '#34d6a6'); }
+        else sl.tag.icon(it && it.type === 'bag_sealed' ? '📦' : '').setBar(null);
+      } else if (sl.kind === 'rider') sl.tag.icon(it ? '📦' : '').setBar(null);
+      else if (useRule(sl)){
+        if (sl.id === 'bbq'){ const outR = applOutRule('bbq', it.type); sl.tag.icon('🔄').setBar(outR && outR.burn ? it.cook/outR.burn : null, '#ff6058'); }
+        else sl.tag.icon('🧋').setBar(it.chop > 0 ? it.chop/USE_RULES[sl.id].t : null);
+      } else if (it && darkOff(sl)) sl.tag.icon('🌑').setBar(null);
+    }
+  };
+}
+
+/* 節慶夜市 (chapter 3): 珍奶吧 in the stockroom, 烤玉米架 + corn crate in the nook right of the drink fridge,
+   刈包攤 in the north-west corner. Items get their looks here (itemMesh wrapper), and the hold-動作 rules (shake, flip). */
+function buildKitchenCh3(){
+  const FG = {
+    cup: new THREE.CylinderGeometry(0.085,0.066,0.25,12).translate(0,0.125,0),
+    fill: new THREE.CylinderGeometry(0.078,0.064,0.17,12).translate(0,0.09,0),
+    seal: new THREE.CylinderGeometry(0.088,0.088,0.012,12).translate(0,0.25,0),
+    straw: new THREE.CylinderGeometry(0.015,0.015,0.28,6),
+    pearl: new THREE.SphereGeometry(0.02,6,4),
+    bowl: new THREE.CylinderGeometry(0.13,0.09,0.1,12).translate(0,0.05,0),
+    heap: new THREE.SphereGeometry(0.11,10,6,0,Math.PI*2,0,Math.PI/2).scale(1,0.45,1).translate(0,0.09,0),
+    cob: new THREE.CylinderGeometry(0.06,0.052,0.3,10).rotateZ(Math.PI/2).translate(0,0.07,0),
+    shell: new THREE.CylinderGeometry(0.064,0.056,0.31,10,1,true,0,Math.PI).rotateZ(Math.PI/2),
+    husk: new THREE.ConeGeometry(0.065,0.2,6).rotateZ(-Math.PI/2).translate(0.23,0.07,0),
+    stick: new THREE.CylinderGeometry(0.011,0.011,0.18,5).rotateZ(Math.PI/2).translate(-0.23,0.07,0),
+    groove: new THREE.BoxGeometry(0.3,0.006,0.012),
+    bun: new THREE.SphereGeometry(0.13,12,8,0,Math.PI*2,0,Math.PI/2).scale(1.15,0.42,0.8),
+    slab: new THREE.BoxGeometry(0.2,0.045,0.12),
+    leaf: new THREE.BoxGeometry(0.05,0.012,0.035),
+  };
+  const prevMesh = itemMesh;
+  itemMesh = function(type){
+    const g = prevMesh(type);
+    if (g.children.length) return g;
+    const add = (geo, c, x, y, z, rx, ry, rz) => { const m = new THREE.Mesh(geo, typeof c === 'number' ? mat(c) : c); m.position.set(x||0, y||0, z||0); if (rx||ry||rz) m.rotation.set(rx||0, ry||0, rz||0); m.castShadow = true; g.add(m); return m; };
+    const pearls = (y, n) => { for (let i=0;i<n;i++) add(FG.pearl, 0x1b1410, Math.cos(i*2.4)*0.04, y + (i%3)*0.012, Math.sin(i*2.4)*0.04); };
+    const cob = (c, burnt, top) => {
+      add(FG.cob, c);
+      for (let i=0;i<4;i++) add(FG.groove, 0xd9a520, 0, 0.13, -0.03 + i*0.02);
+      if (burnt) add(FG.shell, burnt, 0, 0.07, 0, top ? 0 : Math.PI);   // the grilled half: on top once flipped
+    };
+    switch (type){
+      case 'tea': add(FG.fill, 0xa0522d); add(FG.cup, IM.clear); break;
+      case 'pearls': add(FG.bowl, 0xf2efe6); for (let i=0;i<9;i++) add(FG.pearl, 0x1b1410, Math.cos(i*2.1)*(0.03 + (i%3)*0.025), 0.105, Math.sin(i*2.1)*(0.03 + (i%3)*0.025)); break;
+      case 'tea_pearl': add(FG.fill, 0xa0522d); pearls(0.03, 7); add(FG.cup, IM.clear); break;
+      case 'bubbletea': add(FG.fill, 0xd9b38c); pearls(0.03, 9); add(FG.cup, IM.clear); add(FG.seal, 0xffffff); add(FG.straw, 0xff6f91, 0.025, 0.33, 0, 0, 0, 0.15); break;
+      case 'corn_raw': cob(0xffd84a); add(FG.husk, 0x7cc35a); break;
+      case 'corn_half': cob(0xffd84a, 0x9c5a1c, false); add(FG.stick, 0xd9b26f); break;
+      case 'corn_flip': cob(0xffd84a, 0x9c5a1c, true); add(FG.stick, 0xd9b26f); break;
+      case 'corn': cob(0xe08a2c, 0xa8541a, true); add(FG.stick, 0xd9b26f); for (let i=0;i<3;i++) add(FG.leaf, 0x3fae4f, -0.08 + i*0.08, 0.135, 0.02, 0, i); break;
+      case 'bao': add(FG.bun, 0xfbf7ee, 0, 0.02, 0); add(FG.bun, 0xf4efe2, 0, 0.07, -0.02, 0.35); break;
+      case 'pork': add(FG.bowl, 0x5a3a24); add(FG.slab, 0x8a4a22, 0, 0.11, 0).scale.set(0.8,1,0.8); add(FG.slab, 0xd9a35a, 0.02, 0.135, 0.01).scale.set(0.6,0.5,0.6); break;
+      case 'bao_pork': add(FG.bun, 0xfbf7ee, 0, 0.02, 0); add(FG.slab, 0x8a4a22, 0, 0.065, 0.01); add(FG.bun, 0xf4efe2, 0, 0.09, -0.03, 0.45); break;
+      case 'peanut': add(FG.bowl, 0xf2efe6); add(FG.heap, 0xd9b26f); break;
+      case 'guabao': add(FG.bun, 0xfbf7ee, 0, 0.02, 0); add(FG.slab, 0x8a4a22, 0, 0.065, 0.01); add(FG.heap, 0xd9b26f, 0, 0.0, 0.02).scale.set(0.8,0.5,0.6);
+        for (let i=0;i<3;i++) add(FG.leaf, 0x3fae4f, -0.06 + i*0.06, 0.11, 0.05, 0, i); add(FG.bun, 0xf4efe2, 0, 0.1, -0.05, 0.6); break;
+    }
+    return g;
+  };
+  const cyl = (rt, rb, h, c, x, y, z, parent) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, 14), typeof c === 'number' ? mat(c) : c); m.position.set(x, y + h/2, z); m.castShadow = true; parent.add(m); return m; };
+  const heapOf = (type, parent, x, y, z, n) => { for (let i=0;i<n;i++){ const m = itemMesh(type); m.position.set(x + ((i%3)-1)*0.16, y + Math.floor(i/3)*0.06, z + (i%2 ? 0.1 : -0.1)); m.rotation.y = i*1.3; parent.add(m); } };
+  // 珍奶吧: a table along the stockroom's inner west wall (walk in from the shop floor at z≈-3)
+  const tb = new THREE.Group(); scene.add(tb); pickables.push(tb);
+  box(0.6,0.9,2.05, 0xf2f2ee, 5.45,0,-4.625, tb);
+  box(0.66,0.05,2.1, 0x9aa7b8, 5.45,0.9,-4.625, tb);
+  box(0.04,0.1,2.05, 0xb57cf0, 5.77,0.62,-4.625, tb, {cast:false});
+  cyl(0.17,0.17,0.42, 0xb84a2c, 5.4,0.95,-5.3, tb); cyl(0.18,0.18,0.04, 0xe8e2d4, 5.4,1.37,-5.3, tb);   // tea urn
+  box(0.08,0.05,0.05, 0x30343c, 5.6,1.03,-5.3, tb);
+  cyl(0.19,0.16,0.22, 0x2b2f38, 5.42,0.95,-4.6, tb);                                                  // pearl pot
+  for (let i=0;i<10;i++){ const p = new THREE.Mesh(FG.pearl, mat(0x1b1410)); p.position.set(5.42 + Math.cos(i*2.3)*0.1*(i%3)/2, 1.18, -4.6 + Math.sin(i*2.3)*0.1*(i%3)/2); p.scale.setScalar(1.6); tb.add(p); }
+  cyl(0.2,0.2,0.02, 0xc9d1dc, 5.45,0.95,-3.95, tb);                                                  // shaker mat
+  cyl(0.06,0.05,0.22, 0xd5dbe3, 5.62,0.95,-3.68, tb); cyl(0.065,0.065,0.05, 0xb7c0cc, 5.62,1.17,-3.68, tb);   // spare shaker
+  labelSprite('珍奶吧', '#b57cf0', 0.62, scene, 5.55, 1.85, -4.6);
+  blockRect(5.15,-5.65,5.75,-3.6);
+  addSlot({id:'teasrc',   kind:'src', give:'tea',    n:'紅茶桶', x:5.45, y:1.05, z:-5.25, spot:{x:6.45, z:-5.25}, reach:1.2});
+  addSlot({id:'pearlsrc', kind:'src', give:'pearls', n:'珍珠鍋', x:5.45, y:1.05, z:-4.6,  spot:{x:6.45, z:-4.6},  reach:1.2});
+  addSlot({id:'shaker',   kind:'counter', only:'tea_pearl', n:'搖杯', x:5.45, y:0.98, z:-3.95, spot:{x:6.45, z:-3.95}, reach:1.2});
+  // 烤玉米架 (charcoal) + corn crate, against the back wall right of the drink fridge
+  const bq = new THREE.Group(); scene.add(bq); pickables.push(bq);
+  box(1.4,0.72,0.5, 0x5b4a40, 2.6,0,-6.7, bq);
+  box(1.44,0.06,0.54, 0x2b2f38, 2.6,0.72,-6.7, bq);
+  CHK.coal = new THREE.MeshLambertMaterial({color:0x5a1a0a, emissive:0xff4a10, emissiveIntensity:0.35});
+  box(1.28,0.04,0.42, CHK.coal, 2.6,0.76,-6.7, bq, {cast:false});
+  for (let i=0;i<7;i++) box(0.02,0.02,0.46, 0x9aa7b8, 2.0 + i*0.2,0.83,-6.7, bq, {cast:false});
+  box(1.4,0.1,0.04, 0xff9f43, 2.6,0.5,-6.44, bq, {cast:false});
+  const crate = new THREE.Group(); crate.position.set(4.15,0,-6.62); scene.add(crate); pickables.push(crate);
+  box(0.7,0.6,0.62, 0x5e3b1e, 0,0.02,0, crate);
+  for (let k=0;k<3;k++) box(0.74,0.14,0.66, 0xc8955a, 0,0.04+k*0.19,0, crate);
+  box(0.6,0.02,0.52, 0x4a2e16, 0,0.64,0, crate, {cast:false});
+  heapOf('corn_raw', crate, 0, 0.64, 0, 5);
+  labelSprite('烤玉米', '#ff9f43', 0.62, scene, 2.6, 1.6, -6.6);
+  labelSprite('玉米', '#ffcf3a', 0.5, scene, 4.15, 1.3, -6.6);
+  blockRect(1.9,-6.95,3.3,-6.45);
+  blockRect(3.8,-6.95,4.5,-6.3);
+  addSlot({id:'bbq',     kind:'appl', n:'烤玉米架', x:2.6, y:0.86, z:-6.62, spot:{x:2.6, z:-5.5}, reach:1.35});
+  addSlot({id:'cornsrc', kind:'src', give:'corn_raw', n:'玉米箱', x:4.15, y:0.7, z:-6.62, spot:{x:4.15, z:-5.5}, reach:1.35});
+  // 刈包攤 in the north-west corner: steamer, braised pork, peanut powder
+  const gb = new THREE.Group(); scene.add(gb); pickables.push(gb);
+  box(2.1,0.9,0.5, 0xf2f2ee, -8.6,0,-6.7, gb);
+  box(2.16,0.05,0.54, 0x9aa7b8, -8.6,0.9,-6.7, gb);
+  box(2.1,0.1,0.04, 0xe85d75, -8.6,0.62,-6.44, gb, {cast:false});
+  for (let k=0;k<3;k++) cyl(0.2,0.2,0.1, k === 2 ? 0xc9a060 : 0xd9b36c, -9.25,0.95 + k*0.1,-6.65, gb);   // bamboo steamer
+  cyl(0.06,0.06,0.03, 0xa8743e, -9.25,1.25,-6.65, gb);
+  cyl(0.19,0.17,0.2, 0x3a2a20, -8.55,0.95,-6.65, gb); cyl(0.17,0.17,0.01, 0x8a4a22, -8.55,1.15,-6.65, gb);   // braised pork pot
+  box(0.36,0.05,0.3, 0xe8e2d4, -7.85,0.95,-6.65, gb);
+  const pn = new THREE.Mesh(FG.heap, mat(0xd9b26f)); pn.position.set(-7.85, 0.93, -6.65); pn.scale.set(1.3,1,1.1); gb.add(pn);   // peanut powder
+  labelSprite('刈包攤', '#e85d75', 0.62, scene, -8.6, 1.8, -6.55);
+  blockRect(-9.65,-6.95,-7.55,-6.45);
+  addSlot({id:'baosrc',    kind:'src', give:'bao',    n:'蒸籠',   x:-9.25, y:1.2,  z:-6.65, spot:{x:-9.25, z:-5.55}, reach:1.25});
+  addSlot({id:'porksrc',   kind:'src', give:'pork',   n:'滷肉鍋', x:-8.55, y:1.1,  z:-6.65, spot:{x:-8.55, z:-5.55}, reach:1.25});
+  addSlot({id:'peanutsrc', kind:'src', give:'peanut', n:'花生粉', x:-7.85, y:1.0,  z:-6.65, spot:{x:-7.85, z:-5.55}, reach:1.25});
+  // hold 動作: shake / flip (wraps useTick and the button labels; the base rules stay as they are)
+  const baseUse = useTick;
+  useTick = function(s, dt){
+    if (!s.hold){
+      const sl = findTarget(s), u = useRule(sl);
+      if (u){
+        const it = sl.item, w = dt*s.work;
+        it.chop += w; sl.useT = 0.15;
+        if (Math.floor(it.chop*5) !== Math.floor((it.chop - w)*5)){ sfxAs(s, () => sfxNoise(0, 0.05, sl.id === 'bbq' ? 0.06 : 0.045, sl.id === 'bbq' ? 'hp' : 'bp')); squash(s, 0.06); }
+        if (it.chop >= u.t){ setItemType(it, u.out); SFX.ok(s); floatText(sl.x, 1.7, sl.z, u.done, 'good txt'); return null; }
+        return it.chop/u.t;
+      }
+    }
+    return baseUse(s, dt);
+  };
+  const baseUL = useLabel;
+  useLabel = function(s){ if (!s.hold){ const u = useRule(findTarget(s)); if (u) return u.verb; } return baseUL(s); };
+  const baseAU = autoUseOK;
+  autoUseOK = function(s){
+    if (baseAU(s)) return true;
+    if (lastInput === 'key' || s.hold || s.agent.path.length || s.pending || s.slip) return false;
+    return !!useRule(findTarget(s));
+  };
 }
 
 /* ---------------- fire, spills, outages ---------------- */
@@ -3069,7 +3585,9 @@ function sprayFx(s, dt){
 
 /* ---------------- orders & customers ---------------- */
 function pickRecipe(){
-  const lv = G.level, pool = lv.rec;
+  const lv = G.level, pool = lv.rec.filter(r => !RECIPES[r].multi);
+  const mt = pickMulti(lv); if (mt) return mt;
+  if (!pool.length) return lv.rec[0];
   // avoid a whole board of the same thing
   const counts = {}; for (const o of orders) counts[o.rec] = (counts[o.rec]||0) + 1;
   const w = pool.map(r => 1/(1 + (counts[r]||0)*1.5));
@@ -3085,22 +3603,31 @@ const REC_TIPS = {coffee:'熱咖啡：到後面櫃台拿 🥛 空杯，放進咖
   fruitcup:'水果杯：把水果放上砧板，空手長按「動作」切好，再拿起來送出去。',
   onigiri:'飯糰：到右後方倉庫的 🍚 飯鍋拿白飯，拿著白飯去旁邊的海苔盒「拿取」，就捏成飯糰了。',
   hotdogset:'熱狗套餐：先做好大亨堡，拿著它去冰箱「拿取」一瓶飲料，就變成套餐。',
-  drink:'飲料：到後面的冰箱拿一瓶，直接送到出餐台。', snack:'零食：到零食貨架拿一包，直接送到出餐台。'};
+  drink:'飲料：到後面的冰箱拿一瓶，直接送到出餐台。', snack:'零食：到零食貨架拿一包，直接送到出餐台。',
+  delivery:'🛵 外送單！票卡上的每一樣都做好，拿到門口的 👜 打包台裝進外送袋；裝齊會自動封袋，再拿去 🛵 取餐架交給外送員。',
+  combo:'🎏 雙拼單！一張單要兩樣東西，各做一份送到出餐台，兩樣都到才算完成。',
+  bubbletea:'珍珠奶茶：到倉庫的珍奶吧拿 🍵 紅茶，拿著它去珍珠鍋「拿取」加珍珠，放進搖杯，空手長按「動作」搖勻。',
+  corn:'烤玉米：北邊的玉米箱拿玉米，放上 ♨️ 烤玉米架；烤好一面要長按「動作」翻面，再烤另一面。不翻會燒焦！',
+  guabao:'刈包：西北角的刈包攤，蒸籠拿刈包皮 → 拿著它去滷肉鍋「拿取」→ 再去花生粉「拿取」，就包好了。'};
 function spawnOrder(forceRec){
   const L = G.level;
   const rec = forceRec || pickRecipe(), R = RECIPES[rec];
   const ramp = L.endless ? Math.max(0.5, 1 - G.time/700) : 1;   // endless: tickets get shorter over time
   const o = {id:++G.orderSeq, rec, t:0, limit:R.time*ramp*(L.timeMul || 1), cust:null, claim:null, el:null, pts:R.pts, qty:1, got:0};
-  if (G.tut >= 0 && forceRec){ o.tut = true; o.limit = R.time*(L.tutMul || 2); }   // tutorial ticket: generous, owner only
+  if (R.multi) setupMulti(o, L, G.tut >= 0 && !!forceRec, ramp);
+  if (G.tut >= 0 && forceRec){ o.tut = true; o.limit = (o.items ? o.base : R.time)*(L.tutMul || 2); if (o.dl) o.eta = 0; }   // tutorial ticket: generous, owner only
   else if (!G.demo){
-    if (L.bulk && L.bulk.rec.includes(rec) && Math.random() < L.bulk.p){ o.qty = 2; o.limit *= 1.5; o.pts = R.pts*2 + 10; }
+    if (o.items){ if (o.dl && L.dlv && L.dlv.express && Math.random() < L.dlv.express){ o.express = true; o.eta = 0; o.limit *= 0.75; o.pts = Math.round(o.pts*1.5/5)*5; } }
+    else if (L.bulk && L.bulk.rec.includes(rec) && Math.random() < L.bulk.p){ o.qty = 2; o.limit *= 1.5; o.pts = R.pts*2 + 10; }
     else if (L.vip && Math.random() < L.vip){ o.vip = true; o.limit *= 0.6; o.pts = R.pts*2; }
   }
   orders.push(o);
-  o.cust = spawnCustomer(o);
+  o.cust = o.dl ? spawnRider(o) : spawnCustomer(o);
   refreshQueue();
   if (!G.demo){
     tipWhile('rec_' + rec, REC_TIPS[rec], () => orders.some(x => x.rec === rec) && !(player && player.hold && player.hold.type === R.item));
+    if (o.items) for (const r of o.items) tipWhile('rec_' + r, REC_TIPS[r], () => orders.some(x => x.rec === r || (x.items && x.items.includes(r))));
+    if (o.express) tipWhile('express', '⚡ 急件外送！外送員一下單就到門口，等不久但分數多 50%，先做它。', () => orders.some(x => x.express));
     if (o.qty > 1) tipWhile('bulk', '🧾 團購單！票角寫 ×2 的要送 2 份，每送 1 份打一個勾，送齊才算完成，分數加倍。', () => orders.some(x => x.qty > 1));
     if (o.vip) tipWhile('vip', '👑 VIP 來了！戴金帽的客人分數兩倍，但等不久，先做他的單。', () => orders.some(x => x.vip));
     SFX.ticket();
@@ -3125,7 +3652,7 @@ function queueSpot(i){
 function refreshQueue(){
   let i = 0;
   for (const c of customers){
-    if (c.state !== 'arrive' && c.state !== 'wait') continue;
+    if ((c.state !== 'arrive' && c.state !== 'wait') || c.rider) continue;
     if (c.qi !== i){ c.qi = i; if (c.state === 'wait' || c.toQueue){ const s = queueSpot(i); c.agent.goTo(s.x, s.z); } }
     i++;
   }
@@ -3141,7 +3668,8 @@ function removeCustomer(c){ const i = customers.indexOf(c); if (i >= 0) customer
 function updateCustomer(c, dt){
   const a = c.agent, arrived = a.step(dt);
   if (!c.entered && a.pos.z < 6.6){ c.entered = true; if (!G.demo) SFX.chime(); }
-  if (c.state === 'arrive'){
+  if (c.rider && c.state !== 'leave') riderState(c, arrived);
+  else if (c.state === 'arrive'){
     if (arrived && !c.toQueue){ c.toQueue = true; const s = queueSpot(Math.max(0, c.qi)); a.goTo(s.x, s.z); }
     else if (arrived && c.toQueue){ c.state = 'wait'; }
   } else if (c.state === 'wait'){
@@ -3153,18 +3681,29 @@ function updateCustomer(c, dt){
     }
   }
   if (c.emoteT > 0){ c.emoteT -= dt; c.tag.icon(c.emote); }
-  else if (c.order && (c.state === 'wait' || c.state === 'arrive')) c.tag.icon((c.order.vip ? '👑' : '') + RECIPES[c.order.rec].ic + (c.order.qty > 1 ? '×' + (c.order.qty - c.order.got) : ''));
+  else if (c.order && c.ch.g.visible && (c.state === 'wait' || c.state === 'arrive')) c.tag.icon((c.order.express ? '⚡' : '') + (c.order.vip ? '👑' : '') + RECIPES[c.order.rec].ic + (c.order.qty > 1 ? '×' + (c.order.qty - c.order.got) : ''));
   else c.tag.icon('');
   if (c.order && c.state === 'wait'){ const f = 1 - c.order.t/c.order.limit; c.tag.setBar(f, f > 0.5 ? '#34d6a6' : f > 0.25 ? '#ffcf3a' : '#ff6058'); }
   else c.tag.setBar(null);
 }
 function deliver(s){
   const h = s.hold;
-  let best = null;
-  for (const o of orders) if (RECIPES[o.rec].item === h.type && (!best || o.t/o.limit > best.t/best.limit)) best = o;
+  let best = null, bk = -1;
+  for (const o of orders){
+    const k = o.items ? (o.dl ? -1 : partIndex(o, h.type)) : -1;
+    if (o.items ? k < 0 : RECIPES[o.rec].item !== h.type) continue;
+    if (!best || o.t/o.limit > best.t/best.limit){ best = o; bk = k; }
+  }
   if (!best) return nope(s, '沒有人點' + ITEMS[h.type].n);
   releaseHold(s);
-  if (best.qty - best.got > 1){   // 團購單: one more ✓ on the ticket, not done yet
+  if (best.items){   // 雙拼: one ✓ per item, done when all are in
+    best.done[bk] = true;
+    if (!best.done.every(Boolean)){
+      if (!G.demo){ floatText(SLOT.pass.x, 2.2, SLOT.pass.z, '✓ ' + RECIPES[best.items[bk]].ic + ' 還差 ' + best.done.filter(d => !d).length + ' 樣', 'good txt'); SFX.pick(); haptic(12); decorateTicket(best, true); }
+      squash(s, 0.12);
+      return true;
+    }
+  } else if (best.qty - best.got > 1){   // 團購單: one more ✓ on the ticket, not done yet
     best.got++;
     if (!G.demo){ floatText(SLOT.pass.x, 2.2, SLOT.pass.z, '✓ ' + best.got + '/' + best.qty + ' 再 ' + (best.qty - best.got) + ' 份', 'good txt'); SFX.pick(); haptic(12); decorateTicket(best, true); }
     squash(s, 0.12);
@@ -3182,14 +3721,17 @@ function completeOrder(o, s){
   const total = pts + tipAmt;
   const i = orders.indexOf(o); orders.splice(i,1);
   if (o.claim && o.claim.ai) o.claim.ai.claim = null;
+  if (o.dl) dropBag(o);
+  const at = (o.dl && SLOT.rack) || SLOT.pass;
   if (!G.demo){
     addMoney(total);
+    if (o.dl) G.stats.dl = (G.stats.dl || 0) + 1; else if (o.items) G.stats.multi = (G.stats.multi || 0) + 1;
     G.stats.delivered++; G.stats.base += pts; G.stats.tips += tipAmt; G.stats.maxCombo = Math.max(G.stats.maxCombo, G.combo);
     G.stats.byRec[o.rec] = (G.stats.byRec[o.rec]||0) + 1;
     metaEvent('deliver', o, s);   // 🏆 lifetime stats / achievements
     if (o.vip) G.stats.vip++;
     if (o.qty > 1) G.stats.bulk++;
-    floatText(SLOT.pass.x, 2.2, SLOT.pass.z, (o.vip ? '👑 ' : '') + '+' + fmt(total) + (G.combo > 1 ? ' ×' + (G.combo-1) + ' 小費' : ''));
+    floatText(at.x, 2.2, at.z, (o.vip ? '👑 ' : o.dl ? '🛵 ' : '') + '+' + fmt(total) + (G.combo > 1 ? ' ×' + (G.combo-1) + ' 小費' : ''));
     SFX.deliver(G.combo); haptic(20);
     juiceCheckout(s, total); juiceTicket(o, G.combo);
     ticketDone(o, true);
@@ -3197,6 +3739,7 @@ function completeOrder(o, s){
     if (G.combo >= 3) tip('combo', '連擊！照順序先送最舊的那張單，小費會一直加倍。');
   }
   if (o.cust) customerLeave(o.cust, true);
+  if (o.dl) refreshRiders();
 }
 function failOrder(o){
   const R = RECIPES[o.rec];
@@ -3204,15 +3747,19 @@ function failOrder(o){
   if (o.claim && o.claim.ai) o.claim.ai.claim = null;
   G.combo = 1;
   if (!G.demo){
-    const pen = o.tut ? 0 : Math.round(R.pts*0.5*(o.vip ? 1.6 : 1)*(o.qty > 1 ? 1.5 : 1));   // tutorial tickets never cost points
+    const pen = o.tut ? 0 : Math.round((o.items ? o.pts : R.pts)*0.5*(o.vip ? 1.6 : 1)*(o.qty > 1 ? 1.5 : 1));   // tutorial tickets never cost points
     addMoney(-pen); G.stats.failed++; G.stats.penalty += pen; G.fails++;
     if (o.vip) G.stats.vipMiss++;
     metaEvent('fail', o);   // 🏆 lifetime stats
-    floatText(o.cust ? o.cust.agent.pos.x : CHECKOUT_SPOT.x, 2.4, o.cust ? o.cust.agent.pos.z : CHECKOUT_SPOT.z, (pen ? '-' + fmt(pen) + ' ' : '') + '等太久了', 'bad txt');
+    if (o.dl) G.stats.dlMiss = (G.stats.dlMiss || 0) + 1;
+    const fp = o.cust && o.cust.ch.g.visible ? o.cust.agent.pos : (o.dl && SLOT.rack) || CHECKOUT_SPOT;
+    floatText(fp.x, 2.4, fp.z, (pen ? '-' + fmt(pen) + ' ' : '') + (o.dl ? '外送員等不到走了' : '等太久了'), 'bad txt');
     SFX.fail(); camShakeAdd(0.2); juiceFail();
     ticketDone(o, false);
   }
-  if (o.cust) customerLeave(o.cust, false);
+  if (o.dl) dropBag(o);
+  if (o.cust){ if (o.cust.rider && !o.cust.leg) removeCustomer(o.cust); else customerLeave(o.cust, false); }
+  if (o.dl) refreshRiders();
 }
 // extra marks on a ticket for this level's twists (added beside the ticket markup, which renderTickets owns)
 function decorateTicket(o, bump){
@@ -3221,10 +3768,12 @@ function decorateTicket(o, bump){
     o._dec = true;
     if (o.vip) el.classList.add('tk-vip');
     if (o.tut) el.classList.add('tk-tut');
-    if (o.vip || o.qty > 1 || o.tut){ const b = document.createElement('i'); b.className = 'tkx'; el.appendChild(b); o._bx = b; }
+    if (o.items) el.classList.add(o.dl ? 'tk-dl' : 'tk-combo');
+    if (o.vip || o.qty > 1 || o.tut || o.items){ const b = document.createElement('i'); b.className = 'tkx'; el.appendChild(b); o._bx = b; }
   }
+  if (o.items) ticketItems(o);
   if (o._bx){
-    const t = o.vip ? '👑 ×2' : o.qty > 1 ? (o.got ? '✓' + o.got + '/' + o.qty : '×' + o.qty) : '教學';
+    const t = o.items ? (o.dl ? (o.express ? '⚡急件' : '🛵外送') : '🎏雙拼') + (o.tut ? '·教學' : '') : o.vip ? '👑 ×2' : o.qty > 1 ? (o.got ? '✓' + o.got + '/' + o.qty : '×' + o.qty) : '教學';
     if (o._bx.textContent !== t) o._bx.textContent = t;
     if (bump){ o._bx.classList.remove('pop'); void o._bx.offsetWidth; o._bx.classList.add('pop'); }
   }
@@ -3243,11 +3792,23 @@ const PLANS = {
   fruitcup:[['take','fruitsrc'], ['put','board'], ['chop','board'], ['take','board']],
   onigiri: [['take','ricesrc'], ['take','norisrc']],
   hotdogset:[['take','sausagesrc'], ['put','grill'], ['wait','grill','sausage_cooked'], ['take','bunsrc'], ['take','drink']],
+  // chapter 3. 'chop' = hold 動作 at the station: the AI waits there while the item is still cooking into something usable
+  // (the corn's first side), uses it, and moves on once nothing is left to do — so the second corn 'chop' is the flip for a
+  // step-by-step player and a no-op for a clone that already flipped.
+  bubbletea:[['take','teasrc'], ['take','pearlsrc'], ['put','shaker'], ['chop','shaker'], ['take','shaker']],
+  corn:    [['take','cornsrc'], ['put','bbq'], ['chop','bbq'], ['chop','bbq'], ['wait','bbq','corn']],
+  guabao:  [['take','baosrc'], ['take','porksrc'], ['take','peanutsrc']],
 };
 function aiReset(s){
   const ai = s.ai;
   if (ai && ai.claim){ ai.claim.claim = null; }
+  if (ai) aiUnclaim(s, ai);
   s.ai = {pause:0.4};
+}
+// release a clone's claim on one item of a multi ticket (ai.part) and on a sealed bag it was going to carry (ai.bag)
+function aiUnclaim(s, ai){
+  if (ai.part){ const p = ai.part; if (p.o.pclaim && p.o.pclaim[p.k] === s) p.o.pclaim[p.k] = null; ai.part = null; }
+  if (ai.bag){ if (ai.bag.claim === s) ai.bag.claim = null; ai.bag = null; }
 }
 function aiAt(s, spot){ return !s.agent.path.length && Math.hypot(s.agent.pos.x-spot.x, s.agent.pos.z-spot.z) < 0.45; }
 function aiGo(s, spot){
@@ -3262,8 +3823,12 @@ function aiChoose(s){
   const r = ROLE[s.role]; if (!r) return;
   // a held item with no job: deliver it if someone wants it, else bin it
   if (s.hold){
-    if (s.hold.type === 'ext'){ s.ai.plan = [['put','extstand']]; s.ai.i = 0; return; }
-    if (orders.some(o => RECIPES[o.rec].item === s.hold.type)){ s.ai.plan = [['deliver','pass']]; s.ai.i = 0; return; }
+    const ht = s.hold.type;
+    if (ht === 'ext'){ s.ai.plan = [['put','extstand']]; s.ai.i = 0; return; }
+    if (ht === 'bag_sealed'){ s.ai.plan = s.hold.order && orders.includes(s.hold.order) ? [['handoff','rack']] : [['bin','trash']]; s.ai.i = 0; return; }
+    if (wantsAtPass(ht)){ s.ai.plan = [['deliver','pass']]; s.ai.i = 0; return; }
+    const po = orders.find(o => o.dl && partIndex(o, ht) >= 0 && !(o.tut && s !== owner));
+    if (po){ s.ai.plan = [['pack', po]]; s.ai.i = 0; return; }
     s.ai.plan = [['bin','trash']]; s.ai.i = 0; return;
   }
   if (r.id === 'cleaner' || r.fixer){
@@ -3279,9 +3844,28 @@ function aiChoose(s){
       return;
     }
   }
-  let pickO = null;
-  for (const o of orders){ if (o.claim || !r.recipes.includes(o.rec) || (o.tut && s !== owner)) continue; if (!pickO || o.id < pickO.id) pickO = o; }
+  // couriers: a sealed delivery bag waiting on a counter goes to its rider first
+  if (r.id === 'bot' || r.recipes.includes('delivery')){
+    const bs = SLOTS.find(sl => sl.kind !== 'rider' && !sl.fire && sl.item && sl.item.type === 'bag_sealed' && sl.item.order && !sl.item.claim && !(sl.item.order.tut && s !== owner));
+    if (bs){ bs.item.claim = s; s.ai.bag = bs.item; s.ai.plan = [['take', bs.id], ['handoff','rack']]; s.ai.i = 0; return; }
+  }
+  // the oldest ticket this clone can work on: a whole order, or one item of a multi ticket (外送 / 雙拼)
+  let pickO = null, part = -1;
+  for (const o of orders){
+    if ((o.tut && s !== owner) || (pickO && o.id >= pickO.id)) continue;
+    if (o.items){
+      for (let k = 0; k < o.items.length; k++) if (!o.done[k] && !o.pclaim[k] && r.recipes.includes(o.items[k]) && PLANS[o.items[k]]){ pickO = o; part = k; break; }
+      continue;
+    }
+    if (o.claim || !r.recipes.includes(o.rec)) continue;
+    pickO = o; part = -1;
+  }
   if (!pickO) return;
+  if (part >= 0){
+    pickO.pclaim[part] = s; s.ai.part = {o:pickO, k:part};
+    s.ai.plan = PLANS[pickO.items[part]].concat([pickO.dl ? ['pack', pickO] : ['deliver','pass']]); s.ai.i = 0;
+    return;
+  }
   pickO.claim = s; s.ai.claim = pickO;
   s.ai.plan = PLANS[pickO.rec].concat([['deliver','pass']]); s.ai.i = 0;
 }
@@ -3298,12 +3882,21 @@ function aiUpdate(s, dt){
   ai.t = (ai.t || 0) + dt;
   if (ai.t > 22){ aiReset(s); return; }
   const [op, ref, want] = step;
-  const next = () => { ai.i++; ai.t = 0; ai.pause = CLONE_THINK*upgVal('train', 'think'); if (ai.i >= ai.plan.length){ ai.plan = null; if (ai.claim){ ai.claim.claim = null; ai.claim = null; } } };
+  const next = () => { ai.i++; ai.t = 0; ai.pause = CLONE_THINK*upgVal('train', 'think'); if (ai.i >= ai.plan.length){ ai.plan = null; if (ai.claim){ ai.claim.claim = null; ai.claim = null; } aiUnclaim(s, ai); } };
   s.prog = null;
   if (op === 'mop'){
     const sp = ref; if (spills.indexOf(sp) < 0){ next(); return; }
     if (!aiGo(s, sp)) return;
     s.prog = useTick(s, dt); if (spills.indexOf(sp) < 0) next();
+    return;
+  }
+  if (op === 'pack'){   // put the held item into the delivery bag of ticket `ref` (a free 打包台 spot if it has no bag yet)
+    const o = ref;
+    if (!s.hold || orders.indexOf(o) < 0 || partIndex(o, s.hold.type) < 0){ next(); return; }
+    const ps = packSlotFor(o); if (!ps){ if (ai.t > 12) aiReset(s); return; }
+    if (!aiGo(s, ps.spot)) return;
+    aiFace(s, ps);
+    if (grab(s, ps)) next(); else if (ai.t > 8) aiReset(s);
     return;
   }
   const sl = SLOT[ref]; if (!sl){ aiReset(s); return; }
@@ -3324,19 +3917,25 @@ function aiUpdate(s, dt){
       break;
     case 'wait':
       if (!sl.item){ aiReset(s); return; }
-      if (sl.broken){ ai.t = 0; if ((ROLE[s.role] || {}).fixer && findTarget(s) === sl) s.prog = useTick(s, dt); return; }   // don't give up (and leave the food to burn once repaired) while the machine is out; a fixer repairs it
+      if (sl.broken || darkOff(sl)){ ai.t = 0; if ((ROLE[s.role] || {}).fixer && findTarget(s) === sl) s.prog = useTick(s, dt); return; }   // don't give up (and leave the food to burn once repaired) while the machine is out; a fixer repairs it
       if (sl.item.type === 'burnt'){ grab(s, sl); ai.plan = [['bin','trash']]; ai.i = 0; if (ai.claim){ ai.claim.claim = null; ai.claim = null; } return; }
       if (sl.item.type === want && !s.hold){ if (grab(s, sl)) next(); }
       break;
-    case 'chop':
+    case 'chop':   // hold 動作 here: chop, shake, flip — and wait while the item is still cooking into something to use
       if (!sl.item){ aiReset(s); return; }
-      if (sl.item.type !== 'fruit'){ next(); return; }
-      s.prog = useTick(s, dt);
+      if (useReady(sl)){ s.prog = useTick(s, dt); break; }
+      if (useSoon(sl)) break;
+      next();
       break;
     case 'deliver':
       if (!s.hold){ next(); return; }
-      if (orders.some(o => RECIPES[o.rec].item === s.hold.type)){ grab(s, sl); next(); }
+      if (wantsAtPass(s.hold.type)){ grab(s, sl); next(); }
       else if (ai.t > 4){ ai.plan = [['bin','trash']]; ai.i = 0; }
+      break;
+    case 'handoff':   // a sealed bag to its rider (or onto the 取餐架 until the rider is here)
+      if (!s.hold || s.hold.type !== 'bag_sealed'){ next(); return; }
+      if (!s.hold.order || orders.indexOf(s.hold.order) < 0){ ai.plan = [['bin','trash']]; ai.i = 0; return; }
+      if (grab(s, sl)) next(); else if (ai.t > 10) aiReset(s);
       break;
     case 'bin':
       if (s.hold) grab(s, sl);
@@ -4309,7 +4908,7 @@ function updateActionLabels(){
   if (_hc.tl !== html){ _hc.tl = html; if (uxEls.tl){ uxEls.tl.innerHTML = html ? html.replace(/^dim:/, '') : ''; uxEls.tl.classList.toggle('dim', html.startsWith('dim:')); } }
   if (coopOn()) coopActionLabel();
 }
-const useIcon = u => u === '噴' ? '🧯' : u === '修理' ? '🔧' : u === '拖地' ? '🧽' : '🔪';
+const useIcon = u => u === '噴' ? '🧯' : u === '修理' ? '🔧' : u === '拖地' ? '🧽' : u === '搖' ? '🧋' : u === '翻面' ? '🔄' : '🔪';
 // "✋ 拿 空杯 · 🔪 長按 切" — glyphs follow the input you last used (touch / keyboard / gamepad)
 function targetLabelHTML(s, sl, g, u, slot){   // slot 1 = 2P in co-op (its own glyphs, a "2P" badge)
   const esc = t => String(t).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[c]);
@@ -4881,8 +5480,8 @@ function showPrep(i){
   prepTeam = defaultTeam(L);
   renderPrepTeam();
   $('#prepCtrl').innerHTML = isTouch
-    ? '🕹️ 左手在畫面上拖曳走路　✋ 拿起／放下／出餐<br>🔪 長按：切水果、噴滅火器、拖地、修理　🔄 換人操作'
-    : '⌨️ WASD／方向鍵走路　空白鍵或 J：拿起／放下／出餐<br>E 或 K 長按：切水果、滅火、拖地、修理　Q 或 Tab：換人操作　（也可以用滑鼠點）';
+    ? '🕹️ 左手在畫面上拖曳走路　✋ 拿起／放下／出餐' + (L.ch >= 2 ? '／裝袋' : '') + '<br>🔪 長按：切水果、' + (L.ch >= 3 ? '搖珍奶、翻玉米、' : '') + '噴滅火器、拖地、修理　🔄 換人操作'
+    : '⌨️ WASD／方向鍵走路　空白鍵或 J：拿起／放下／出餐' + (L.ch >= 2 ? '／裝袋' : '') + '<br>E 或 K 長按：切水果、' + (L.ch >= 3 ? '搖珍奶、翻玉米、' : '') + '滅火、拖地、修理　Q 或 Tab：換人操作　（也可以用滑鼠點）';
   if (pad.on) $('#prepCtrl').innerHTML += '<br>🎮 左搖桿走路　A 拿起／放下　X 或 B 長按動作　LB／RB 換人　Start 暫停';
   G.state = 'menu';
   showScreen('prep');
@@ -4960,6 +5559,8 @@ function updateEventChip(){
   if (G.rush) return setEventChip(G.rush.ic + ' ' + G.rush.name + ' ' + mmss(rushLeft(G.rush)), 'hot');
   if (L.rain && G.rainT < 6) return setEventChip('☔ 雨勢變大 ' + Math.ceil(Math.max(0, G.rainT)), 'hot');
   if (L.storm && G.stormT < 6) return setEventChip('🌀 跳電警報 ' + Math.ceil(Math.max(0, G.stormT)), 'hot');
+  if (G.dark > 0) return setEventChip('🏮 停電中 ' + Math.ceil(G.dark), 'hot');
+  if (L.blackout && G.darkT < 6) return setEventChip('🏮 快停電了 ' + Math.ceil(Math.max(0, G.darkT)), 'hot');
   if (L.rush && !L.endless){ const r = L.rush[0], left = r.at*L.len - G.time; if (left > 0 && left < 15) return setEventChip(r.ic + ' ' + r.name + '快到了 ' + Math.ceil(left)); }
   setEventChip('');
 }
@@ -4994,6 +5595,7 @@ function setupWorld(i, team, demo){
   G.spillT = L.spills ? rand(14, 24)/L.spills : 1e9; G.outT = L.outage ? L.outage*0.7 : 1e9;
   G.tut = (!demo && L.script && !G.skipTut && !bestOf(i).stars) ? 0 : -1; G.rush = null; G.warnAt = 0;   // the tutorial runs until the level has a ★ (G.skipTut: test hook)
   G.rainT = L.rain ? L.rain.every*0.6 : 1e9; G.stormT = L.storm ? L.storm.every*0.55 : 1e9;
+  G.dark = 0; G.darkT = L.blackout ? L.blackout.every*0.6 : 1e9; setDark(false);
   owner.agent.pos.set(4.2, 0, 2.4); owner.agent.face(-Math.PI/2);
   for (const id of team) spawnClone(id, !!demo);
   player = owner;
@@ -5057,8 +5659,9 @@ function showResults(){
     row('送出餐點', S.delivered + ' 份') + recRows + row('最高連擊', '×' + S.maxCombo) +
     ((S.vip || S.vipMiss) ? row('👑 VIP 服務', S.vip + ' 位' + (S.vipMiss ? '（氣走 ' + S.vipMiss + '）' : '')) : '') +
     (S.bulk ? row('🧾 團購單完成', S.bulk + ' 張') : '') + (S.rushDone ? row('🔥 撐過尖峰', S.rushDone + ' 次') : '') +
+    ((S.dl || S.dlMiss) ? row('🛵 外送送出', (S.dl || 0) + ' 袋' + (S.dlMiss ? '（外送員走掉 ' + S.dlMiss + '）' : '')) : '') + (S.multi ? row('🎏 雙拼單完成', S.multi + ' 張') : '') +
     (S.failed ? row('逾時沒送到', S.failed + ' 張', 'neg') : '') + (S.burnt ? row('燒焦／失敗品', S.burnt + ' 個', 'neg') : '') + (S.fires ? row('起火', S.fires + ' 次', 'neg') : '') + '<hr>' +
-    row('餐點收入', fmt(S.base)) + row('小費', '+' + fmt(S.tips)) + (S.penalty ? row('逾時扣分', '-' + fmt(S.penalty), 'neg') : '') + '<hr>' +
+    row('餐點收入', fmt(S.base)) + row('小費', '+' + fmt(S.tips)) + (S.penalty ? row('逾時扣分', '-' + fmt(S.penalty), 'neg') : '') + (S.wrongPen ? row('包錯扣分', '-' + fmt(S.wrongPen) + '（' + S.wrong + ' 次）', 'neg') : '') + '<hr>' +
     row('本次分數', fmt(score), 'tot pos') + row('獲得金幣', '💰 +' + coins + (crown && !prev.crown ? '　👑 皇冠！' : '')) + row('星星門檻', '★' + L.stars[0] + '　★★' + L.stars[1] + '　★★★' + L.stars[2]) +
     (stars < 3 ? row('距離 ' + '★'.repeat(stars + 1), '還差 ' + fmt(L.stars[stars] - score)) : '') +
     `<div class="coach"></div><div class="bar"></div>`;
@@ -5080,6 +5683,8 @@ function coachLine(L, S, stars){
   if (S.fires) return '💡 機器上的失敗品放著會起火：燒焦了就馬上丟進垃圾桶。';
   if (S.burnt >= 2) return '💡 微波爐、烤台做好要馬上拿出來，不然會燒焦。';
   if (S.vipMiss) return '💡 👑 VIP 等不久，看到金色的單要先做。';
+  if (S.wrong) return '💡 外送袋只裝票卡上還沒打勾的東西，裝錯會扣分。';
+  if (S.dlMiss) return '💡 外送員等太久會走：做好一樣就先拿去打包台裝袋，封好馬上交到取餐架。';
   if (S.failed >= 3) return '💡 太多單逾時了：帶分身上場，' + (isTouch ? '按 🔄' : '按 Q') + ' 換人去幫最忙的那條線。';
   if (S.maxCombo < 3) return '💡 照順序先送最舊的單，連擊小費會一直加倍。';
   if (L.rush) return '💡 尖峰來之前先把手上的單清掉，尖峰時優先做簡單的單。';
@@ -5856,7 +6461,7 @@ function updateMachines(dt){
       }
       continue;
     }
-    if (sl.kind !== 'appl' || !sl.item || sl.broken) continue;
+    if (sl.kind !== 'appl' || !sl.item || sl.broken || darkOff(sl)) continue;
     const it = sl.item, a = APPL[sl.id], inR = a.ins[it.type];
     if (inR){ it.cook += dt; if (it.cook >= inR.t){ setItemType(it, inR.out); SFX.done(sl.id); } }
     else {
@@ -5889,6 +6494,7 @@ function flashBig(text){
 function fanfare(){ tone(784, 0.1, 'triangle', 0.08); tone(988, 0.1, 'triangle', 0.08, 0.1); tone(1319, 0.22, 'triangle', 0.08, 0.2); }
 function twistTick(dt){
   const L = G.level;
+  chapterTick(dt);
   // tutorial: scripted tickets one at a time; the clock stands still until the last one is done
   if (G.tut >= 0){
     if (!orders.length && G.gapT <= 0){
@@ -5939,8 +6545,8 @@ function twistTick(dt){
 function situationTips(){
   if (G.demo || !player) return;
   const h = player.hold;
-  if (h && h.type !== 'ext' && orders.some(o => RECIPES[o.rec].item === h.type))
-    tipWhile('carry', '拿到了！走到黃色的「出餐」台，' + (isTouch ? '按 ✋' : '按空白鍵') + '出餐。', () => player.hold && orders.some(o => RECIPES[o.rec].item === player.hold.type));
+  if (h && h.type !== 'ext' && wantsAtPass(h.type))
+    tipWhile('carry', '拿到了！走到黃色的「出餐」台，' + (isTouch ? '按 ✋' : '按空白鍵') + '出餐。', () => player.hold && wantsAtPass(player.hold.type));
   for (const o of orders) if (o.t/o.limit > 0.72 && !o.tut){ tipWhile('urgent', '點單在晃＝快超時了！先救最急的那張，逾時會扣分。', () => orders.some(x => x.t/x.limit > 0.6)); break; }
   for (const id of ['coffee','hotwater','micro','grill','pot']){
     const sl = SLOT[id];
@@ -6124,7 +6730,7 @@ function boot(hotData){
   if (hotData && Array.isArray(hotData.team) && !G.team.length) G.team = hotData.team.filter(id => ROLE[id]);
   buildWorld();
   buildKitchen();
-  buildKitchenExtra(); designUI();
+  buildKitchenExtra(); buildKitchenCh2(); buildKitchenCh3(); designUI();
   createPlayer();
   buildDeviceUX();
   metaUI();   // shop / trophies / daily / stats screens
