@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | 走路 | WASD | 方向鍵 |
 | 拿起／放下 | 空白鍵或 J | Enter、右 Shift 或 Numpad0 |
-| 長按動作 | E 或 K | /、Numpad1 或右 Ctrl |
+| 長按動作 | E 或 K | / 或 Numpad1 |
 | 換人（不會換到對方的角色） | Q 或 Tab | . 或 Numpad2 |
 | 手把 | 第 1 支 | 第 2 支 |
 
