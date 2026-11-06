@@ -7,11 +7,14 @@
  * Environment:
  *   THREE_JS=/path/to/three.min.js  serve this file for any request ending in three.min.js (CDN blocked / offline)
  *   OUT_DIR=/some/dir               screenshots (default: <tmp>/clone-mart-tests-<time>)
- *   ONLY=regex                      run only groups matching: smoke|controls|recipes|hazards|flow|invariants|edge
+ *   ONLY=regex                      run only groups matching: smoke|controls|recipes|hazards|flow|invariants|edge|
+ *                                   difficulty|progress|cosmetics|long|balance|perf
+ *   PERF_MAX_MS=ms                  perf probe fails only above this average frame time (default 1500, software GL)
  *   GAME_HTML=path                  test another copy of the game (default: ../index.html)
  *   SUITE_TIMEOUT=secs              hard cap for the whole run (default 360)
  *
- * Three device tracks (desktop 1280x760 / iPhone 13 / iPad) run in parallel, each in its own Chromium.
+ * Four tracks run in parallel, each in its own Chromium: desktop 1280x760, iPhone 13, iPad, and a second desktop for
+ * progression (difficulty, chapters, save v1→v2, cosmetics, themes, long session, balance via tests/human.js).
  * Game logic is driven through window.__cloneMart.sim() (1/30 s steps, no rendering): fast and independent
  * of the software renderer. Only smoke and input tests use real frames, and those poll for the effect.
  * Everything content-related (recipes, plans, levels, roles, stations) is read from the game at run time,
@@ -32,6 +35,7 @@ catch (e) {
   process.exit(2);
 }
 const { chromium, devices } = playwright;
+const humanLib = require('./human.js');   // human-like owner bot for the balance group
 
 const GAME = process.env.GAME_HTML ? path.resolve(process.env.GAME_HTML) : path.resolve(__dirname, '..', 'index.html');
 const GAME_URL = pathToFileURL(GAME).href;
@@ -135,6 +139,7 @@ function qaLib() {
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const Q = window.__qa = { C };
   C.G.skipTut = true;
+  Q.bootDiff = C.G.diff;   // as loaded from the save (the pin below overrides it)
   C.G.diff = 'hard';   // star thresholds/timers in these tests are the base (挑戰) values   // the level-1 tutorial pauses the clock and scripts tickets; logic tests run without it
   Q.slot = id => { const s = C.SLOT[id]; if (!s) throw new Error('no station "' + id + '"'); return s; };
   Q.near = (sl, p) => sl.band ? { x: clamp(p.x, sl.band[0], sl.band[1]), z: clamp(p.z, sl.band[2], sl.band[3]) } : { x: sl.x, z: sl.z };
@@ -258,7 +263,19 @@ function qaLib() {
       receipt: document.getElementById('receipt').textContent, resultsVisible: !document.getElementById('results').hidden,
       next: { hidden: document.getElementById('btnNextLv').hidden, disabled: document.getElementById('btnNextLv').disabled } };
   };
-  Q.lvButtons = () => { C.showLevels(); return [...document.querySelectorAll('#lvList .lv')].map(b => !b.disabled); };
+  // level-select buttons → enabled flag per LEVELS index (the list is grouped by chapter, then 特別模式)
+  Q.lvOrder = () => {
+    if (!C.CHAPTERS) return C.LEVELS.map((L, i) => i);
+    const order = []; C.CHAPTERS.map(c => c.id).concat([0]).forEach(id => C.LEVELS.forEach((L, i) => { if (L.ch === id) order.push(i); }));
+    return order;
+  };
+  Q.lvButtons = () => {
+    C.showLevels();
+    const btn = [...document.querySelectorAll('#lvList .lv')], ord = Q.lvOrder();
+    const named = btn.length === ord.length && ord.every((i, k) => (btn[k].querySelector('.nm') || btn[k]).textContent.indexOf(C.LEVELS[i].n) >= 0);
+    if (!named) return btn.map(b => !b.disabled);
+    const out = C.LEVELS.map(() => false); ord.forEach((i, k) => { out[i] = !btn[k].disabled; }); return out;
+  };
   Q.roleButtons = lv => { C.showPrep(lv); return [...document.querySelectorAll('#prepTeam .tp')].map(b => !b.disabled); };
   Q.totalStars = () => { let t = 0; for (const k in C.G.best) t += (C.G.best[k] && C.G.best[k].stars) || 0; return t; };
   // tap target: a source station whose projected screen point resolves (with the game's own rules) to itself
@@ -878,7 +895,7 @@ async function desktopTrack() {
           if (!key) throw new Error('no clone-mart localStorage key holds the best score (keys: ' + keys.join(',') + ')');
           return { key, i0, score: C.LEVELS[i0].stars[2] };
         });
-        await sp.reload({ waitUntil: 'load' });
+        await sp.reload({ waitUntil: 'load', timeout: 60000 });
         await ready(sp);
         const b = await sp.evaluate(a => {
           const Q = __qa, C = Q.C;
@@ -969,9 +986,541 @@ async function mobileTrack(order, label, deviceName, opts) {
       });
     }
     await tapStationTest(test, P, label, 'tap');
+    if (opts.perf) await perfProbe(test, P, label);
     await test('smoke', `${label}: no page/console errors`, async () => noErrors(P));
     await P.ctx.close();
   } finally { await browser.close(); }
+}
+
+/* ------------------------------------------------------------------ progression track: difficulty, chapters, save, cosmetics, themes, long session, balance */
+const EXTRA_GROUPS = ['difficulty', 'progress', 'cosmetics', 'long', 'balance'];
+async function progressionTrack(order, label) {
+  if (!EXTRA_GROUPS.some(want)) return;
+  const test = makeTrack(order, label);
+  const browser = await chromium.launch({ args: CHROME_ARGS });
+  try {
+    const P = await openGame(browser, label, { viewport: { width: 1280, height: 760 } });
+    const page = P.page;
+    await page.evaluate(humanLib);
+
+    /* ---------- difficulty */
+    await test('difficulty', 'DIFFS ordered easy→hard; effLevel scales timers, order gap, ★ thresholds, clone slots (LEVELS untouched)', () => page.evaluate(() => {
+      const C = __qa.C;
+      if (!C.DIFFS || !C.effLevel) return 'skipped: no difficulty modes';
+      const D = C.DIFFS, near = (a, b) => Math.abs(a - b) < 1e-6;
+      for (let k = 1; k < D.length; k++) {
+        const a = D[k - 1], b = D[k];
+        for (const f of ['time', 'every', 'burn', 'slots']) if (!(a[f] >= b[f])) throw new Error(`${a.id}.${f}=${a[f]} < ${b.id}.${f}=${b[f]} (an easier mode must not be stricter)`);
+        if (!(a.star <= b.star)) throw new Error(`${a.id}.star ${a.star} > ${b.id}.star ${b.star}`);
+      }
+      const snap = JSON.stringify(C.LEVELS.map(L => [L.stars, L.every, L.clones, L.len]));
+      let n = 0;
+      C.LEVELS.forEach((L, i) => {
+        for (const d of D) {
+          const E = C.effLevel(L, d.id), tag = `L${i + 1}/${d.id}`;
+          if (E.diff !== d.id) throw new Error(tag + ': diff ' + E.diff);
+          if (!near(E.timeMul, d.time)) throw new Error(`${tag}: timeMul ${E.timeMul} ≠ ${d.time}`);
+          if (!near(E.every[0], L.every[0] * d.every) || !near(E.every[1], L.every[1] * d.every)) throw new Error(`${tag}: every ${E.every}`);
+          if (E.clones !== Math.min(5, L.clones + d.slots)) throw new Error(`${tag}: clones ${E.clones}`);
+          E.stars.forEach((t, k) => { const w = Math.max(10, Math.round(L.stars[k] * d.star / 10) * 10); if (t !== w) throw new Error(`${tag}: ★${k + 1} ${t} ≠ ${w}`); });
+          for (let k = 1; k < 3; k++) if (E.stars[k] < E.stars[k - 1]) throw new Error(`${tag}: thresholds not increasing ${E.stars}`);
+          n++;
+        }
+      });
+      if (JSON.stringify(C.LEVELS.map(L => [L.stars, L.every, L.clones, L.len])) !== snap) throw new Error('effLevel changed LEVELS');
+      return `${D.map(d => d.id).join(' < ')}; ${n} level×difficulty combos`;
+    }));
+    await test('difficulty', 'in game: ticket timer, spawn gap, burn/fire timers, prep slots, crown & coins follow the difficulty', () => page.evaluate(() => {
+      const Q = __qa, C = Q.C, G = C.G;
+      if (!C.DIFFS || !C.effLevel) return 'skipped: no difficulty modes';
+      const i = C.LEVELS.findIndex(L => !L.endless && !L.script && !L.storm);
+      const L = C.LEVELS[i], rec = L.rec.find(r => C.RECIPES[r]);
+      // an appliance that burns, and the source of its input
+      let burnA = null;
+      for (const id in C.APPL) for (const t in C.APPL[id].ins) { const r = C.APPL[id].ins[t]; if (r.burn && !burnA && Q.src(t) && C.SLOT[id]) burnA = { id, t, out: r.out, cook: r.t }; }
+      const base = {};
+      for (const id in C.APPL) { const a = C.APPL[id]; base[id] = { fire: '_fire' in a ? a._fire : a.fire, burn: {} }; for (const t in a.ins) base[id].burn[t] = '_burn' in a.ins[t] ? a.ins[t]._burn : a.ins[t].burn; }
+      const keepBest = JSON.stringify(G.best), keepCoins = G.coins, keepDiff = G.diff, rows = [];
+      try {
+        for (const d of C.DIFFS) {
+          G.diff = d.id;
+          Q.start(i, [], { vip: 0, bulk: null, rush: null, rain: null, storm: null });
+          G.rainT = G.stormT = 1e9;
+          const E = C.effLevel(L, d.id);
+          if (G.level.diff !== d.id || JSON.stringify(G.level.stars) !== JSON.stringify(E.stars)) throw new Error(d.id + ': level thresholds ' + G.level.stars + ' ≠ ' + E.stars);
+          // ticket timer
+          const o = C.spawnOrder(rec);
+          const want = C.RECIPES[rec].time * d.time;
+          if (Math.abs(o.limit - want) > 1e-6) throw new Error(`${d.id}: ${rec} ticket ${o.limit}s, expected ${want}s`);
+          // spawn gap (the regular gap: with fewer than 3 tickets the board refills faster)
+          G.level.max = 99; G.spawnT = 0; G.gapT = 0;
+          const n0 = C.orders.length; C.sim(1 / 30);
+          if (C.orders.length !== n0 + 1) throw new Error(d.id + ': no ticket spawned');
+          const gap = G.spawnT, lo = L.every[0] * d.every - 0.05, hi = L.every[1] * d.every + 0.01;
+          if (!(gap >= lo && gap <= hi)) throw new Error(`${d.id}: next ticket in ${gap.toFixed(2)}s, expected ${lo.toFixed(2)}–${hi.toFixed(2)}`);
+          G.level.max = 0; for (const x of C.orders) x.t = x.limit; C.sim(1 / 30);
+          // burn / fire timers: table values and a real burn
+          for (const id in C.APPL) {
+            const a = C.APPL[id];
+            if (base[id].fire && Math.abs(a.fire - base[id].fire * d.burn) > 1e-6) throw new Error(`${d.id}: ${id} fire ${a.fire}, expected ${base[id].fire * d.burn}`);
+            for (const t in a.ins) if (base[id].burn[t] && Math.abs(a.ins[t].burn - base[id].burn[t] * d.burn) > 1e-6) throw new Error(`${d.id}: ${id}/${t} burn ${a.ins[t].burn}`);
+          }
+          let burnAt = null;
+          if (burnA) {
+            Q.trash(); Q.mustGrab(Q.src(burnA.t).id); Q.mustGrab(burnA.id);
+            const sl = C.SLOT[burnA.id];
+            if (!Q.simUntil(() => sl.item && sl.item.type === burnA.out, burnA.cook + 3)) throw new Error(burnA.id + ' did not cook');
+            let t = 0; while (t < 60 && sl.item && sl.item.type !== 'burnt') { C.sim(1 / 30); t += 1 / 30; }
+            const wantB = base[burnA.id].burn[burnA.t] * d.burn;
+            if (Math.abs(t - wantB) > 0.2) throw new Error(`${d.id}: ${burnA.out} burnt after ${t.toFixed(2)}s in ${burnA.id}, expected ${wantB.toFixed(2)}s`);
+            burnAt = t;
+            Q.mustGrab(burnA.id); Q.trash();
+          }
+          // prep screen: clone slots
+          C.showPrep(i);
+          const slots = (document.getElementById('prepSlots') || {}).textContent || '';
+          if (!new RegExp('/\\s*' + E.clones + '\\b').test(slots)) throw new Error(`${d.id}: prep slots "${slots}", expected …/ ${E.clones}`);
+          // the menu demo runs at base timers
+          for (const id in C.APPL) for (const t in C.APPL[id].ins) if (base[id].burn[t] && C.APPL[id].ins[t].burn !== base[id].burn[t]) throw new Error('menu demo keeps the ' + d.id + ' burn timers');
+          // crown & coins
+          for (const k in G.best) delete G.best[k];
+          const c0 = G.coins, score = E.stars[2];
+          Q.start(i, []); G.money = score; G.time = G.level.len - 0.05; C.sim(0.5);
+          if (G.state !== 'results') throw new Error(d.id + ': no results');
+          const b = C.bestOf(i), coinW = d.coin === undefined ? null : Math.max(0, Math.round(score / 10 * d.coin));
+          if (b.stars !== 3) throw new Error(`${d.id}: ${score} at ★★★ ${E.stars[2]} gave ${b.stars}★`);
+          if ('crown' in b && !!b.crown !== (d.id === C.DIFFS[C.DIFFS.length - 1].id)) throw new Error(`${d.id}: crown ${b.crown}`);
+          const got = G.stats.coins !== undefined ? G.stats.coins : G.coins - c0;   // the shift's pay (achievements may add bonuses on top)
+          if (coinW !== null && (got !== coinW || G.coins - c0 < coinW)) throw new Error(`${d.id}: +${got} coins for the shift (wallet +${G.coins - c0}), expected ${coinW}`);
+          rows.push(`${d.id}: ${rec} ${o.limit.toFixed(0)}s, gap ${gap.toFixed(1)}s, ${burnA ? burnA.out + ' burns ' + burnAt.toFixed(1) + 's' : 'no burn'}, ${E.clones} slots, ★${E.stars.join('/')}, +${got}💰${b.crown ? '👑' : ''}`);
+        }
+      } finally {
+        for (const k in G.best) delete G.best[k]; Object.assign(G.best, JSON.parse(keepBest)); G.coins = keepCoins; G.diff = keepDiff;
+      }
+      return rows.join('; ');
+    }));
+
+    /* ---------- chapters */
+    await test('progress', 'chapter & level unlock rules (need stars, previous level ★, endless req), labels, level-select buttons', () => page.evaluate(() => {
+      const Q = __qa, C = Q.C, G = C.G;
+      if (!C.CHAPTERS || !C.levelUnlocked) return 'skipped: no chapters';
+      const keep = JSON.stringify(G.best), lvIdx = id => C.LEVELS.findIndex(L => L.id === id), out = [];
+      const clear = () => { for (const k in G.best) delete G.best[k]; };
+      const set = (i, stars) => { G.best[C.LEVELS[i].id] = { score: stars * 100, stars, crown: false }; };
+      const ofCh = id => C.LEVELS.map((L, i) => i).filter(i => C.LEVELS[i].ch === id && !C.LEVELS[i].endless);
+      const check = (i, want, why) => { if (C.levelUnlocked(i) !== want) throw new Error(`${C.lvLabel(i)} ${C.LEVELS[i].n}: ${want ? 'locked' : 'unlocked'} ${why}`); };
+      const giveStars = (idx, n) => { for (const i of idx) { const s = Math.max(0, Math.min(3, n)); set(i, s); n -= s; } };
+      const synth = [];
+      // stable save ids: unique; the endless level is 'endless' and chapter 1 keeps the v1 ids wherever new levels are inserted
+      const ids = C.LEVELS.map(L => L.id);
+      if (ids.some(x => !x) || new Set(ids).size !== ids.length) throw new Error('level ids missing or duplicated: ' + ids.join(','));
+      const e = C.LEVELS.find(L => L.endless); if (e && e.id !== 'endless') throw new Error('the endless level has id "' + e.id + '" (v1 saves map index 6 to "endless")');
+      ofCh(1).slice(0, 6).forEach((i, k) => { if (C.LEVELS[i].id !== 'c1-' + (k + 1)) throw new Error(`chapter-1 level ${k + 1} has id "${C.LEVELS[i].id}", v1 saves expect "c1-${k + 1}"`); });
+      try {
+        // every chapter as it is in the game
+        C.CHAPTERS.forEach((Ch, ci) => {
+          const idx = ofCh(Ch.id); if (!idx.length) return;
+          clear();
+          if (C.LEVELS[idx[0]].req) { /* its own requirement: checked below */ }
+          else if (ci === 0 || !Ch.need) check(idx[0], true, 'with no stars (chapter needs none)');
+          else {
+            const prev = ofCh(C.CHAPTERS[ci - 1].id);
+            if (Ch.need > prev.length * 3) throw new Error(`chapter ${Ch.id} needs ★${Ch.need} but chapter ${C.CHAPTERS[ci - 1].id} only has ${prev.length * 3}`);
+            giveStars(prev, Ch.need - 1); check(idx[0], false, `with ★${Ch.need - 1} in the previous chapter (needs ★${Ch.need})`);
+            clear(); giveStars(prev, Ch.need); check(idx[0], true, `with ★${Ch.need} in the previous chapter`);
+          }
+          for (let k = 1; k < idx.length; k++) {
+            if (C.LEVELS[idx[k]].req) continue;
+            set(idx[k - 1], 0); check(idx[k], false, 'with 0★ on the level before');
+            set(idx[k - 1], 1); check(idx[k], true, 'with 1★ on the level before');
+          }
+          // labels: 第 ch-k 關, in order
+          idx.forEach((i, k) => { const w = '第 ' + Ch.id + '-' + (k + 1) + ' 關'; if (C.lvLabel(i) !== w) throw new Error(`label of ${C.LEVELS[i].n}: "${C.lvLabel(i)}", expected "${w}"`); });
+          out.push(`ch${Ch.id}: ${idx.length} levels, need ★${Ch.need || 0}`);
+        });
+        // levels with an explicit requirement (endless)
+        C.LEVELS.forEach((L, i) => {
+          if (!L.req) return;
+          const j = lvIdx(L.req.lv); if (j < 0) throw new Error(L.id + ' requires unknown level ' + L.req.lv);
+          clear(); set(j, (L.req.stars || 1) - 1); check(i, false, `with ${(L.req.stars || 1) - 1}★ on ${L.req.lv}`);
+          set(j, L.req.stars || 1); check(i, true, `with ${L.req.stars || 1}★ on ${L.req.lv}`);
+          out.push(`${L.id} needs ${L.req.lv}`);
+        });
+        // a synthetic chapter after the last one (exercises the `need` rule even with one chapter)
+        const lastCh = C.CHAPTERS[C.CHAPTERS.length - 1], prev = ofCh(lastCh.id);
+        if (prev.length) {
+          const ch = { id: 990, n: 'QA', ic: '?', theme: 'default', need: Math.min(3, prev.length * 3) };
+          C.CHAPTERS.push(ch); synth.push(() => C.CHAPTERS.splice(C.CHAPTERS.indexOf(ch), 1));
+          const mk = id => Object.assign({}, C.LEVELS[prev[0]], { id, ch: 990, script: null, req: null });
+          const a = mk('qa-990-1'), b = mk('qa-990-2'); C.LEVELS.push(a, b);
+          synth.push(() => { C.LEVELS.splice(C.LEVELS.indexOf(b), 1); C.LEVELS.splice(C.LEVELS.indexOf(a), 1); });
+          const ia = C.LEVELS.indexOf(a), ib = C.LEVELS.indexOf(b);
+          clear(); giveStars(prev, ch.need - 1); check(ia, false, 'synthetic chapter, ★' + (ch.need - 1));
+          giveStars(prev, ch.need); check(ia, true, 'synthetic chapter, ★' + ch.need); check(ib, false, 'synthetic chapter level 2 with 0★ on level 1');
+          set(ia, 2); check(ib, true, 'synthetic chapter level 2 with 2★ on level 1');
+          if (C.lvLabel(ib) !== '第 990-2 關') throw new Error('synthetic label ' + C.lvLabel(ib));
+          // the locked first level of a chapter names the chapter rule on its card
+          clear(); C.showLevels();
+          const card = [...document.querySelectorAll('#lvList .lv')].find(b => b.disabled && /990-1/.test(b.textContent));
+          if (!card) throw new Error('synthetic chapter level not listed / not locked in the level select');
+          if (card.textContent.indexOf('★' + ch.need) < 0) throw new Error('locked chapter card says "' + (card.querySelector('.bs') || card).textContent + '", not the ★' + ch.need + ' chapter rule');
+          out.push('synthetic chapter ok');
+        }
+      } finally { while (synth.length) synth.pop()(); }
+      // level select shows exactly the unlock state, for a mid-campaign save
+      clear();
+      const ch1 = ofCh(C.CHAPTERS[0].id); ch1.slice(0, 2).forEach(i => set(i, 2));
+      const btn = Q.lvButtons(), want = C.LEVELS.map((L, i) => C.levelUnlocked(i));
+      if (JSON.stringify(btn) !== JSON.stringify(want)) throw new Error('level select ' + JSON.stringify(btn) + ' ≠ levelUnlocked ' + JSON.stringify(want));
+      // the intro card uses the chapter label
+      const i2 = ch1[1] !== undefined ? ch1[1] : ch1[0];
+      Q.start(i2, []);
+      const intro = (document.querySelector('#lvIntro .no') || {}).textContent || '';
+      const num = C.lvLabel(i2).replace(/[^0-9-]/g, '');
+      if (intro && intro.indexOf(num) < 0) throw new Error(`intro card "${intro}" for ${C.lvLabel(i2)}`);
+      clear(); Object.assign(G.best, JSON.parse(keep));
+      return out.join('; ') + '; level select matches; intro "' + intro + '"';
+    }));
+
+    /* ---------- cosmetics & themes */
+    await test('cosmetics', 'cosmetics apply/remove on owner and clones: idempotent, no scene growth across restarts', () => page.evaluate(() => {
+      const Q = __qa, C = Q.C, G = C.G;
+      if (!C.COSMETICS || !C.COSMETICS.length || !C.applyCosmetics) return 'skipped: no cosmetics';
+      const count = o => { let n = 0; o.traverse(() => n++); return n; };
+      const keep = JSON.stringify(G.equip || {}), o = C.owner, role = C.ROLES[0].id, out = [];
+      const i0 = C.LEVELS.findIndex(L => !L.endless);
+      try {
+        G.equip = {}; Q.start(i0, [role], true); C.applyCosmetics(o);
+        const base = count(o.ch.g), sBase = count(C.scene);
+        for (const cz of C.COSMETICS) {
+          if (typeof cz.build !== 'function') continue;   // not a worn object (e.g. a colour): nothing to attach
+          G.equip = { owner: { [cz.slot]: cz.id } }; C.applyCosmetics(o);
+          const n1 = count(o.ch.g);
+          if (n1 <= base) throw new Error(cz.id + ': nothing attached to the owner');
+          if (!o.ch.cos || !o.ch.cos[cz.slot] || o.ch.cos[cz.slot].id !== cz.id) throw new Error(cz.id + ': not recorded on the character');
+          C.applyCosmetics(o); C.applyCosmetics(o);
+          if (count(o.ch.g) !== n1) throw new Error(cz.id + ': re-applying grew the character ' + n1 + '→' + count(o.ch.g));
+          G.equip = {}; C.applyCosmetics(o);
+          if (count(o.ch.g) !== base) throw new Error(cz.id + ': removing left ' + (count(o.ch.g) - base) + ' objects');
+        }
+        // one per slot at once, then swap inside a slot
+        const bySlot = {}; for (const cz of C.COSMETICS) if (typeof cz.build === 'function') (bySlot[cz.slot] = bySlot[cz.slot] || []).push(cz.id);
+        G.equip = { owner: {} }; for (const sl in bySlot) G.equip.owner[sl] = bySlot[sl][0];
+        C.applyCosmetics(o); const full = count(o.ch.g);
+        for (const sl in bySlot) if (bySlot[sl].length > 1) { G.equip.owner[sl] = bySlot[sl][1]; C.applyCosmetics(o); G.equip.owner[sl] = bySlot[sl][0]; C.applyCosmetics(o); }
+        if (count(o.ch.g) !== full) throw new Error('swapping inside a slot changed the object count ' + full + '→' + count(o.ch.g));
+        // unknown id: ignored
+        G.equip = { owner: { [C.COSMETICS[0].slot]: 'qa-no-such-item' } }; C.applyCosmetics(o);
+        if (count(o.ch.g) !== base) throw new Error('unknown cosmetic id attached something');
+        // a clone wears its role's cosmetic from spawn; restarts do not grow the scene
+        const cz = C.COSMETICS.find(c => typeof c.build === 'function') || C.COSMETICS[0];
+        G.equip = { [role]: { [cz.slot]: cz.id }, owner: { [cz.slot]: cz.id } };
+        const counts = [];
+        for (let k = 0; k < 3; k++) {
+          Q.start(i0, [role], true); C.applyCosmetics(o);
+          const cl = C.staff.find(s => s.role === role);
+          if (!cl || !cl.ch.cos || !cl.ch.cos[cz.slot] || cl.ch.cos[cz.slot].id !== cz.id) throw new Error('clone ' + role + ' spawned without its ' + cz.id);
+          counts.push(count(C.scene) + '/' + C.scene.children.length);
+          C.sim(2);
+        }
+        if (new Set(counts).size !== 1) throw new Error('scene grew across restarts with cosmetics: ' + counts.join(' → '));
+        G.equip = {}; Q.start(i0, [role], true); C.applyCosmetics(o);
+        if (count(C.scene) !== sBase) throw new Error(`scene ${sBase} → ${count(C.scene)} objects after unequipping everything`);
+        out.push(C.COSMETICS.length + ' cosmetics', 'scene ' + sBase + ' objects stable');
+      } finally { G.equip = JSON.parse(keep); C.applyCosmetics(o); }
+      return out.join(', ');
+    }));
+    await test('cosmetics', 'themes: on/off idempotent, nothing left visible after off, door → queue and kitchen paths stay walkable', () => page.evaluate(() => {
+      const Q = __qa, C = Q.C, N = window.__cloneMartNav;
+      if (!C.THEMES || !C.applyTheme) return 'skipped: no themes';
+      const count = () => { let n = 0; C.scene.traverse(() => n++); return n; };
+      const visible = () => { let n = 0; C.scene.traverse(o => { if (!o.isMesh && !o.isPoints && !o.isSprite) return; for (let p = o; p; p = p.parent) if (!p.visible) return; n++; }); return n; };
+      const S = N.spots || {};
+      const pathOk = (a, b) => {
+        if (!a || !b || !N.findPath) return true;
+        const p = N.findPath(a.x, a.z, b.x, b.z); if (!p || !p.length) return 'no path';
+        let prev = a; const bad = [];
+        for (const q of p) {
+          const d = Math.hypot(q.x - prev.x, q.z - prev.z), n = Math.ceil(d / 0.1);
+          for (let k = 1; k <= n; k++) { const x = prev.x + (q.x - prev.x) * k / n, z = prev.z + (q.z - prev.z) * k / n; if (!N.walkXZ(x, z)) { bad.push('wall at ' + x.toFixed(1) + ',' + z.toFixed(1)); break; } }
+          prev = q;
+        }
+        const end = p[p.length - 1]; if (Math.hypot(end.x - b.x, end.z - b.z) > 0.8) bad.push('ends ' + Math.hypot(end.x - b.x, end.z - b.z).toFixed(1) + 'm short');
+        return bad.length ? bad.slice(0, 2).join(' ') : true;
+      };
+      const routes = () => {
+        const door = S.DOOR_OUT, q0 = N.queueSpot ? N.queueSpot(0) : S.CHECKOUT_SPOT, own = { x: 4.2, z: 2.4 };
+        const r = { 'door→queue': pathOk(door, q0), 'door→checkout': pathOk(door, S.CHECKOUT_SPOT), 'owner→pass': pathOk(own, C.SLOT.pass && C.SLOT.pass.spot) };
+        for (const k in r) if (r[k] !== true) return k + ' blocked: ' + r[k];
+        return true;
+      };
+      const i0 = C.LEVELS.findIndex(L => !L.endless);
+      Q.start(i0, [], true);
+      C.applyTheme('default');
+      const base = count(), vBase = visible(), out = [];
+      const r0 = routes(); if (r0 !== true) throw new Error('default store: ' + r0);
+      let ids = Object.keys(C.THEMES).filter(id => id !== 'default'), synth = false;
+      if (!ids.length) {   // only the default store: check the switching mechanism with a throw-away theme
+        synth = true;
+        C.THEMES.qa_theme = { n: 'QA', on() { this.m = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), new THREE.MeshBasicMaterial()); this.m.position.set(-9, 3, -6); C.scene.add(this.m); }, off() { C.scene.remove(this.m); this.m = null; } };
+        ids = ['qa_theme'];
+      }
+      try {
+        for (const id of ids) {
+          const on = [], off = [], vOff = [];
+          for (let k = 0; k < 3; k++) {
+            C.applyTheme(id); const a = count(); C.applyTheme(id); const b = count();
+            if (a !== b) throw new Error(`${id}: applying twice ${a}→${b} objects`);
+            on.push(a);
+            const r = routes(); if (r !== true) throw new Error(id + ': ' + r);
+            C.applyTheme('default'); off.push(count()); vOff.push(visible());
+          }
+          if (new Set(on).size !== 1 || new Set(off).size !== 1) throw new Error(`${id}: scene not stable over on/off cycles: on ${on.join(',')} off ${off.join(',')}`);
+          if (vOff[0] !== vBase) throw new Error(`${id}: ${vOff[0] - vBase} meshes still visible after switching back to default`);
+          out.push(`${id} ${on[0] - base >= 0 ? '+' : ''}${on[0] - base} objects`);
+        }
+        // a chapter with its own theme switches it on with its levels and off in the menus; customers still reach the queue
+        for (const Ch of C.CHAPTERS || []) {
+          if (!Ch.theme || Ch.theme === 'default' || !C.THEMES[Ch.theme]) continue;
+          const i = C.LEVELS.findIndex(L => L.ch === Ch.id && !L.endless); if (i < 0) continue;
+          const T = C.THEMES[Ch.theme], o0 = T.on, f0 = T.off; let nOn = 0, nOff = 0;
+          T.on = function () { nOn++; return o0 && o0.apply(this, arguments); }; T.off = function () { nOff++; return f0 && f0.apply(this, arguments); };
+          try {
+            Q.start(i, []); C.botOwner(true);
+            if (nOn !== 1) throw new Error(`chapter ${Ch.id}: theme ${Ch.theme} on() ran ${nOn}× when its level started`);
+            const waited = Q.simUntil(() => C.customers.some(c => c.state === 'wait'), 40);
+            C.botOwner(false);
+            if (!waited) throw new Error(`chapter ${Ch.id} (${Ch.theme}): no customer reached the queue in 40s`);
+            C.showLevels();
+            if (nOff !== 1) throw new Error(`chapter ${Ch.id}: theme ${Ch.theme} off() ran ${nOff}× back in the menu`);
+            out.push(`ch${Ch.id} → ${Ch.theme} on/off, customers queue`);
+          } finally { T.on = o0; T.off = f0; C.botOwner(false); }
+        }
+      } finally { C.applyTheme('default'); if (synth) delete C.THEMES.qa_theme; }
+      Q.start(i0, [], true);
+      if (count() !== base) throw new Error(`scene ${base} → ${count()} objects after all themes`);
+      return (synth ? 'only the default store; synthetic theme ' : '') + out.join('; ') + '; paths ok';
+    }));
+
+    /* ---------- long session */
+    await test('long', '12 levels back to back (bot + team): scene, tags, DOM, customers/orders stay bounded', async () => {
+      const plan = await page.evaluate(() => {
+        const C = __qa.C, all = C.LEVELS.map((L, i) => i).filter(i => !C.LEVELS[i].endless), e = C.LEVELS.findIndex(L => L.endless);
+        const runs = []; for (let k = 0; runs.length < 12; k++) { runs.push(all[k % all.length]); if (e >= 0 && runs.length === 6) runs.push(e); }
+        return runs.slice(0, 12);
+      });
+      const rows = [];
+      for (const i of plan) {
+        const r = await page.evaluate(i => {
+          const Q = __qa, C = Q.C, L = C.LEVELS[i];
+          Q.start(i, Q.teamFor(L)); C.botOwner(true);
+          let t = 0, maxC = 0, maxO = 0, maxSp = 0;
+          const cap = L.endless ? 240 : L.len + 3;
+          while (t < cap && C.G.state === 'play') { C.sim(0.5); t += 0.5; maxC = Math.max(maxC, C.customers.length); maxO = Math.max(maxO, C.orders.length); maxSp = Math.max(maxSp, C.spills.length); }
+          C.botOwner(false);
+          if (C.G.state === 'play') { C.endLevel(); C.sim(0); }
+          const st = C.G.state, S = C.G.stats.delivered + '✓' + C.G.stats.failed + '✗';
+          C.showLevels();   // the menu world is rebuilt the same way after every level
+          let sc = 0; C.scene.traverse(() => sc++);
+          return { i, st, maxC, maxO, maxSp, scene: C.scene.children.length, sc, tags: document.getElementById('tags').children.length, S };
+        }, i);
+        const domNow = () => page.evaluate(() => {   // live DOM, minus the parts rebuilt per level/frame (world tags, the last receipt)
+          let n = document.getElementsByTagName('*').length;
+          for (const id of ['tags', 'results']) { const e = document.getElementById(id); if (e) n -= e.getElementsByTagName('*').length; }
+          return n;
+        });
+        await sleep(1400);   // float texts / toasts remove themselves on timers
+        r.dom = await domNow();
+        if (rows.length && r.dom > rows[0].dom + 12) { await sleep(3500); r.dom = await domNow(); }   // a slower popup (toast, achievement) may still be up
+        rows.push(r);
+      }
+      const a = rows[0], issues = [];
+      for (const r of rows) {
+        if (r.st !== 'results') issues.push(`L${r.i + 1} ended in state ${r.st}`);
+        if (r.scene !== a.scene || r.sc !== a.sc) issues.push(`L${r.i + 1}: scene ${a.scene}/${a.sc} → ${r.scene}/${r.sc}`);
+        if (r.tags !== a.tags) issues.push(`L${r.i + 1}: tags ${a.tags} → ${r.tags}`);
+        if (r.dom > a.dom + 12) issues.push(`L${r.i + 1}: DOM ${a.dom} → ${r.dom}`);
+        if (r.maxC > 40) issues.push(`L${r.i + 1}: ${r.maxC} customers at once`);
+        if (r.maxO > 15) issues.push(`L${r.i + 1}: ${r.maxO} orders at once`);
+        if (r.maxSp > 25) issues.push(`L${r.i + 1}: ${r.maxSp} spills at once`);
+      }
+      assert(!issues.length, issues.slice(0, 4).join(' | '));
+      const last = rows[rows.length - 1];
+      return `${rows.map(r => 'L' + (r.i + 1) + ' ' + r.S).join(', ')}; menu scene ${last.scene}/${last.sc} objects, tags ${last.tags}, DOM ${a.dom}→${last.dom}; peak customers ${Math.max(...rows.map(r => r.maxC))}, orders ${Math.max(...rows.map(r => r.maxO))}`;
+    });
+
+    /* ---------- balance (human-like owner bot: tests/human.js) */
+    if (want('balance')) {
+      const camp = {};
+      const run = async d => (camp[d] = camp[d] || await page.evaluate(d => {
+        const C = __qa.C; if (!C.DIFFS || !C.DIFFS.some(x => x.id === d)) return null;
+        const chapters = (C.CHAPTERS || [{ id: 1 }]).map(c => c.id), out = {};
+        // every chapter in order (later chapters are reported only); 挑戰 plays chapter 1 solo / team / AI alone
+        Object.assign(out, d === 'hard' ? window.__human.campaign(d, chapters[0], ['solo', 'team', 'idle']) : window.__human.campaign(d, chapters, ['team']));
+        return { out, levels: C.LEVELS.map((L, i) => ({ i, ch: L.ch === undefined ? 1 : L.ch, label: C.lvLabel ? C.lvLabel(i) : 'L' + (i + 1), endless: !!L.endless })).filter(L => !L.endless) };
+      }, d));
+      const pick = (r, mode, ch) => r.levels.filter(L => L.ch === ch && r.out[mode + ':' + L.i]).map(L => ({ L, x: r.out[mode + ':' + L.i] }));
+      const fmtRows = rows => rows.map(({ L, x }) => `${L.label.replace(/[^0-9-]/g, '')} ${x.stars}★(${x.score}/${x.th[0]})`).join(' ');
+      const other = (r, mode) => {
+        const xs = r.levels.filter(L => L.ch !== 1 && r.out[mode + ':' + L.i]), low = xs.filter(L => r.out[mode + ':' + L.i].stars < 1);
+        if (low.length) warnings.push(`balance ${mode}: human-like bot got 0★ on ${low.map(L => L.label).join(', ')} (chapters after 1 are reported, not failed)`);
+        return xs.length ? `; later chapters ≥1★ on ${xs.length - low.length}/${xs.length}` : '';
+      };
+      await test('balance', '輕鬆: human-like bot + default team gets ≥1★ on every chapter-1 level, ≥2★ on most', async () => {
+        const r = await run('easy'); if (!r) return 'skipped: no easy mode';
+        const rows = pick(r, 'team', 1), s1 = rows.filter(x => x.x.stars >= 1).length, s2 = rows.filter(x => x.x.stars >= 2).length;
+        assert(rows.length && s1 === rows.length && s2 * 2 > rows.length, `≥1★ ${s1}/${rows.length}, ≥2★ ${s2}/${rows.length}: ${fmtRows(rows)}`);
+        return fmtRows(rows) + other(r, 'team');
+      });
+      await test('balance', '標準: human-like bot + default team gets ≥1★ on most chapter-1 levels', async () => {
+        const r = await run('normal'); if (!r) return 'skipped: no normal mode';
+        const rows = pick(r, 'team', 1), s1 = rows.filter(x => x.x.stars >= 1).length;
+        assert(rows.length && s1 >= rows.length - 1, `≥1★ on ${s1}/${rows.length}: ${fmtRows(rows)}`);
+        return fmtRows(rows) + other(r, 'team');
+      });
+      await test('balance', '挑戰 stays hard: AI alone < ★★ on every chapter-1 level, solo human-like bot averages < ★★', async () => {
+        const r = await run('hard'); if (!r) return 'skipped: no hard mode';
+        const idle = pick(r, 'idle', 1), solo = pick(r, 'solo', 1), team = pick(r, 'team', 1);
+        const easyIdle = idle.filter(x => x.x.stars >= 2);
+        assert(!easyIdle.length, 'AI alone gets ★★ on ' + fmtRows(easyIdle));
+        const avg = solo.reduce((a, x) => a + x.x.stars, 0) / Math.max(1, solo.length);
+        assert(avg < 2, `solo average ${avg.toFixed(2)}★: ${fmtRows(solo)}`);
+        return `AI alone ${fmtRows(idle)} | solo ${fmtRows(solo)} | team ${fmtRows(team)}`;
+      });
+    }
+    await test('smoke', `${label}: no page/console errors`, async () => noErrors(P));
+    await P.ctx.close();
+
+    /* ---------- save v1 → v2 migration and v2 round trip (fresh storage) */
+    if (want('progress')) {
+      const S = await openGame(browser, label + '-save', { viewport: { width: 1280, height: 760 } });
+      const sp = S.page;
+      const saveKey = () => sp.evaluate(() => {
+        __qa.C.saveProgress();
+        return Object.keys(localStorage).find(k => { try { const d = JSON.parse(localStorage.getItem(k)); return !!d && typeof d === 'object' && 'best' in d; } catch (e) { return false; } });
+      });
+      const reload = async () => { await sp.reload({ waitUntil: 'load', timeout: 60000 }); await ready(sp); };
+      await test('progress', 'save v1 (best keyed by level index) migrates to v2 level ids', async () => {
+        const key = await saveKey();
+        assert(key, 'no save key found');
+        const hasIds = await sp.evaluate(() => !!__qa.C.LEVELS[0].id && __qa.C.LEVELS[0].id === 'c1-1');
+        if (!hasIds) return 'skipped: no stable level ids';
+        const v1 = { v: 1, best: { 0: { score: 321, stars: 2 }, 3: { score: 900, stars: 3 }, 6: { score: 5000, stars: 1 }, 42: { score: 1, stars: 1 }, 1: { score: 'x', stars: 1 }, 2: { score: 77, stars: 9 } }, tips: ['swap'], team: ['barista', 'nobody'], muted: false };
+        await sp.evaluate(([k, d]) => localStorage.setItem(k, JSON.stringify(d)), [key, v1]);
+        await reload();
+        const r = await sp.evaluate(k => {
+          const C = __qa.C, G = C.G, idx = id => C.LEVELS.findIndex(L => L.id === id);
+          const best = JSON.parse(JSON.stringify(G.best));
+          const unlocked = [idx('c1-2'), idx('c1-3'), idx('c1-5')].map(i => i >= 0 && C.levelUnlocked(i));
+          C.saveProgress();
+          const e = C.LEVELS.findIndex(L => L.endless);
+          return { best, bootDiff: __qa.bootDiff, team: G.team, unlocked, endless: e < 0 ? null : C.bestOf(e).score, saved: JSON.parse(localStorage.getItem(k)) };
+        }, key);
+        const b = r.best, want = { 'c1-1': [321, 2], 'c1-4': [900, 3], endless: [5000, 1], 'c1-3': [77, 3] };
+        for (const id in want) assert(b[id] && b[id].score === want[id][0] && b[id].stars === want[id][1], `${id}: ${JSON.stringify(b[id])}, expected score/stars ${want[id]}`);
+        const numeric = Object.keys(b).filter(k => /^\d+$/.test(k));
+        assert(!numeric.length, 'index keys left after migration: ' + numeric);
+        assert(!b['c1-2'], 'invalid v1 entry (score "x") was migrated: ' + JSON.stringify(b['c1-2']));
+        assert(Object.keys(b).length === 4, 'unexpected entries: ' + Object.keys(b).join(','));
+        assert(r.unlocked[0] && !r.unlocked[1] && r.unlocked[2], 'unlocks after migration (c1-2 open, c1-3 locked: its v1 entry was invalid, c1-5 open): ' + r.unlocked);
+        assert(JSON.stringify(r.team) === '["barista"]', 'team ' + JSON.stringify(r.team));
+        assert(r.endless === null || r.endless === 5000, 'the endless level shows best ' + r.endless + ' (v1 index 6 went elsewhere)');
+        assert(r.saved.v === 2, 'saved version ' + r.saved.v);
+        assert(!Object.keys(r.saved.best).some(k => /^\d+$/.test(k)), 'v2 save still has index keys');
+        return `c1-1 ${b['c1-1'].stars}★, c1-3 clamped to ${b['c1-3'].stars}★, c1-4 ${b['c1-4'].stars}★, endless ${b.endless.score}; bad/unknown entries dropped; difficulty ${r.bootDiff}; saved as v2`;
+      });
+      await test('progress', 'save v2 round trip: best+crown, difficulty, coins, owned, equipped, achievements survive reloads', async () => {
+        const key = await saveKey();
+        const data = await sp.evaluate(() => {
+          const C = __qa.C, G = C.G, cz = (C.COSMETICS || [])[0];
+          if (!C.DIFFS || !('coins' in G)) return null;
+          const lv = C.LEVELS.filter(L => !L.endless);
+          for (const k in G.best) delete G.best[k];
+          G.best[lv[0].id] = { score: 777, stars: 3, crown: true }; if (lv[1]) G.best[lv[1].id] = { score: 55, stars: 1, crown: false };
+          G.diff = C.DIFFS[1] ? C.DIFFS[1].id : C.DIFFS[0].id; G.coins = 1234; G.owned = new Set(cz ? [cz.id] : []);
+          // an achievement id the game knows, if it has a registry (a module may drop unknown ids on load)
+          const reg = C.ACHIEVEMENTS || C.ACHS || C.ACH, achId = (reg && (Array.isArray(reg) ? reg[0] && reg[0].id : Object.keys(reg)[0])) || 'qa_first';
+          G.equip = cz ? { owner: { [cz.slot]: cz.id } } : {}; G.ach = Object.assign({}, G.ach, { [achId]: G.ach && G.ach[achId] || { t: 123 } });
+          C.saveProgress();
+          return { best: JSON.parse(JSON.stringify(G.best)), diff: G.diff, coins: G.coins, owned: [...G.owned].sort(), equip: JSON.parse(JSON.stringify(G.equip)), achId, ach: true, cz: cz ? { id: cz.id, slot: cz.slot } : null };
+        });
+        if (!data) return 'skipped: no save v2 fields';
+        const snap = () => sp.evaluate(achId => { const C = __qa.C, G = C.G, o = C.owner; return { best: JSON.parse(JSON.stringify(G.best)), diff: __qa.bootDiff, coins: G.coins, owned: [...G.owned].sort(), equip: JSON.parse(JSON.stringify(G.equip)), ach: !!(G.ach && G.ach[achId]), worn: o.ch.cos ? Object.fromEntries(Object.entries(o.ch.cos).filter(([, v]) => v).map(([k, v]) => [k, v.id])) : {} }; }, data.achId);
+        let last = null;
+        for (let k = 0; k < 2; k++) {
+          await reload();
+          const r = last = await snap();
+          // what was saved must come back (other modules may add their own entries next to it)
+          const subset = {
+            best: Object.fromEntries(Object.entries(r.best).filter(([id]) => data.best[id])),
+            owned: r.owned.filter(id => data.owned.includes(id)),
+            equip: Object.fromEntries(Object.entries(data.equip).map(([role, sl]) => [role, Object.fromEntries(Object.keys(sl).map(k => [k, (r.equip[role] || {})[k]]))])),
+          };
+          for (const f of ['best', 'diff', 'coins', 'owned', 'equip', 'ach']) {
+            const a = f in subset ? subset[f] : r[f];
+            assert(JSON.stringify(a) === JSON.stringify(data[f]), `reload ${k + 1}: ${f} ${JSON.stringify(a)} ≠ ${JSON.stringify(data[f])}`);
+          }
+          if (data.cz) assert(r.worn[data.cz.slot] === data.cz.id, `reload ${k + 1}: owner not wearing ${data.cz.id} (${JSON.stringify(r.worn)})`);
+          await sp.evaluate(d => { __qa.C.G.diff = d; __qa.C.saveProgress(); }, data.diff);   // save again as the game would
+        }
+        return `key "${key}": ${Object.keys(data.best).length} levels (crown kept), ${data.diff}, 💰${data.coins}, owned ${data.owned.join(',') || '-'}, worn ${JSON.stringify(last.worn)}, ach ok, 2 reloads`;
+      });
+      await test('progress', 'corrupt or hostile save: the game boots with defaults and plays', async () => {
+        const key = await saveKey();
+        const cases = ['{not json', JSON.stringify({ v: 2, best: [], coins: -5, owned: 'x', equip: null, ach: 3, diff: 'insane', team: 'barista', tips: 7 }), JSON.stringify({ v: 2, best: { 'c1-1': { score: 1e12, stars: 99, crown: 'yes' }, x: null, y: 5 } })];
+        const out = [];
+        for (const c of cases) {
+          await sp.evaluate(([k, v]) => localStorage.setItem(k, v), [key, c]);
+          await reload();
+          const r = await sp.evaluate(() => {
+            const Q = __qa, C = Q.C, G = C.G;
+            const st = { coins: G.coins, diff: Q.bootDiff, diffOk: !C.DIFFS || C.DIFFS.some(x => x.id === Q.bootDiff), owned: !G.owned || G.owned instanceof Set, best: JSON.parse(JSON.stringify(G.best)) };
+            const i0 = C.LEVELS.findIndex(L => !L.endless); Q.start(i0, []); st.play = C.sim(5);
+            return st;
+          });
+          assert(r.play === 'play', 'level does not run: ' + r.play);
+          assert(r.coins === undefined || (Number.isFinite(r.coins) && r.coins >= 0), 'coins ' + r.coins);
+          assert(r.owned, 'owned is not a Set');
+          assert(r.diffOk, 'difficulty ' + r.diff);
+          for (const k in r.best) assert(r.best[k].stars >= 0 && r.best[k].stars <= 3 && Number.isFinite(r.best[k].score), k + ': ' + JSON.stringify(r.best[k]));
+          out.push(Object.keys(r.best).length + ' best, ' + r.coins + '💰, ' + r.diff);
+        }
+        return out.join(' | ');
+      });
+      await test('smoke', `${label}-save: no page/console errors`, async () => noErrors(S));
+      await S.ctx.close();
+    }
+  } finally { await browser.close(); }
+}
+
+/* ------------------------------------------------------------------ perf probe (iPhone 13, DSF 1): report, fail only on gross regressions */
+async function perfProbe(test, P, label) {
+  if (!want('perf')) return;
+  const page = P.page;
+  await test('perf', `${label}: average frame time during busy play (DSF 1, software GL)`, async () => {
+    const info = await page.evaluate(() => {
+      const Q = __qa, C = Q.C;
+      let i = 0; C.LEVELS.forEach((L, k) => { if (!L.endless && L.clones >= C.LEVELS[i].clones) i = k; });
+      Q.start(i, Q.teamFor(C.LEVELS[i])); C.botOwner(true); C.sim(20);   // a busy store: tickets, customers, the whole team working
+      if (C.ROLE.bot) C.ROLE.bot = Object.assign({ name: '老闆', icon: '🤖' }, C.ROLE.bot);   // the hook's autopilot role has no HUD name (real frames read it)
+      let meshes = 0; C.scene.traverse(o => { if (o.isMesh) meshes++; });
+      return { lv: i, meshes, team: C.staff.length - 1, dpr: devicePixelRatio, w: innerWidth, h: innerHeight, cust: C.customers.length };
+    });
+    const ms = +(process.env.PERF_MS || 4000);
+    const ts = await page.evaluate(ms => new Promise(res => {
+      const ts = []; let t0 = null;
+      const f = t => { if (t0 === null) t0 = t; ts.push(t); if (t - t0 < ms && __qa.C.G.state === 'play') requestAnimationFrame(f); else res(ts); };
+      requestAnimationFrame(() => requestAnimationFrame(f));   // skip the first frame after the sim burst
+    }), ms);
+    await page.evaluate(() => { __qa.C.botOwner(false); });
+    const d = []; for (let k = 1; k < ts.length; k++) d.push(ts[k] - ts[k - 1]);
+    assert(d.length >= 2, 'fewer than 3 frames in ' + ms + 'ms');
+    const avg = d.reduce((a, b) => a + b, 0) / d.length, p95 = d.slice().sort((a, b) => a - b)[Math.floor(d.length * 0.95)];
+    const max = +(process.env.PERF_MAX_MS || 1500);
+    const msg = `avg ${avg.toFixed(1)}ms (${(1000 / avg).toFixed(1)} fps), p95 ${p95.toFixed(0)}ms, ${d.length} frames; L${info.lv + 1} with ${info.team} clones, ${info.cust} customers, ${info.meshes} meshes, ${info.w}x${info.h}@${info.dpr}x`;
+    assert(avg < max, msg + ` — over the ${max}ms gross-regression limit (PERF_MAX_MS)`);
+    return msg;
+  });
 }
 
 /* ================================================================== main */
@@ -981,11 +1530,12 @@ async function mobileTrack(order, label, deviceName, opts) {
   console.log('  game:     ' + GAME);
   console.log('  three.js: ' + (THREE_JS ? process.env.THREE_JS + ' (local)' : 'CDN'));
   console.log('  out dir:  ' + OUT_DIR + (ONLY ? '\n  only:     ' + ONLY : '') + '\n');
-  const mobileWanted = want('smoke') || want('controls');
+  const mobileWanted = want('smoke') || want('controls') || want('perf');
   const tracks = await Promise.allSettled([
     desktopTrack(),
-    mobileWanted ? mobileTrack(1, 'iphone13', 'iPhone 13', { buttons: true }) : null,
+    mobileWanted ? mobileTrack(1, 'iphone13', 'iPhone 13', { buttons: true, perf: true }) : null,
     mobileWanted ? mobileTrack(2, 'ipad', 'iPad (gen 7)', { buttons: false }) : null,
+    progressionTrack(3, 'desktop2'),
   ]);
   for (const t of tracks) if (t.status === 'rejected') results.push({ order: 9, seq: results.length, group: 'suite', name: 'track crashed', pass: false, detail: String(t.reason && t.reason.message || t.reason).split('\n')[0], ms: 0 });
   clearTimeout(killer);
@@ -994,9 +1544,9 @@ async function mobileTrack(order, label, deviceName, opts) {
 })().catch(e => { console.error('Suite crashed:', e && e.stack || e); printTable(); process.exit(2); });
 
 function printTable() {
-  const DEV = ['desktop', 'iPhone13', 'iPad', '-'];
+  const DEV = ['desktop', 'iPhone13', 'iPad', 'desktop', '-'];
   const sorted = results.slice().sort((a, b) => (a.order - b.order) || (a.seq - b.seq));
-  const rows = sorted.map(r => [r.pass ? 'PASS' : 'FAIL', DEV[Math.min(r.order, 3)], r.group, r.name, (r.ms / 1000).toFixed(1) + 's', r.detail]);
+  const rows = sorted.map(r => [r.pass ? 'PASS' : 'FAIL', DEV[Math.min(r.order, 4)], r.group, r.name, (r.ms / 1000).toFixed(1) + 's', r.detail]);
   const w = [4, 6, 5, 4, 5].map((m, i) => Math.max(m, ...rows.map(r => strWidth(r[i]))));
   const pad = (s, n) => s + ' '.repeat(Math.max(0, n - strWidth(s)));
   const line = '-'.repeat(Math.min(200, w.reduce((a, b) => a + b, 0) + 22));
