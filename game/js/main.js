@@ -1,6 +1,8 @@
 // 整合者：啟動、主迴圈、存檔、模組之間的接線。
 import * as THREE from 'three';
-import { QUALITY, SAVE_KEY, START_BIOME } from './config.js';
+import { QUALITY, SAVE_KEY, START_BIOME, SPEED_SCALES, CHARACTERS } from './config.js';
+import * as playerModule from './player.js';
+import * as charactersModule from './characters.js';
 import { getBiomeById, biomeCenters } from './utils.js';
 import { createWorld } from './world.js';
 import { createPlayer } from './player.js';
@@ -90,18 +92,27 @@ function start() {
     root: uiRoot,
     audio,
     callbacks: {
-      onStart({ continue: cont } = {}) {
+      async onStart({ continue: cont } = {}) {
         audio.unlock();
         audio.startMusic();
         if (cont) {
           const data = readSave();
           if (data) gameplay.loadSaveData(data);
+          ui.hideStart();
         } else {
           clearSave();
           gameplay.reset();
           player.setDirection(startDir);
+          ui.hideStart();
+          // v4：新遊戲先選角
+          if (ui.showCharacterSelect) {
+            cameraRig.setMode('select');
+            const current = gameplay.getCharacter ? gameplay.getCharacter() : CHARACTERS[0];
+            let id = current;
+            try { id = await ui.showCharacterSelect({ characters: characterList(), current }); } catch { /* 用預設 */ }
+            setCharacter(id || current);
+          }
         }
-        ui.hideStart();
         cameraRig.setMode('follow'); // 平滑飛入
         input.setEnabled(true);
         playing = true;
@@ -145,8 +156,37 @@ function start() {
       canTimeTrial: () => !!(playing && gameplay.canTimeTrial && gameplay.canTimeTrial()),
       onTimeTrial() { if (playing && gameplay.startTimeTrial && gameplay.canTimeTrial()) gameplay.startTimeTrial(); },
       onCancelTrial() { if (gameplay.cancelTimeTrial) gameplay.cancelTimeTrial(); },
+      // ---- v4 ----
+      onPreviewCharacter(id) { if (player.setCharacter && CHARACTERS.includes(id)) player.setCharacter(id); },
+      getCharacters: () => characterList(),
+      onSelectCharacter(id) { setCharacter(id); save(); },
+      getSpeed: () => speedKey,
+      onSpeed(key) {
+        if (!SPEED_SCALES[key]) return;
+        speedKey = key;
+        try { localStorage.setItem(SAVE_KEY + ':speed', key); } catch { /* 忽略 */ }
+        if (player.setSpeedScale) player.setSpeedScale(SPEED_SCALES[key]);
+      },
     },
   });
+
+  // ---- v4：角色與速度 ----
+  const CHARACTER_INFO = charactersModule.CHARACTER_INFO || playerModule.CHARACTER_INFO || {};
+  function characterList() {
+    const cur = gameplay && gameplay.getCharacter ? gameplay.getCharacter() : (player.character || CHARACTERS[0]);
+    return CHARACTERS.map((id) => {
+      const info = CHARACTER_INFO[id] || {};
+      return { id, name: info.name || id, desc: info.desc || '', icon: info.icon || '🙂', selected: id === cur };
+    });
+  }
+  function setCharacter(id) {
+    if (!CHARACTERS.includes(id)) return;
+    if (gameplay.setCharacter) gameplay.setCharacter(id);
+    else if (player.setCharacter) player.setCharacter(id);
+  }
+  let speedKey = 'normal';
+  try { const k = localStorage.getItem(SAVE_KEY + ':speed'); if (SPEED_SCALES[k]) speedKey = k; } catch { /* 忽略 */ }
+  if (player.setSpeedScale) player.setSpeedScale(SPEED_SCALES[speedKey]);
 
   // 日夜循環偏好（預設開）
   let dayNight = true;
