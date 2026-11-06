@@ -405,6 +405,8 @@ function rocketParts() {
     part(new THREE.ConeGeometry(0.42, 0.9, 10), 0xe8574c, 0, 3.25, 0),
     part(new THREE.CylinderGeometry(0.2, 0.2, 0.1, 10), 0x6ec6ff, 0, 2.25, 0.44, Math.PI / 2 - 0.08, 0, 0),
     part(new THREE.CylinderGeometry(0.3, 0.42, 0.3, 10), 0x777788, 0, 0.32, 0),
+    part(new THREE.CylinderGeometry(0.495, 0.505, 0.26, 10), 0xe8574c, 0, 1.0, 0),
+    part(new THREE.CylinderGeometry(0.15, 0.15, 0.1, 10), 0x6ec6ff, 0, 1.75, 0.46, Math.PI / 2 - 0.04, 0, 0),
     part(new THREE.BoxGeometry(0.16, 4.0, 0.16), 0xe08a3c, 1.3, 1.9, 0.38),
     part(new THREE.BoxGeometry(0.16, 4.0, 0.16), 0xe08a3c, 1.3, 1.9, -0.38),
     part(new THREE.BoxGeometry(0.8, 0.1, 0.12), 0xe08a3c, 0.9, 2.7, 0),
@@ -449,11 +451,16 @@ function fossilParts() {
       }
     }
   }
-  parts.push(part(new THREE.IcosahedronGeometry(0.62, 0), bone, 4.0, 0.4, 0, 0, 0, -0.25, 1.45, 0.8, 0.9));
-  parts.push(part(new THREE.BoxGeometry(1.0, 0.18, 0.6), bone, 4.4, 0.0, 0, 0, 0, -0.35));
-  parts.push(part(new THREE.IcosahedronGeometry(0.13, 0), 0x5b4a3e, 4.15, 0.6, 0.42));
-  parts.push(part(new THREE.IcosahedronGeometry(0.13, 0), 0x5b4a3e, 4.15, 0.6, -0.42));
-  for (let i = 0; i < 4; i++) parts.push(part(new THREE.ConeGeometry(0.06, 0.2, 4), 0xfffaf0, 4.5 + i * 0.16, 0.12, 0.22, Math.PI, 0, 0));
+  parts.push(part(new THREE.IcosahedronGeometry(0.55, 1), bone, 3.9, 0.4, 0, 0, 0, 0, 1.1, 0.85, 0.95));
+  parts.push(part(new THREE.CylinderGeometry(0.24, 0.36, 1.1, 6), bone, 4.75, 0.28, 0, 0, 0, -Math.PI / 2 + 0.12));
+  parts.push(part(new THREE.CylinderGeometry(0.16, 0.26, 0.95, 6), bone, 4.7, -0.05, 0, 0, 0, -Math.PI / 2 - 0.25));
+  parts.push(part(new THREE.IcosahedronGeometry(0.15, 0), 0x4a3b32, 4.1, 0.58, 0.42));
+  parts.push(part(new THREE.IcosahedronGeometry(0.15, 0), 0x4a3b32, 4.1, 0.58, -0.42));
+  parts.push(part(new THREE.IcosahedronGeometry(0.06, 0), 0x4a3b32, 5.27, 0.36, 0.1));
+  parts.push(part(new THREE.IcosahedronGeometry(0.06, 0), 0x4a3b32, 5.27, 0.36, -0.1));
+  for (let i = 0; i < 5; i++) {
+    for (const zs of [-1, 1]) parts.push(part(new THREE.ConeGeometry(0.05, 0.2, 4), 0xfffaf0, 4.35 + i * 0.18, 0.08, zs * 0.2, Math.PI, 0, 0));
+  }
   return parts;
 }
 // 彩蛋 2：島上的瓶中信 + 藏寶的 X
@@ -464,8 +471,12 @@ function bottleParts() {
     part(new THREE.CylinderGeometry(0.065, 0.065, 0.12, 6), 0x9a6a44, 0.58, 0.23, 0, 0, 0, Math.PI / 2 - 0.12),
     part(new THREE.CylinderGeometry(0.08, 0.08, 0.5, 6), 0xfff6dc, -0.1, 0.06, 0.45, Math.PI / 2, 0.5, 0),
     part(new THREE.CylinderGeometry(0.085, 0.085, 0.08, 6), 0xe8574c, -0.1, 0.06, 0.45, Math.PI / 2, 0.5, 0),
-    part(new THREE.BoxGeometry(1.1, 0.06, 0.16), 0xc9a26a, 1.6, 0.0, -0.9, 0, 0.785, 0),
-    part(new THREE.BoxGeometry(1.1, 0.06, 0.16), 0xc9a26a, 1.6, 0.0, -0.9, 0, -0.785, 0),
+  ];
+}
+function xMarkParts() {
+  return [
+    part(new THREE.BoxGeometry(1.1, 0.12, 0.18), 0xb8864f, 0, 0.0, 0, 0, 0.785, 0),
+    part(new THREE.BoxGeometry(1.1, 0.12, 0.18), 0xb8864f, 0, 0.0, 0, 0, -0.785, 0),
   ];
 }
 // 彩蛋 3：南極的冰屋與企鵝一家
@@ -941,6 +952,15 @@ void main() {
   }
 
   const COS_START_CLEAR = Math.cos(0.27);
+  // 彩蛋區域不撒隨機道具
+  const keepOut = [
+    { dir: dirAt(START, 0.5, 105), cos: Math.cos(0.13) },   // 花朵愛心
+    { dir: dirAt(FOREST, 0.22, 65), cos: Math.cos(0.11) },  // 精靈蘑菇圈
+  ];
+  function inKeepOut(d) {
+    for (let i = 0; i < keepOut.length; i++) if (d.dot(keepOut[i].dir) > keepOut[i].cos) return true;
+    return false;
+  }
   // 各生態區中心附近保持空曠（方便放晶石等目標）
   const COS_CENTER_CLEAR = Math.cos(0.07);
   const allCenters = BC.flat();
@@ -969,6 +989,7 @@ void main() {
       if (opt.avoidStart !== false && _d.dot(START) > COS_START_CLEAR) continue;
       if (opt.exclude && opt.exclude(_d)) continue;
       if (opt.radius && nearBiomeCenter(_d)) continue;
+      if (inKeepOut(_d)) continue;
       if (opt.maxSlope && slopeAt(_d) > opt.maxSlope) continue;
       if (!freeAt(_d, g, (opt.radius || 0) * scale + (opt.clearance ?? 0.35))) continue;
       cb(_d, g, scale, rng);
@@ -984,6 +1005,8 @@ void main() {
   const _im = new THREE.Matrix4();
 
   // ---- 地標：村莊 ----
+  // 地標方向（額外提供給整合者/玩法參考，非合約必要欄位）
+  const landmarks = { start: START.clone(), crater: VOLC.clone(), houses: [] };
   const houses = [
     { ang: 0.34, az: 20, roof: 0xe8655a, wall: 0xfff4e0 },
     { ang: 0.36, az: 78, roof: 0x5a8fe8, wall: 0xfff0f0 },
@@ -994,6 +1017,7 @@ void main() {
   const _look = new THREE.Vector3();
   for (const h of houses) {
     const d = dirAt(START, h.ang, h.az);
+    landmarks.houses.push(d.clone());
     _look.copy(START).sub(d);
     placeStatic(cottageParts(h.roof, h.wall), d, 0, 1.1, 0.12, _look);
     addObstacle(d, 1.45);
@@ -1002,6 +1026,7 @@ void main() {
   let bladePivot;
   {
     const d = dirAt(START, 0.42, 318);
+    landmarks.windmill = d.clone();
     _look.copy(START).sub(d);
     const m = placeStatic(windmillParts(), d, 0, 1.15, 0.12, _look);
     addObstacle(d, 1.15);
@@ -1045,23 +1070,27 @@ void main() {
   // ---- 沙漠：火箭發射台 + 化石 ----
   {
     const d = dirAt(DESERT, 0.24, 10);
+    landmarks.rocket = d.clone();
     placeStatic(rocketParts(), d, 0.6, 1.0, 0.2);
     addObstacle(d, 2.4);
     const f = dirAt(DESERT, 0.3, 160);
+    landmarks.fossil = f.clone();
     placeStatic(fossilParts(), f, 1.1, 1.0, 0.18);
     // 化石沿長軸放幾個障礙
     const m = surfaceMatrix(f, 1.1, 1, 1, 1, 0, new THREE.Matrix4());
-    for (const x of [-2.2, 0, 2.0, 4.1]) {
+    for (const x of [-3.0, -1.8, -0.6, 0.6, 1.8, 2.9, 4.2]) {
       const p = new THREE.Vector3(x, 0, 0).applyMatrix4(m).normalize();
-      addObstacle(p, x === 4.1 ? 0.9 : 1.05);
+      addObstacle(p, x > 4 ? 1.0 : 0.95);
     }
   }
   // ---- 北極：雪人；南極：冰屋 + 企鵝一家 ----
   {
     const d = dirAt(POLN, 0.22, 30);
+    landmarks.snowman = d.clone();
     placeStatic(snowmanParts(), d, 0, 1.15, 0.15, START.clone().sub(d));
     addObstacle(d, 0.85);
     const ig = dirAt(POLS, 0.18, 200);
+    landmarks.igloo = ig.clone();
     const igParts = iglooParts()
       .concat(penguinParts(1.0, -1.1, 2.6, 0.2))
       .concat(penguinParts(0.85, -0.25, 2.9, -0.1))
@@ -1077,7 +1106,10 @@ void main() {
   {
     const I = ISLANDS[0];
     const d = dirAt(I.dir, I.r * 0.42, 250);
+    landmarks.bottle = d.clone();
+    landmarks.islands = ISLANDS.map((it) => it.dir.clone());
     placeStatic(bottleParts(), d, 0.4, 1.35, 0.05);
+    placeStatic(xMarkParts(), dirAt(I.dir, I.r * 0.15, 60), 0.2, 1.0, 0.04);
   }
 
   // =========================================================================
@@ -1178,6 +1210,7 @@ void main() {
   // 彩蛋 4：草原山丘上的花朵愛心（從高空看得到）
   {
     const c = dirAt(START, 0.5, 105);
+    landmarks.heart = c.clone();
     const { right, forward } = tangentBasis(c);
     const p = new THREE.Vector3();
     for (let i = 0; i < 34; i++) {
@@ -1192,6 +1225,7 @@ void main() {
   // 彩蛋 5：森林裡的精靈蘑菇圈
   {
     const c = dirAt(FOREST, 0.22, 65);
+    landmarks.fairyRing = c.clone();
     const { right, forward } = tangentBasis(c);
     const p = new THREE.Vector3();
     for (let i = 0; i < 11; i++) {
@@ -1354,7 +1388,7 @@ void main() {
       _v2.addScaledVector(_v1, -_v2.dot(_v1)).normalize();
       const cyc = (t % 16) / 16; // 0..1
       const surf = smoothstep(0.55, 0.65, cyc) * (1 - smoothstep(0.88, 0.97, cyc));
-      const depth = lerp(1.35, 0.32, surf) + Math.sin(t * 1.3) * 0.05;
+      const depth = lerp(1.25, 0.32, surf) + Math.sin(t * 1.3) * 0.05;
       _v3.crossVectors(_v1, _v2).normalize();
       _m1.makeBasis(_v3, _v1, _v2);
       whale.quaternion.setFromRotationMatrix(_m1);
@@ -1388,5 +1422,6 @@ void main() {
     isFree,
     setRestoration,
     update,
+    landmarks, // 額外：{ start, crater, houses[], windmill, rocket, fossil, snowman, igloo, bottle, islands[], heart, fairyRing }（單位方向）
   };
 }

@@ -21,7 +21,7 @@ const TOTAL_SEEDS = SEEDLING_PLOTS;
 // ---- 外觀參數 ----
 const CRYSTAL_HOVER = 1.15;   // 晶石離地高度
 const CRYSTAL_CHECK = 0.5;    // 判定撿取用的點（比外觀低，比較好撿）
-const BEAM_HEIGHT = 13;
+const BEAM_HEIGHT = 9.5;
 const BEAM_BASE = CRYSTAL_HOVER + 0.35; // 光柱從晶石上方開始
 const PLOT_RADIUS = 1.35;
 const TREE_GROW_TIME = 1.5;
@@ -1081,8 +1081,14 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       const rp = 1 + Math.sin(t * 2 + c.phase) * 0.08;
       _m.compose(c.ground, c.baseQuat, _s.set(rp, 1, rp));
       ringMesh.setMatrixAt(i, _m);
-      if (c.check.distanceToSquared(ppos) < R2) collectCrystal(c);
+      // 整合者：靠近時光柱淡出，避免近距離刺眼（遠處仍是醒目的指標）
+      const dSq = c.check.distanceToSquared(ppos);
+      const near = Math.min(1, Math.max(0, (Math.sqrt(dSq) - 3) / 13));
+      const k = 0.12 + 0.88 * near * near * (3 - 2 * near);
+      beamMesh.setColorAt(i, _col.setRGB(k, k, k));
+      if (dSq < R2) collectCrystal(c);
     }
+    if (beamMesh.instanceColor) beamMesh.instanceColor.needsUpdate = true;
     gemMesh.instanceMatrix.needsUpdate = true;
     coreMesh.instanceMatrix.needsUpdate = true;
     beamMesh.instanceMatrix.needsUpdate = true;
