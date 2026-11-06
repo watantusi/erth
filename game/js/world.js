@@ -217,35 +217,35 @@ const lerpArr = (A, i, t) => A[i] + (A[i + 1] - A[i]) * t;
 // 東區水系：高山 → 瀑布 → 河流 → 湖泊 → 河流 → 三角洲（同一個局部座標 EF：x 東、y 北）
 // ---------------------------------------------------------------------------
 const EF = frameAt(dirLL(45, 20));
-const MT = { H: 5.6, Rm: 7.6, top: 1.25, shelfH: 2.45, lip: 6.2 };
-MT.dir = fromLocal(EF, 5.5, 17.5);
+const MT = { H: 6.9, Rm: 8.3, top: 1.3, shelfH: 3.1, lip: 6.55 };
+MT.dir = fromLocal(EF, 6.8, 18.3);
 const MF = frameAt(MT.dir);
 const MT_COS = Math.cos((MT.Rm + 0.6) / R);
 // 河流中心線（EF 平面座標）、半寬、氾濫平原寬、融入原地形的寬度
 const RIVER_DEF = [
   // x, y, 半寬, 平原, 融合
-  [5.0, 13.94, 0.42, 0.2, 0.8],   // 山泉
-  [4.84, 12.8, 0.55, 0.25, 0.9],
-  [4.64, 11.36, 0.62, 0.25, 0.9],  // 瀑布頂
-  [4.59, 11.0, 0.7, 0.3, 1.0],     // 瀑布底
-  [4.46, 10.15, 1.2, 0.5, 1.4],    // 瀑布潭
-  [3.85, 7.2, 0.85, 1.0, 1.8],
-  [3.6, 4.4, 0.9, 1.3, 2.0],
-  [2.6, 2.4, 0.95, 1.6, 2.0],
-  [1.5, -0.5, 1.0, 1.8, 2.0],      // 湖心
-  [0.6, -4.3, 1.0, 1.8, 2.0],
-  [1.1, -7.7, 1.05, 2.0, 2.2],
-  [-0.3, -11.2, 1.1, 2.0, 2.2],
-  [-2.6, -14.6, 1.15, 2.0, 2.2],
-  [-4.3, -17.8, 1.2, 1.8, 2.0],
+  [6.27, 14.49, 0.42, 0.2, 0.8],   // 山泉
+  [6.06, 13.05, 0.55, 0.25, 0.9],
+  [5.89, 11.82, 0.62, 0.25, 0.9],  // 瀑布頂
+  [5.85, 11.5, 0.7, 0.3, 1.0],     // 瀑布底
+  [5.72, 10.58, 1.25, 0.5, 1.4],   // 瀑布潭
+  [5.0, 7.6, 0.85, 1.0, 1.6],
+  [4.4, 4.6, 0.9, 1.2, 1.8],
+  [3.2, 2.2, 0.95, 1.3, 1.6],
+  [2.0, -1.0, 1.0, 1.8, 2.0],      // 湖心
+  [1.0, -4.8, 1.0, 1.6, 1.8],
+  [1.1, -7.7, 1.05, 1.6, 1.8],
+  [-0.3, -11.2, 1.1, 1.3, 1.5],
+  [-1.2, -14.9, 1.15, 1.2, 1.4],
+  [-3.5, -18.3, 1.2, 1.3, 1.5],
   [-5.5, -20.9, 1.3, 1.5, 1.8],    // 三角洲頂點
-];
+]
 const RIVER = makePolyline(RIVER_DEF);
 const RW = Float64Array.from(RIVER_DEF, (r) => r[2]);
 const RFP = Float64Array.from(RIVER_DEF, (r) => r[3]);
 const RBW = Float64Array.from(RIVER_DEF, (r) => r[4]);
 const RIVER_LIP_S = RIVER.S[2], RIVER_FALL_S = RIVER.S[3];
-const LAKE = { x: 1.5, y: -0.5, r0: 3.4, fp: 1.4, bw: 2.0, wl: 0 };
+const LAKE = { x: 2.0, y: -1.0, r0: 3.4, fp: 1.2, bw: 1.5, wl: 0 };
 const lakeR = (th) => LAKE.r0 * (1 + 0.13 * Math.sin(2 * th + 1.0) + 0.07 * Math.sin(3 * th + 2.2));
 // 東區水系的範圍（快速排除）
 const EAST_DIR = fromLocal(EF, 0.5, -2);
@@ -253,7 +253,7 @@ const EAST_COS = Math.cos(23.5 / R);
 // 瀑布方向（高山局部座標的方位角）
 const MT_FALL_TH = (() => { const d = fromLocal(EF, RIVER_DEF[2][0], RIVER_DEF[2][1]); toLocal(MF, d.x, d.y, d.z); return Math.atan2(LC[1], LC[0]); })();
 // 之字形登山步道（高山局部極座標 [半徑, 方位角°]）
-const TRAIL_PTS = [[8.6, 190], [6.2, 150], [4.6, 214], [3.25, 152], [1.95, 206], [0.5, 180]]
+const TRAIL_PTS = [[9.0, 192], [6.9, 148], [5.3, 213], [3.9, 150], [2.75, 207], [1.6, 160], [0.4, 185]]
   .map(([r, a]) => [r * Math.cos(a * D2R), r * Math.sin(a * D2R)]);
 const TRAIL = makePolyline(TRAIL_PTS);
 
@@ -270,7 +270,7 @@ function mountainRaw(mx, my) {
   let dth = th - MT_FALL_TH; dth -= Math.round(dth / (2 * Math.PI)) * 2 * Math.PI;
   const p = rho * Math.cos(dth), q = Math.abs(rho * Math.sin(dth));
   if (p > 3 && p < MT.lip + 0.6 && q < 3.6) {
-    const m = (1 - smoothstep(1.5, 3.4, q)) * (1 - smoothstep(MT.lip, MT.lip + 0.32, p)) * smoothstep(3.2, 4.2, p);
+    const m = (1 - smoothstep(1.7, 3.5, q)) * (1 - smoothstep(MT.lip, MT.lip + 0.22, p)) * smoothstep(3.2, 4.2, p);
     h = Math.max(h, lerp(h, MT.shelfH, m));
   }
   return h;
@@ -321,12 +321,21 @@ const RIVER_WL = new Float64Array(Math.ceil(RIVER.len / RIVER_DS) + 2);
     fromLocal(EF, LAKE.x + Math.cos(th) * rr, LAKE.y + Math.sin(th) * rr, v);
     ring = Math.min(ring, eastNatural(v.x, v.y, v.z));
   }
+  // 設計好的最低水位（平地上的河不要低到跟海面一樣；兩岸若比較低就築起緩緩的河堤）
+  const S = RIVER.S, last = RIVER.n - 1;
+  const floorAt = (s) => {
+    if (s < S[3]) return -Infinity;
+    const P = [[S[3], 0.62], [S[4], 0.55], [S[8], 0.4], [S[11], 0.2], [S[last], SEA_H + 0.05]];
+    for (let i = 0; i < P.length - 1; i++) if (s <= P[i + 1][0]) return lerp(P[i][1], P[i + 1][1], (s - P[i][0]) / (P[i + 1][0] - P[i][0]));
+    return SEA_H + 0.05;
+  };
   let cur = Infinity, lakeSet = false;
   for (let k = 0; k < n; k++) {
+    const s = Math.min(k * RIVER_DS, RIVER.len);
     if (inLake[k]) {
-      if (!lakeSet) { LAKE.wl = Math.min(cur, ring - 0.42); lakeSet = true; }
+      if (!lakeSet) { LAKE.wl = Math.min(cur, Math.max(ring - 0.42, floorAt(s))); lakeSet = true; }
       cur = LAKE.wl;
-    } else cur = Math.min(cur, raw[k]);
+    } else cur = Math.min(cur, Math.max(raw[k], floorAt(s)));
     RIVER_WL[k] = Math.max(cur, SEA_H + 0.02);
   }
 }
@@ -355,9 +364,10 @@ function riverProfile(h, I) {
   if (e >= outer) return h;
   let g;
   if (e < -0.35) {
-    g = wl - 0.35;
-    if (I.lake) g -= 0.65 * smoothstep(-0.4, -2.6, e);
-    else if (I.pool > 0) g -= 0.45 * I.pool * smoothstep(-0.3, -1.0, e);
+    // 河床中央畫得比涉水地面深一點（看起來更藍；getGroundRadius 夾在水面下 0.35）
+    g = wl - 0.35 - 0.2 * smoothstep(-0.35, -0.75, e);
+    if (I.lake) g -= 0.6 * smoothstep(-0.6, -2.6, e);
+    else if (I.pool > 0) g -= 0.4 * I.pool * smoothstep(-0.4, -1.1, e);
   } else if (e < 0.45) g = wl - 0.35 + 0.57 * smoothstep(-0.35, 0.45, e);
   else g = wl + 0.22 + 0.1 * smoothstep(0.45, 0.45 + I.fp, e);
   return lerp(g, h, smoothstep(0.45 + I.fp, outer, e));
@@ -398,7 +408,7 @@ function deltaApply(h, dx, dy, x, y, z) {
   const I = deltaInfo(dx, dy);
   if (I.m > 0) {
     const r = Math.hypot(dx, dy);
-    const bar = SEA_H + 0.21 - 0.1 * Math.min(r, 9) / 9 + 0.05 * noise3(x * 14 + 2.2, y * 14 + 5.1, z * 14 + 8.3);
+    const bar = SEA_H + 0.25 - 0.1 * Math.min(r, 9) / 9 + 0.05 * noise3(x * 14 + 2.2, y * 14 + 5.1, z * 14 + 8.3);
     h = lerp(h, bar, I.m);
   }
   if (I.c > 0 && (I.m > 0.02 || h < SEA_H)) h = lerp(h, Math.min(h, SEA_H - 0.3), I.c);
@@ -411,6 +421,131 @@ function eastWater(x, y, z) {
   toLocal(EF, x, y, z);
   const I = riverInfo(LC[0], LC[1]);
   return I.e < 0.45 + I.fp ? I.wl : NaN;
+}
+
+// ---------------------------------------------------------------------------
+// 峽谷（沙漠東南）：台地被一條蜿蜒的河切開，岩壁一階一階，露出一層層沉積岩
+// ---------------------------------------------------------------------------
+const CNF = frameAt(dirLL(-72, -14));
+const CANYON = makePolyline([[0.9, 0.4], [2.1, -0.2], [3.6, 0.5], [5.6, -0.6], [6.8, -2.2], [7.2, -5.5]]);
+const CN = { wf: 1.3, wall: 1.5, D: 4.4, out: 0.9, Hp: 3.0, head: 2.4, stream: 0.42 };
+const CANYON_DIR = fromLocal(CNF, 3.0, -0.6);
+const CANYON_COS = Math.cos(10.5 / R);
+const CQ = { h: 0, dn: 0, s: 0, wl: NaN, es: 0, floor: 0, wallT: 0, plateau: 0 };
+const canyonFloor = (s) => (s < CN.head ? lerp(CN.Hp - 0.25, SEA_H + 0.95, smoothstep(0, CN.head, s)) : SEA_H + 0.25 + 0.075 * Math.max(0, CANYON.len - s));
+const wallW = (t) => 0.42 * smoothstep(0, 0.16, t) + 0.3 * smoothstep(0.4, 0.54, t) + 0.28 * smoothstep(0.78, 0.92, t);
+/** 峽谷：回傳新高度；CQ 留下水位與位置資訊（顏色、水面用） */
+function canyonApply(h, cx, cy, x, y, z) {
+  const q = polyNearest(CANYON, cx, cy);
+  const s = q.s, len = CANYON.len;
+  const dn = q.d + 0.17 * noise3(x * 7 + 1.3, y * 7 + 8.1, z * 7 + 3.7);
+  const fl = canyonFloor(s);
+  // 河口那端：台地慢慢降下來，峽谷在海灘打開
+  const open = 1 - smoothstep(len - 3.4, len - 0.6, s);
+  const Hp = lerp(fl + 0.3, CN.Hp + 0.12 * noise3(x * 4 + 5, y * 4 + 2, z * 4 + 9), open);
+  CQ.dn = dn; CQ.s = s; CQ.floor = fl; CQ.wl = NaN; CQ.es = q.d - CN.stream; CQ.wallT = -1; CQ.plateau = 0;
+  let g;
+  if (dn < CN.wf) {
+    g = fl;
+    if (s > CN.head + 0.3 && CQ.es < 0.45) {   // 谷底的小溪
+      const wl = fl - 0.12;
+      CQ.wl = wl;
+      g = CQ.es < -0.35 ? wl - 0.35 - 0.12 * smoothstep(-0.35, -0.45, CQ.es) : wl - 0.35 + 0.47 * smoothstep(-0.35, 0.45, CQ.es);
+    } else if (s > CN.head + 0.3 && CQ.es < 1.0) CQ.wl = fl - 0.12;
+  } else if (dn < CN.wf + CN.wall) {
+    const t = (dn - CN.wf) / CN.wall;
+    CQ.wallT = t;
+    g = fl + (Hp - fl) * wallW(t);
+  } else if (dn < CN.D) {
+    g = Hp;
+    CQ.plateau = 1;
+  } else if (dn < CN.D + CN.out) {
+    const u = (dn - CN.D) / CN.out;
+    const k = 0.5 * smoothstep(0.05, 0.25, u) + 0.5 * smoothstep(0.6, 0.85, u);
+    g = lerp(Hp, Math.min(h, Hp), k);
+    CQ.plateau = 1 - k;
+  } else return h;
+  if (dn >= CN.D - 0.5 && dn < CN.D) CQ.plateau = 1;
+  // 河口：谷底接到海裡（不要伸出一條沙堤）
+  const mouth = smoothstep(len - 2.4, len - 0.2, s);
+  if (mouth > 0) g = lerp(g, Math.min(g, h), mouth);
+  return g;
+}
+// ---------------------------------------------------------------------------
+// 梯田（草原西北的山坡）：每階 0.32（≤ 0.35 自動跨上），下層是水稻田、上層是茶園
+// ---------------------------------------------------------------------------
+const TRF = frameAt(fromLocal(frameAt(dirLL(-25, 52)), -3.6, -6.6));
+const TR = { Rt: 5.6, step: 0.33, n: 6, top: 1.3 };
+const TR_COS = Math.cos((TR.Rt * 1.25 + 1.8) / R);
+const TR_BASE = terrainHeight(TRF.up.x, TRF.up.y, TRF.up.z);
+const TR_STAIR = (() => { toLocal(TRF, START.x, START.y, START.z); return Math.atan2(LC[1], LC[0]); })(); // 石階朝向村莊
+const TRQ = { lv: -1, fr: 0, rho: 0, th: 0 };
+const trWave = (th) => 1 + 0.11 * Math.sin(2 * th + 0.5) + 0.06 * Math.sin(3 * th + 1.3) + 0.04 * Math.sin(5 * th + 2.0);
+function terraceApply(h, tx, ty) {
+  const rho = Math.hypot(tx, ty), th = Math.atan2(ty, tx);
+  const rp = rho / trWave(th);
+  TRQ.lv = -1; TRQ.rho = rp; TRQ.th = th;
+  if (rp > TR.Rt + 1.6) return h;
+  const hh = TR.step * TR.n * clamp(1 - (rp - TR.top) / (TR.Rt - TR.top), 0, 1); // 每階一樣寬
+  const lv = hh / TR.step, k = Math.min(Math.floor(lv), TR.n - 1), fr = lv - k;
+  const hq = rp < TR.top ? TR.step * TR.n : (k + smoothstep(0.8, 1.0, fr)) * TR.step;
+  TRQ.lv = rp < TR.top ? TR.n : k; TRQ.fr = fr;
+  const g = TR_BASE + hq;
+  return rp < TR.Rt ? g : lerp(g, h, smoothstep(TR.Rt, TR.Rt + 1.6, rp));
+}
+// ---------------------------------------------------------------------------
+// 冰河（南極海岸）：從冰原流下來的冰舌，表面有冰裂縫，兩側是側磧，盡頭是面海的冰崖
+// ---------------------------------------------------------------------------
+const GLF = frameAt(dirLL(-60, -70));
+const GLACIER = makePolyline([[-5.0, -17.5], [-6.0, -13.2], [-6.5, -8.8], [-6.3, -4.8], [-6.0, -1.7]]);
+const GL = { w0: 3.5, w1: 2.6, t0: 2.7, t1: SEA_H + 1.45 };
+const GLACIER_DIR = fromLocal(GLF, -6.0, -9.5);
+const GLACIER_COS = Math.cos(13.5 / R);
+const GQ = { e: 0, ice: 0, crev: 0, moraine: 0, s: 0, mid: 9 };
+function glacierApply(h, gx, gy) {
+  const q = polyNearest(GLACIER, gx, gy);
+  const u = q.s / GLACIER.len, w = lerp(GL.w0, GL.w1, u);
+  const e = q.d - w;
+  GQ.e = e; GQ.ice = 0; GQ.crev = 0; GQ.moraine = 0; GQ.s = q.s; GQ.mid = q.d;
+  if (e > 1.6) return h;
+  if (e < 0) {
+    const top = (q.s < 3 ? lerp(1.1, GL.t0, smoothstep(0, 3, q.s)) : lerp(GL.t0, GL.t1, smoothstep(3, GLACIER.len, q.s))) + 0.4 * (1 - (q.d / w) ** 2);
+    // 冰裂縫：橫向、往下游彎的弧線
+    let c = 0;
+    if (q.s > 2.5 && q.s < GLACIER.len - 0.9 && q.d < w - 0.55) {
+      const ph = (q.s - 1.1 * (q.d / w) ** 2) / 1.35;
+      const f = ph - Math.floor(ph);
+      c = 1 - smoothstep(0.0, 0.14, Math.abs(f - 0.5));
+    }
+    GQ.crev = c;
+    GQ.ice = 1;
+    // 冰舌邊緣：陸地上是斜斜的冰坡（走得上去），面海的盡頭是冰崖
+    const edge = smoothstep(h > SEA_H ? -1.1 : -0.3, 0, e);
+    return lerp(top - 0.3 * c, Math.max(h, SEA_H - 1.0), edge);
+  }
+  // 側磧：冰舌兩旁的碎石堤（上游端也有）；面海的冰崖前沒有
+  const m = (1 - smoothstep(0.1, 1.5, e)) * smoothstep(0.15, 0.5, e) * (1 - smoothstep(GLACIER.len - 2.2, GLACIER.len - 0.8, q.s));
+  GQ.moraine = m;
+  return h > SEA_H ? h + 0.6 * m : h;
+}
+// ---------------------------------------------------------------------------
+// 海蝕拱門（沙漠西岸）：伸進海裡的岬角 + 一座岩石拱門（拱門本身是道具＋平台）
+// ---------------------------------------------------------------------------
+const ARF = (() => { const c = dirLL(-98.8, 26.6); const F0 = frameAt(c); return frameAt(c, F0.ex.clone().negate()); })(); // x 朝外海（西）
+const AR = { top: SEA_H + 3.25, tipX: 0.35 };
+const ARCH_DIR = fromLocal(ARF, 0, 0);
+const ARCH_COS = Math.cos(9.5 / R);
+const ARQ = { m: 0 };
+function archApply(h, ax, ay) {
+  ARQ.m = 0;
+  if (ax < -7 || ax > 1.6 || Math.abs(ay) > 3.6) return h;
+  const w = lerp(2.0, 1.45, smoothstep(-3, AR.tipX, ax));
+  const m = (1 - smoothstep(w, w + 0.6, Math.abs(ay))) * (1 - smoothstep(AR.tipX, AR.tipX + 0.5, ax)) * smoothstep(-6.8, -6.2, ax);
+  if (m <= 0) return h;
+  const ramp = smoothstep(-6.4, -2.2, ax);  // 從沙灘走上岬角的斜坡
+  const target = lerp(Math.max(h, SEA_H + 0.3), AR.top, ramp);
+  ARQ.m = m * (ramp > 0.85 ? 1 : 0.6);
+  return lerp(h, Math.max(h, target), m);
 }
 
 // ---------------------------------------------------------------------------
@@ -428,27 +563,107 @@ function heightAt(x, y, z) {
     toLocal(DF, x, y, z, _hd);
     h = deltaApply(h, _hd[0], _hd[1], x, y, z);
   }
+  if (x * CANYON_DIR.x + y * CANYON_DIR.y + z * CANYON_DIR.z > CANYON_COS) {
+    toLocal(CNF, x, y, z, _hd);
+    h = canyonApply(h, _hd[0], _hd[1], x, y, z);
+  }
+  if (x * TRF.up.x + y * TRF.up.y + z * TRF.up.z > TR_COS) {
+    toLocal(TRF, x, y, z, _hd);
+    h = terraceApply(h, _hd[0], _hd[1]);
+  }
+  if (x * GLACIER_DIR.x + y * GLACIER_DIR.y + z * GLACIER_DIR.z > GLACIER_COS) {
+    toLocal(GLF, x, y, z, _hd);
+    h = glacierApply(h, _hd[0], _hd[1]);
+  }
+  if (x * ARCH_DIR.x + y * ARCH_DIR.y + z * ARCH_DIR.z > ARCH_COS) {
+    toLocal(ARF, x, y, z, _hd);
+    h = archApply(h, _hd[0], _hd[1]);
+  }
   return h;
 }
-/** 本地水面（河流、湖泊）：相對 R 的高度或 NaN */
+/** 峽谷小溪的水面（相對 R）或 NaN */
+function canyonWater(x, y, z) {
+  if (x * CANYON_DIR.x + y * CANYON_DIR.y + z * CANYON_DIR.z < CANYON_COS) return NaN;
+  toLocal(CNF, x, y, z, _hd);
+  canyonApply(0, _hd[0], _hd[1], x, y, z);
+  return CQ.wl;
+}
+/** 本地水面（河流、湖泊、峽谷小溪）：相對 R 的高度或 NaN */
 function localWaterH(x, y, z) {
-  return eastWater(x, y, z);
+  const w = eastWater(x, y, z);
+  return w === w ? w : canyonWater(x, y, z);
+}
+
+// 各地形的大範圍（快速排除用）
+const LF_CAPS = [
+  { d: EAST_DIR, cos: EAST_COS }, { d: MF.up, cos: MT_COS }, { d: DF.up, cos: DELTA_COS }, { d: CANYON_DIR, cos: CANYON_COS },
+  { d: TRF.up, cos: TR_COS }, { d: GLACIER_DIR, cos: GLACIER_COS }, { d: ARCH_DIR, cos: ARCH_COS },
+].map(({ d, cos }) => ({ x: d.x, y: d.y, z: d.z, cos: Math.cos(Math.acos(cos) + 1.6 / R) }));
+/** 隨機道具不要放的地方：hard = 會擋路的道具（樹、石頭）；否則只避開水與步道（花、草） */
+function landformKeep(x, y, z, hard) {
+  if (x * MF.up.x + y * MF.up.y + z * MF.up.z > MT_COS) {
+    toLocal(MF, x, y, z);
+    const mx = LC[0], my = LC[1], rho = Math.hypot(mx, my);
+    if (polyNearest(TRAIL, mx, my).d < (hard ? 1.6 : 0.8)) return true;
+    if (hard && rho < 3.6) return true;                       // 山頂附近（積雪、瞭望台）
+    if (hard) {
+      let dth = Math.atan2(my, mx) - MT_FALL_TH; dth -= Math.round(dth / (2 * Math.PI)) * 2 * Math.PI;
+      const p = rho * Math.cos(dth), q = Math.abs(rho * Math.sin(dth));
+      if (p > 3.4 && p < MT.lip + 1.6 && q < 3.2) return true; // 瀑布岩棚與懸崖下
+    }
+  }
+  if (x * EAST_DIR.x + y * EAST_DIR.y + z * EAST_DIR.z > EAST_COS) {
+    toLocal(EF, x, y, z);
+    if (riverInfo(LC[0], LC[1]).e < (hard ? 1.4 : 0.3)) return true;
+  }
+  if (x * DF.up.x + y * DF.up.y + z * DF.up.z > DELTA_COS) {
+    toLocal(DF, x, y, z, _hd);
+    const I = deltaInfo(_hd[0], _hd[1]);
+    if (I.c > 0.25 || (hard && I.m > 0.12)) return true;
+  }
+  if (x * CANYON_DIR.x + y * CANYON_DIR.y + z * CANYON_DIR.z > CANYON_COS) {
+    toLocal(CNF, x, y, z, _hd);
+    canyonApply(0, _hd[0], _hd[1], x, y, z);
+    if (CQ.dn < (hard ? CN.D + CN.out + 0.4 : CN.wf)) return true;
+  }
+  if (x * TRF.up.x + y * TRF.up.y + z * TRF.up.z > TR_COS) {
+    toLocal(TRF, x, y, z, _hd);
+    if (Math.hypot(_hd[0], _hd[1]) < (hard ? TR.Rt * 1.22 + 0.8 : TR.Rt * 1.2)) return true;
+  }
+  if (x * GLACIER_DIR.x + y * GLACIER_DIR.y + z * GLACIER_DIR.z > GLACIER_COS) {
+    toLocal(GLF, x, y, z, _hd);
+    glacierApply(0, _hd[0], _hd[1]);
+    if (GQ.e < (hard ? 1.6 : 0.2)) return true;
+  }
+  if (x * ARCH_DIR.x + y * ARCH_DIR.y + z * ARCH_DIR.z > ARCH_COS) {
+    toLocal(ARF, x, y, z, _hd);
+    if (_hd[0] > -7.5 && _hd[0] < 7 && Math.abs(_hd[1]) < (hard ? 3.4 : 2.6)) return true;
+  }
+  return false;
 }
 
 // ---- 細格點區域（這些圓內的粗三角形會細分，地形細節才看得清楚）：[x, y, z, cos] ----
 const DETAIL_ZONES = [];
-function detailZone(dir, radius) { DETAIL_ZONES.push([dir.x, dir.y, dir.z, Math.cos(radius / R)]); }
-detailZone(MT.dir, MT.Rm + 0.3);
+/** 細節區：半徑 radius 的圓（inner > 0 = 圓環，內圈不用細分） */
+function detailZone(dir, radius, inner = 0) { DETAIL_ZONES.push([dir.x, dir.y, dir.z, Math.cos(radius / R), inner > 0 ? Math.cos(inner / R) : 2]); }
 {
   const pa = new Float64Array(4);
+  // 高山：山頂、步道、瀑布岩棚才需要細節（其他山坡用粗格點就夠了）
+  detailZone(MT.dir, 3.4);
+  for (let s = 0; s <= TRAIL.len + 0.01; s += 0.9) { polyAt(TRAIL, s, pa); detailZone(fromLocal(MF, pa[0], pa[1]), 1.25); }
+  detailZone(fromLocal(MF, Math.cos(MT_FALL_TH) * (MT.lip - 0.6), Math.sin(MT_FALL_TH) * (MT.lip - 0.6)), 3.4);
   for (let s = 0; s <= RIVER.len + 0.01; s += 0.9) {
     polyAt(RIVER, s, pa);
     polyNearest(RIVER, pa[0], pa[1]);
-    detailZone(fromLocal(EF, pa[0], pa[1]), lerpArr(RW, PQ.i, PQ.t) + 1.6);
+    detailZone(fromLocal(EF, pa[0], pa[1]), lerpArr(RW, PQ.i, PQ.t) + 1.15);
   }
-  detailZone(fromLocal(EF, LAKE.x, LAKE.y), LAKE.r0 * 1.2 + 1.6);
+  detailZone(fromLocal(EF, LAKE.x, LAKE.y), LAKE.r0 * 1.2 + 1.2, LAKE.r0 * 0.8 - 0.9);
   detailZone(DELTA_DIR, 4.2);
   detailZone(fromLocal(DF, 4.8, 0), 6.0);
+  for (let s = 0; s <= CANYON.len + 0.01; s += 1.2) { polyAt(CANYON, s, pa); detailZone(fromLocal(CNF, pa[0], pa[1]), CN.D + CN.out + 0.5); }
+  detailZone(TRF.up, TR.Rt * 1.21 + 0.1);
+  for (let s = 0; s <= GLACIER.len + 0.01; s += 1.2) { polyAt(GLACIER, s, pa); detailZone(fromLocal(GLF, pa[0], pa[1]), lerp(GL.w0, GL.w1, s / GLACIER.len) + 0.9); }
+  for (const x of [-5.5, -3.5, -1.5, 0.5]) detailZone(fromLocal(ARF, x, 0), 2.9);
 }
 
 // ---------------------------------------------------------------------------
@@ -1356,6 +1571,234 @@ function hollowTreeParts() {
   return parts;
 }
 
+// ---- v4：地形知識牌與地形道具（本地：原點在地面，+Z = 面向讀牌的人） ----
+const SIGN_ICON = {
+  mountain: () => [
+    part(new THREE.ConeGeometry(0.26, 0.42, 5), 0x8f8a80, 0, 0.21, 0),
+    part(new THREE.ConeGeometry(0.11, 0.18, 5), [0xffffff, 1.2], 0, 0.36, 0),
+    part(new THREE.ConeGeometry(0.17, 0.26, 5), 0x6cb565, 0.2, 0.13, 0.05),
+  ],
+  river: () => [
+    part(new THREE.BoxGeometry(0.16, 0.42, 0.12), 0x8f8a80, -0.1, 0.21, 0),
+    part(new THREE.BoxGeometry(0.1, 0.36, 0.05), 0x9fe3ff, -0.02, 0.22, 0.07),
+    part(new THREE.BoxGeometry(0.42, 0.05, 0.14), 0x3aa6e0, 0.06, 0.03, 0.1),
+  ],
+  lake: () => [
+    part(new THREE.CylinderGeometry(0.26, 0.26, 0.06, 9), 0x3aa6e0, 0, 0.04, 0),
+    part(new THREE.BoxGeometry(0.2, 0.06, 0.08), 0xa0643c, 0.04, 0.1, 0.02, 0, 0.5, 0),
+    part(new THREE.ConeGeometry(0.07, 0.16, 5), 0x6cb565, -0.2, 0.1, -0.12),
+  ],
+  canyon: () => [0xc8674a, 0xe8a060, 0xf3d6a0, 0xb8573e].flatMap((c, i) => [
+    part(new THREE.BoxGeometry(0.17, 0.09, 0.2), c, -0.15, 0.045 + i * 0.09, 0),
+    part(new THREE.BoxGeometry(0.17, 0.09, 0.2), c, 0.15, 0.045 + i * 0.09, 0),
+  ]).concat([part(new THREE.BoxGeometry(0.13, 0.03, 0.2), 0x3aa6e0, 0, 0.02, 0)]),
+  glacier: () => [
+    part(new THREE.BoxGeometry(0.3, 0.26, 0.3), [0xa6e6ff, 1.2], 0, 0.15, 0, 0.1, 0.5, 0.08),
+    part(new THREE.BoxGeometry(0.31, 0.07, 0.31), [0xffffff, 1.25], 0, 0.29, 0, 0.1, 0.5, 0.08),
+  ],
+  terraces: () => [0x7cc95a, 0x9bd66a, 0xb7e27a].map((c, i) => part(new THREE.BoxGeometry(0.5 - i * 0.14, 0.1, 0.32 - i * 0.07), c, 0, 0.05 + i * 0.1, -i * 0.04)),
+  arch: () => [
+    part(new THREE.TorusGeometry(0.2, 0.07, 4, 8, Math.PI), 0xc8b89a, 0, 0.02, 0),
+    part(new THREE.BoxGeometry(0.5, 0.04, 0.16), 0x3aa6e0, 0, 0.02, 0.1),
+  ],
+  delta: () => [
+    part(new THREE.CylinderGeometry(0.27, 0.27, 0.05, 3), 0xe8d7a6, 0, 0.03, 0, 0, Math.PI / 6, 0),
+    ...[-0.5, 0, 0.5].map((a) => part(new THREE.BoxGeometry(0.035, 0.03, 0.3), 0x3aa6e0, Math.sin(a) * 0.1, 0.065, 0.02 - Math.cos(a) * 0.1, 0, a, 0)),
+  ],
+};
+const SIGN_ACCENT = { mountain: 0x6cb565, river: 0x3aa6e0, lake: 0x4fbfe8, canyon: 0xe8865a, glacier: 0x8fd8f6, terraces: 0x9bd66a, arch: 0x5f9fd0, delta: 0xe8c86a };
+function knowledgeSignParts(kind) {
+  const wood = 0x9a6a44, board = 0xf0cf96, acc = SIGN_ACCENT[kind] || 0x6cb565;
+  const parts = [
+    part(new THREE.CylinderGeometry(0.06, 0.075, 1.85, 6), wood, -0.5, 0.92, 0),
+    part(new THREE.CylinderGeometry(0.06, 0.075, 1.85, 6), wood, 0.5, 0.92, 0),
+    part(new THREE.BoxGeometry(1.2, 0.72, 0.08), board, 0, 1.38, 0.03),
+    part(new THREE.BoxGeometry(1.28, 0.07, 0.11), wood, 0, 1.76, 0.03),
+    part(new THREE.BoxGeometry(1.28, 0.07, 0.11), wood, 0, 1.0, 0.03),
+    // 小屋頂
+    part(new THREE.BoxGeometry(0.76, 0.06, 0.3), 0xd9574a, -0.32, 1.92, 0.02, 0, 0, 0.42),
+    part(new THREE.BoxGeometry(0.76, 0.06, 0.3), 0xd9574a, 0.32, 1.92, 0.02, 0, 0, -0.42),
+    // 圓形徽章 + 「字」
+    part(new THREE.CylinderGeometry(0.19, 0.19, 0.04, 10), acc, -0.3, 1.4, 0.08, Math.PI / 2, 0, 0),
+    part(new THREE.CylinderGeometry(0.11, 0.11, 0.045, 8), 0xfffaf0, -0.3, 1.4, 0.085, Math.PI / 2, 0, 0),
+    part(new THREE.BoxGeometry(0.5, 0.05, 0.02), 0x8a5a3c, 0.2, 1.53, 0.08),
+    part(new THREE.BoxGeometry(0.42, 0.05, 0.02), 0x8a5a3c, 0.16, 1.4, 0.08),
+    part(new THREE.BoxGeometry(0.46, 0.05, 0.02), 0x8a5a3c, 0.18, 1.27, 0.08),
+    // 吊著的小燈籠（夜裡會亮）
+    part(new THREE.BoxGeometry(0.03, 0.2, 0.03), 0x5a4030, 0.66, 1.62, 0.12),
+    part(new THREE.BoxGeometry(0.15, 0.17, 0.15), 0xffe08a, 0.66, 1.45, 0.12),
+    part(new THREE.BoxGeometry(0.19, 0.04, 0.19), 0x5a4030, 0.66, 1.555, 0.12),
+    // 腳邊的小石頭與花
+    part(new THREE.IcosahedronGeometry(0.16, 0), 0xb8b2a6, -0.62, 0.06, 0.22, 0, 0, 0, 1, 0.6, 1),
+    part(new THREE.IcosahedronGeometry(0.08, 0), 0xff9ec4, 0.38, 0.1, 0.25),
+  ];
+  for (const g of (SIGN_ICON[kind] || SIGN_ICON.mountain)()) { g.translate(0, 2.0, 0.02); parts.push(g); }
+  return parts;
+}
+function flagParts() {
+  return [
+    part(new THREE.CylinderGeometry(0.045, 0.06, 2.6, 6), 0xfff1dc, 0, 1.3, 0),
+    part(new THREE.IcosahedronGeometry(0.09, 0), 0xffd35a, 0, 2.64, 0),
+    part(new THREE.BoxGeometry(0.9, 0.52, 0.03), 0xe8574c, 0.47, 2.25, 0),
+    part(new THREE.BoxGeometry(0.9, 0.12, 0.035), 0xfff1dc, 0.47, 2.25, 0),
+    part(new THREE.CylinderGeometry(0.28, 0.36, 0.22, 7), 0xa39c92, 0, 0.08, 0),
+  ];
+}
+function benchParts() {
+  const w = 0x9a6a44;
+  return [
+    part(new THREE.BoxGeometry(1.2, 0.07, 0.4), 0xc98d55, 0, 0.46, 0),
+    part(new THREE.BoxGeometry(1.2, 0.3, 0.06), 0xc98d55, 0, 0.72, -0.2, -0.12, 0, 0),
+    part(new THREE.BoxGeometry(0.08, 0.46, 0.34), w, -0.5, 0.23, 0),
+    part(new THREE.BoxGeometry(0.08, 0.46, 0.34), w, 0.5, 0.23, 0),
+  ];
+}
+function telescopeParts() {
+  return [
+    part(new THREE.CylinderGeometry(0.05, 0.07, 1.0, 6), 0x5b6b7c, 0, 0.5, 0),
+    part(new THREE.CylinderGeometry(0.1, 0.13, 0.55, 8), 0x3f8fd0, 0, 1.08, 0.08, Math.PI / 2 - 0.25, 0, 0),
+    part(new THREE.CylinderGeometry(0.135, 0.135, 0.06, 8), 0xffd35a, 0, 1.15, 0.36, Math.PI / 2 - 0.25, 0, 0),
+    part(new THREE.CylinderGeometry(0.22, 0.26, 0.08, 8), 0x5b6b7c, 0, 0.04, 0),
+  ];
+}
+function cairnParts() {
+  return [0.32, 0.25, 0.19, 0.13].map((r, i) => part(new THREE.IcosahedronGeometry(r, 0), i % 2 ? 0xb8b2a6 : 0x9f998e, 0.03 * i, 0.16 + i * 0.27, 0, 0, i, 0, 1, 0.62, 1));
+}
+function boatParts() {
+  const red = 0xe8574c, wood = 0xc98d55;
+  return [
+    part(new THREE.CylinderGeometry(0.42, 0.3, 0.32, 8, 1, false), red, 0, 0.0, 0, 0, 0, 0, 1, 1, 2.1),
+    part(new THREE.CylinderGeometry(0.36, 0.36, 0.04, 8), wood, 0, 0.15, 0, 0, 0, 0, 1, 1, 2.0),
+    part(new THREE.BoxGeometry(0.72, 0.05, 0.16), wood, 0, 0.2, 0.15),
+    part(new THREE.BoxGeometry(0.05, 0.05, 0.9), 0x8a5a3c, 0.35, 0.24, -0.1, 0, 0.25, 0.3),
+    part(new THREE.BoxGeometry(0.1, 0.02, 0.22), 0x8a5a3c, 0.47, 0.13, -0.45, 0, 0.25, 0.3),
+  ];
+}
+function cattailParts(h) {
+  return [
+    part(new THREE.CylinderGeometry(0.015, 0.02, h, 3), 0x6bbd4f, 0, h / 2, 0),
+    part(new THREE.CylinderGeometry(0.045, 0.045, 0.2, 5), 0x8a5a3c, 0, h - 0.12, 0),
+    part(new THREE.ConeGeometry(0.05, 0.42, 3), 0x7cc95a, 0.06, 0.2, 0.02, 0, 0, -0.35),
+  ];
+}
+function lilyParts(flower) {
+  const parts = [part(new THREE.CylinderGeometry(0.28, 0.28, 0.025, 7, 1, false, 0.3, Math.PI * 1.75), 0x5fae4e, 0, 0, 0)];
+  if (flower) {
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      parts.push(part(new THREE.OctahedronGeometry(0.07, 0), 0xffb3c7, Math.cos(a) * 0.06, 0.06, Math.sin(a) * 0.06, 0, -a, 0, 1, 0.6, 0.6));
+    }
+    parts.push(part(new THREE.OctahedronGeometry(0.04, 0), 0xffe08a, 0, 0.08, 0));
+  }
+  return parts;
+}
+function shedParts() {
+  return [
+    part(new THREE.BoxGeometry(1.1, 0.8, 0.9), 0xe8d6b0, 0, 0.4, 0),
+    part(new THREE.ConeGeometry(0.95, 0.75, 4), 0xd9b25a, 0, 1.17, 0, 0, Math.PI / 4, 0, 1, 1, 0.85),
+    part(new THREE.BoxGeometry(0.34, 0.55, 0.05), 0x8a5a3c, 0.15, 0.28, 0.46),
+    part(new THREE.BoxGeometry(0.26, 0.22, 0.05), 0xffe08a, -0.3, 0.5, 0.46),
+    part(new THREE.CylinderGeometry(0.16, 0.2, 0.32, 7), 0x8a5a3c, 0.75, 0.16, 0.25),
+  ];
+}
+function scarecrowParts() {
+  return [
+    part(new THREE.CylinderGeometry(0.04, 0.05, 1.5, 5), 0x8a5a3c, 0, 0.75, 0),
+    part(new THREE.CylinderGeometry(0.03, 0.03, 1.1, 4), 0x8a5a3c, 0, 1.15, 0, 0, 0, Math.PI / 2),
+    part(new THREE.BoxGeometry(0.5, 0.45, 0.22), 0x5a8fe8, 0, 1.05, 0),
+    part(new THREE.IcosahedronGeometry(0.17, 1), 0xf2d6a0, 0, 1.48, 0),
+    part(new THREE.ConeGeometry(0.32, 0.22, 8), 0xd9b25a, 0, 1.64, 0),
+    part(new THREE.BoxGeometry(0.12, 0.12, 0.12), 0xe8574c, 0.42, 1.12, 0),
+    part(new THREE.BoxGeometry(0.12, 0.12, 0.12), 0xffd35a, -0.42, 1.12, 0),
+  ];
+}
+function teaBushParts(k) {
+  return [part(lumpy(new THREE.IcosahedronGeometry(0.3, 0), 0.18, 3, k), k % 2 ? 0x3f9a4f : 0x4aa85a, 0, 0.16, 0, 0, k, 0, 1.15, 0.7, 1.0)];
+}
+function icebergParts(k, s) {
+  const g = lumpy(new THREE.IcosahedronGeometry(1, 1), 0.28, 1.3, k * 3.1);
+  return [
+    part(g, [0xeaf7ff, 1.22], 0, 0.15, 0, 0, k, 0, s, s * 0.75, s * 0.9),
+    part(new THREE.CylinderGeometry(s * 0.75, s * 0.95, s * 0.5, 7), [0x9fdcf4, 1.12], 0, -0.25 * s, 0, 0, k, 0),
+  ];
+}
+function ropeBridgeParts(L, yAt) {
+  const parts = [];
+  const cols = [0xc98d55, 0xb57744, 0xd9a066];
+  let k = 0;
+  for (let u = -L; u <= L + 1e-6; u += 0.24) {
+    const y = yAt(u), a = Math.atan2(yAt(u + 0.1) - yAt(u - 0.1), 0.2);
+    parts.push(part(new THREE.BoxGeometry(0.17, 0.05, 0.92), cols[k++ % 3], u, y - 0.03, 0, 0, 0, a));
+  }
+  const flagCols = [0xe8574c, 0xffd35a, 0x3aa6e0, 0x6cbf58];
+  for (const z of [-0.5, 0.5]) {
+    for (const u of [-L - 0.15, L + 0.15]) {
+      parts.push(part(new THREE.CylinderGeometry(0.08, 0.1, 1.5, 6), 0x7a4e33, u, yAt(u) + 0.45, z));
+      parts.push(part(new THREE.IcosahedronGeometry(0.1, 0), 0xffd35a, u, yAt(u) + 1.22, z));
+    }
+    // 扶手繩（下垂比橋面少一點）＋ 吊繩 ＋ 小彩旗
+    const hand = (u) => yAt(u) + 0.78 + 0.12 * (1 - (u / L) ** 2);
+    const n = 12;
+    for (let i = 0; i < n; i++) {
+      const u0 = -L + (2 * L * i) / n, u1 = -L + (2 * L * (i + 1)) / n;
+      const y0 = hand(u0), y1 = hand(u1), len = Math.hypot(u1 - u0, y1 - y0);
+      parts.push(part(new THREE.CylinderGeometry(0.025, 0.025, len, 4), 0xc9a46e, (u0 + u1) / 2, (y0 + y1) / 2, z, 0, 0, Math.atan2(u1 - u0, -(y1 - y0)) + Math.PI));
+      const hu = u0;
+      if (i > 0) parts.push(part(new THREE.CylinderGeometry(0.015, 0.015, hand(hu) - yAt(hu), 3), 0xc9a46e, hu, (hand(hu) + yAt(hu)) / 2, z));
+      if (z > 0) parts.push(part(new THREE.ConeGeometry(0.09, 0.2, 3), flagCols[i % 4], (u0 + u1) / 2, (y0 + y1) / 2 - 0.13, z + 0.02, 0, 0, Math.PI, 1, 1, 0.25));
+    }
+  }
+  return parts;
+}
+/** 海蝕拱門：兩根層理分明的岩柱 + 拱形的岩橋（本地：Z = 往外海，y = 0 在涉水地面） */
+function archParts(yTop, pz, pr, open, ht) {
+  const parts = [];
+  const cols = [0xe8d2a8, 0xd8b88a, 0xc8946a, 0xf0e0c0, 0xb98a60, 0xdcc09a];
+  const band = 0.45;
+  const bandCol = (y) => cols[((Math.floor((y + 3) / band) % cols.length) + cols.length) % cols.length];
+  // 岩柱
+  for (const [z, r, k] of [[-pz, pr, 0], [pz, pr * 1.04, 1]]) {
+    for (let y0 = -2.4; y0 < yTop - 1e-3; y0 += band) {
+      const y1 = Math.min(yTop, y0 + band), i = Math.round(y0 / band);
+      const rr = r * (1 + 0.05 * Math.sin(i * 1.7 + k * 2));
+      parts.push(part(new THREE.CylinderGeometry(rr, rr * 1.03, y1 - y0 + 0.001, 9), y1 > yTop - 0.13 ? 0xd9c08a : bandCol(y0 + 0.01), 0, (y0 + y1) / 2, z, 0, i * 0.4 + k, 0));
+    }
+  }
+  // 岩橋：沿 Z 切片，每片從拱腹（soffit）到頂面，按高度分層上色
+  const z0 = -pz, z1 = pz, n = 16;
+  for (let i = 0; i < n; i++) {
+    const za = z0 + ((z1 - z0) * i) / n, zb = z0 + ((z1 - z0) * (i + 1)) / n, zc = (za + zb) / 2;
+    const ax = Math.abs(zc) / open;
+    const soff = ax < 1 ? ht * Math.sqrt(1 - ax * ax) : 0;
+    const w = 1.9 + 0.22 * Math.sin(zc * 1.3 + 0.5) - 0.18 * (1 - ax * ax > 0 ? Math.sqrt(Math.max(0, 1 - ax * ax)) : 0);
+    for (let y0 = Math.max(soff, -2.4); y0 < yTop - 0.12 - 1e-3;) {
+      const y1 = Math.min(yTop - 0.12, (Math.floor((y0 + 3) / band) + 1) * band - 3);
+      parts.push(part(new THREE.BoxGeometry(w, y1 - y0 + 0.002, zb - za + 0.02), bandCol(y0 + 0.01), 0, (y0 + y1) / 2, zc));
+      y0 = y1;
+    }
+    parts.push(part(new THREE.BoxGeometry(w + 0.04, 0.12, zb - za + 0.02), 0xd9c08a, 0, yTop - 0.06, zc)); // 頂面：砂岩
+  }
+  // 頂上的草皮、小花與幾顆石頭；岩柱腳邊的礁石
+  for (let i = 0; i < 9; i++) {
+    const z = -pz - 0.6 + i * ((2 * pz + 1.2) / 8);
+    parts.push(part(new THREE.IcosahedronGeometry(0.42, 0), i % 2 ? 0x9fc46a : 0x8fbf52, Math.sin(i * 2.3) * 0.35, yTop - 0.08, z, 0, i, 0, 1.6, 0.28, 1.2));
+  }
+  for (let i = 0; i < 5; i++) parts.push(part(new THREE.OctahedronGeometry(0.07, 0), i % 2 ? 0xffb3c7 : 0xfff07a, Math.sin(i * 3.1) * 0.5, yTop + 0.1, -pz + i * pz * 0.5));
+  for (const [x, z, r] of [[1.1, -pz + 0.6, 0.45], [-1.0, pz - 0.2, 0.55], [0.9, pz + 0.8, 0.4]]) parts.push(part(new THREE.IcosahedronGeometry(r, 0), 0xb98a60, x, 0.0, z, 0, x, 0, 1, 0.7, 1));
+  return parts;
+}
+function egretParts() {
+  const w = [0xffffff, 1.15];
+  return [
+    part(new THREE.IcosahedronGeometry(0.16, 0), w, 0, 0.42, 0, 0, 0, 0, 0.8, 0.8, 1.4),
+    part(new THREE.CylinderGeometry(0.03, 0.04, 0.3, 4), w, 0, 0.62, 0.15, 0.5, 0, 0),
+    part(new THREE.IcosahedronGeometry(0.07, 0), w, 0, 0.76, 0.25),
+    part(new THREE.ConeGeometry(0.025, 0.16, 4), 0xffc94a, 0, 0.75, 0.37, Math.PI / 2, 0, 0),
+    part(new THREE.CylinderGeometry(0.012, 0.012, 0.3, 3), 0x2c3440, 0.05, 0.15, 0),
+    part(new THREE.CylinderGeometry(0.012, 0.012, 0.3, 3), 0x2c3440, -0.05, 0.15, 0),
+  ];
+}
+
 /** 燈塔光束：兩道往外漸暗的光錐 + 燈光暈（加法混色，頂點色由亮到黑 = 漸隱） */
 function lighthouseBeamGeo() {
   const parts = [];
@@ -1389,9 +1832,9 @@ const DESAT_CHUNK = `#include <dithering_fragment>
 export function createWorld({ scene, renderer, quality = 'high' } = {}) {
   const q = QUALITY[quality] ? quality : 'high';
   const decoScale = QUALITY[q].props;   // 只縮放「裝飾」密度；障礙物在各畫質下都一樣（玩法一致）
-  const N = q === 'low' ? 36 : 48;
+  const N = q === 'low' ? 32 : 48;
   const NW = q === 'low' ? 20 : 28;
-  const KF = 3;           // v4：地形區的粗三角形細分成 KF×KF
+  const KF = 3;           // v4：地形區的粗三角形細分成 KF×KF（細格點 96 / 144）
   const NF = N * KF;
 
   const root = new THREE.Group();
@@ -1431,9 +1874,13 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
     const x = L.dirs[k * 3], y = L.dirs[k * 3 + 1], z = L.dirs[k * 3 + 2];
     HR[k] = R + heightAt(x, y, z);
     for (let b = 0; b < NB; b++) WV[k * NB + b] = W[b];
+    let nearLf = false;
+    for (let gi = 0; gi < LF_CAPS.length; gi++) { const G = LF_CAPS[gi]; if (x * G.x + y * G.y + z * G.z > G.cos) { nearLf = true; break; } }
+    if (!nearLf) continue; // 不靠近任何地形
     for (let zi = 0; zi < NZ; zi++) {
       const Z = DETAIL_ZONES[zi];
-      if (x * Z[0] + y * Z[1] + z * Z[2] > Z[3]) { hotC[k] = 1; break; }
+      const c = x * Z[0] + y * Z[1] + z * Z[2];
+      if (c > Z[3] && c < Z[4]) { hotC[k] = 1; break; }
     }
   }
   // v4：碰到熱頂點的粗三角形 → 細分（細格點 = NF 的二十面體格點，和粗格點完全巢狀）
@@ -1565,6 +2012,110 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
     return out;
   }
 
+  // ---- v4：地形配色（覆蓋在生態區顏色上） ----
+  const LFC = {
+    rock: CL(0xa39c92), rockD: CL(0x8a837b), snow: CL(0xf4f9fc).multiplyScalar(1.24), snowB: CL(0xd2e8f5).multiplyScalar(1.12),
+    path: CL(0xdcc193), pathD: CL(0xc4a273), bed: CL(0x9c9274), bedDeep: CL(0x5e8a86), mud: CL(0xb39e74),
+    reed: CL(0xa4c76c), moss: CL(0x86b860), flood: CL(0x9fd67a),
+    redSand: CL(0xe6b47c), gravel: CL(0xcfae86),
+    terraceWall: CL(0xb39a78), terraceWallB: CL(0x9c8262), bund: CL(0x9ccf5a), paddy: CL(0x9fe2d2), rice: CL(0x86cf52),
+    tea: CL(0x3f9a4f), teaSoil: CL(0x8fbf62), stair: CL(0xd6cbb8),
+    ice: CL(0xcdeefa).multiplyScalar(1.12), iceB: CL(0xa9dcf2).multiplyScalar(1.08), iceFace: CL(0x7fd0f0).multiplyScalar(1.1),
+    crevasse: CL(0x3f8fd0), moraine: CL(0x8c8579), moraineB: CL(0xa59f93),
+    deltaSand: CL(0xead9a6), deltaMud: CL(0xb7a47c), deltaChan: CL(0x5f8f88),
+  };
+  const STRATA = [0xb8573e, 0xe39a5c, 0xf3d6a0, 0xd06a48, 0xc79a72, 0xf0b878, 0x9c4a3a, 0xe8c48e].map(CL);
+  const CLIFF = [0xe8d2a8, 0xd8b88a, 0xc8946a, 0xf0e0c0, 0xb98a60, 0xdcc09a].map(CL);
+  const _lc = new THREE.Color();
+  function landformColor(x, y, z, h, slope, out) {
+    // 高山：陡坡是岩石、山頂積雪、之字形步道
+    if (x * MF.up.x + y * MF.up.y + z * MF.up.z > MT_COS) {
+      toLocal(MF, x, y, z);
+      const mx = LC[0], my = LC[1], rho = Math.hypot(mx, my);
+      const n = noise3(x * 11 + 4.1, y * 11 + 1.7, z * 11 + 6.3);
+      const inner = 1 - smoothstep(MT.Rm - 2.2, MT.Rm - 0.4, rho);
+      const rock = smoothstep(0.32, 0.5, slope + 0.08 * n) * inner;
+      if (rock > 0) out.lerp(_lc.copy(LFC.rock).lerp(LFC.rockD, 0.5 + 0.5 * n), rock);
+      const snowLine = 4.0 + 0.45 * n;
+      if (h > snowLine - 0.15) out.lerp(_lc.copy(LFC.snow).lerp(LFC.snowB, smoothstep(0.3, 0.55, slope)), smoothstep(snowLine - 0.15, snowLine + 0.1, h));
+      const tq = polyNearest(TRAIL, mx, my);
+      if (tq.d < 0.75) out.lerp(tq.d < 0.5 ? LFC.path : LFC.pathD, 1 - smoothstep(0.45, 0.75, tq.d));
+      if (rho < MT.top + 0.2) out.lerp(LFC.path, 0.35);
+    }
+    // 河流 / 湖泊：濕石河床、泥岸
+    if (x * EAST_DIR.x + y * EAST_DIR.y + z * EAST_DIR.z > EAST_COS) {
+      toLocal(EF, x, y, z);
+      const I = riverInfo(LC[0], LC[1]);
+      if (I.e < 0.6) {
+        if (I.e < -0.15) out.copy(LFC.bed).lerp(LFC.bedDeep, I.lake ? smoothstep(-0.4, -2.0, I.e) : smoothstep(-0.3, -0.9, I.e) * 0.35);
+        else out.lerp(LFC.mud, 1 - smoothstep(0.2, 0.6, I.e));
+      } else if (I.e < 0.45 + I.fp && slope < 0.15) out.lerp(LFC.flood, 0.25);
+    }
+    // 峽谷：陡壁露出一層層顏色不同的沉積岩；台地頂、岩階是偏紅的砂
+    if (x * CANYON_DIR.x + y * CANYON_DIR.y + z * CANYON_DIR.z > CANYON_COS) {
+      toLocal(CNF, x, y, z, _hd);
+      canyonApply(h, _hd[0], _hd[1], x, y, z);
+      if (CQ.wallT >= 0 || CQ.plateau > 0) {
+        const n = noise3(x * 2.6 + 3.1, y * 2.6 + 7.7, z * 2.6 + 1.9);
+        const band = ((Math.floor((h + 0.14 * n) / 0.42) % STRATA.length) + STRATA.length) % STRATA.length;
+        const steep = smoothstep(0.22, 0.42, slope);
+        _lc.copy(LFC.redSand).lerp(STRATA[band], 0.35);
+        out.copy(_lc.lerp(STRATA[band], steep));
+      } else if (CQ.es < 0.05 && CQ.wl === CQ.wl) out.copy(LFC.bed);
+      else if (CQ.dn < CN.wf + 0.2) out.lerp(LFC.gravel, 0.75);
+    }
+    // 梯田：下層水稻田（水汪汪的田面）、上層茶園（一排排茶樹）、田埂與土坡
+    if (x * TRF.up.x + y * TRF.up.y + z * TRF.up.z > TR_COS) {
+      toLocal(TRF, x, y, z, _hd);
+      terraceApply(h, _hd[0], _hd[1]);
+      if (TRQ.lv >= 0 && TRQ.rho < TR.Rt + 0.2) {
+        const n = noise3(x * 8 + 2.5, y * 8 + 6.1, z * 8 + 0.7);
+        const stair = Math.abs(Math.sin((TRQ.th - TR_STAIR) / 2)) * TRQ.rho < 0.3 && TRQ.rho > TR.top - 0.2;
+        if (TRQ.lv >= TR.n) out.copy(LFC.flood);
+        else if (stair) out.copy(LFC.stair).multiplyScalar(TRQ.fr > 0.8 ? 0.82 : 1);
+        else if (TRQ.fr > 0.8 || slope > 0.3) out.copy(LFC.terraceWall).lerp(LFC.terraceWallB, 0.5 + 0.5 * n);
+        else if (TRQ.fr < 0.13) out.copy(LFC.bund);
+        else if (TRQ.lv < 4) out.copy(LFC.paddy).lerp(LFC.rice, smoothstep(-0.15, 0.3, n + 0.3 * Math.sin(TRQ.rho * 9 + TRQ.th * 3)));
+        else out.copy(Math.sin(TRQ.fr * Math.PI * 4.6) > -0.1 ? LFC.tea : LFC.teaSoil);
+      }
+    }
+    // 冰河：藍白色的冰、深藍的冰裂縫、灰色的側磧
+    if (x * GLACIER_DIR.x + y * GLACIER_DIR.y + z * GLACIER_DIR.z > GLACIER_COS) {
+      toLocal(GLF, x, y, z, _hd);
+      glacierApply(h, _hd[0], _hd[1]);
+      if (GQ.ice) {
+        const n = noise3(x * 6 + 9.1, y * 6 + 3.3, z * 6 + 5.5);
+        out.copy(LFC.ice).lerp(LFC.iceB, smoothstep(-0.2, 0.5, n));
+        if (slope > 0.35) out.lerp(LFC.iceFace, 0.8);
+        if (GQ.crev > 0.2) out.lerp(LFC.crevasse, smoothstep(0.2, 0.7, GQ.crev));
+        if (GQ.mid < 0.32 && GQ.s > 1.5) out.lerp(LFC.moraine, 0.85); // 中磧：冰河中央一條深色的碎石帶（看得出冰在流動）
+      } else if (GQ.moraine > 0.15) out.lerp(noise3(x * 13, y * 13, z * 13) > 0 ? LFC.moraine : LFC.moraineB, smoothstep(0.15, 0.5, GQ.moraine));
+    }
+    // 海蝕拱門的岬角：陡的岩壁有層理
+    if (x * ARCH_DIR.x + y * ARCH_DIR.y + z * ARCH_DIR.z > ARCH_COS) {
+      toLocal(ARF, x, y, z, _hd);
+      archApply(h, _hd[0], _hd[1]);
+      if (ARQ.m > 0.3) {
+        const band = ((Math.floor((h + 0.1 * noise3(x * 3, y * 3 + 2, z * 3 + 4)) / 0.3) % CLIFF.length) + CLIFF.length) % CLIFF.length;
+        if (slope > 0.3) out.copy(CLIFF[band]);
+        else out.lerp(LFC.redSand, 0.3);
+      }
+    }
+    // 三角洲：沙洲（淺沙色＋蘆葦叢）、水道（深色濕泥，透過水面看起來是一條條藍綠色的河道）
+    if (x * DF.up.x + y * DF.up.y + z * DF.up.z > DELTA_COS) {
+      toLocal(DF, x, y, z, _hd);
+      const I = deltaInfo(_hd[0], _hd[1]);
+      if (I.m > 0.05) {
+        const n = noise3(x * 9 + 7.3, y * 9 + 2.2, z * 9 + 4.4);
+        _lc.copy(LFC.deltaSand);
+        if (h > SEA_H + 0.08 && n > -0.05) _lc.lerp(LFC.reed, smoothstep(-0.05, 0.2, n) * 0.9);
+        if (h < SEA_H + 0.02) _lc.copy(LFC.deltaMud);
+        if (I.c > 0.3) _lc.lerp(LFC.deltaChan, smoothstep(0.3, 0.8, I.c));
+        out.lerp(_lc, smoothstep(0.05, 0.4, I.m));
+      }
+    }
+  }
+
   const triCount = (triTotal - nRefined) + nRefined * KF * KF;
   const tPos = new Float32Array(triCount * 9);
   const tCol = new Float32Array(triCount * 9);
@@ -1670,12 +2221,11 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
   // =========================================================================
   function getGroundRadius(dir) {
     const r = seabed(dir.x, dir.y, dir.z);
-    if (r < WADE) return WADE;
-    // v4：河流、湖泊（高於海面的淺水）：涉水地面 = 水面下 0.35
+    // v4：河流、湖泊、峽谷小溪（高於海面的淺水）：涉水地面 = 水面下 0.35
     const l = Math.hypot(dir.x, dir.y, dir.z) || 1;
     const wl = localWaterH(dir.x / l, dir.y / l, dir.z / l);
-    if (wl === wl && r < R + wl - 0.35) return R + wl - 0.35;
-    return r;
+    if (wl === wl && r < R + wl - 0.35) return Math.max(R + wl - 0.35, WADE);
+    return r < WADE ? WADE : r;
   }
   function getSurfacePoint(dir, offset = 0, out = new THREE.Vector3()) {
     const r = getGroundRadius(dir) + offset;
@@ -1751,7 +2301,14 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
     const LW = buildLattice(NW);
     const depth = new Float32Array(LW.total);
     for (let k = 0; k < LW.total; k++) {
-      depth[k] = SEA_LEVEL - seabed(LW.dirs[k * 3], LW.dirs[k * 3 + 1], LW.dirs[k * 3 + 2]);
+      const x = LW.dirs[k * 3], y = LW.dirs[k * 3 + 1], z = LW.dirs[k * 3 + 2];
+      depth[k] = SEA_LEVEL - seabed(x, y, z);
+      // v4：三角洲上的海面不要整片白浪（沙洲本身會露出水面）
+      if (x * DF.up.x + y * DF.up.y + z * DF.up.z > DELTA_COS) {
+        toLocal(DF, x, y, z, _hd);
+        const m = deltaInfo(_hd[0], _hd[1]).m;
+        if (m > 0) depth[k] = lerp(depth[k], Math.max(depth[k], 0.5), smoothstep(0, 0.3, m));
+      }
     }
     const pos = [], col = [], dep = [];
     const cShallow = CL(0x8fe3ef), cMid = CL(PALETTE.water), cDeep = CL(PALETTE.waterDeep);
@@ -1822,6 +2379,121 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
     water.name = 'water';
     water.renderOrder = 2;
     root.add(water);
+  }
+
+  // =========================================================================
+  // v4：河流、湖泊、瀑布的水面（細格點上的水面三角形 = 水岸與網格完全吻合；一個 draw call）
+  // =========================================================================
+  let riverWater = null;
+  if (nRefined) {
+    const DFn = LF.dirs, rsF = LF.rowStart;
+    const WLV = new Float32Array(LF.total).fill(NaN);
+    const FLV = new Float32Array(LF.total);   // 流向座標（沿河弧長；湖 = −1）
+    const done = new Uint8Array(LF.total);
+    const vInfo = (k) => {
+      if (done[k]) return;
+      done[k] = 1;
+      const x = DFn[k * 3], y = DFn[k * 3 + 1], z = DFn[k * 3 + 2];
+      if (x * EAST_DIR.x + y * EAST_DIR.y + z * EAST_DIR.z > EAST_COS) {
+        toLocal(EF, x, y, z);
+        const I = riverInfo(LC[0], LC[1]);
+        if (I.e < 0.45 + I.fp) { WLV[k] = R + I.wl; FLV[k] = I.lake ? -1 : I.s; return; }
+      }
+      const cw = canyonWater(x, y, z);
+      if (cw === cw) { WLV[k] = R + cw; FLV[k] = 100 + CQ.s; }
+    };
+    const pos = [], col = [], dep = [], flow = [];
+    const cShallow = CL(0x6fd0ec), cMid = CL(0x3aa6e0), cDeep = CL(0x2a86c8);
+    const tri = (a, b, c) => {
+      vInfo(a); vInfo(b); vInfo(c);
+      let wa = WLV[a], wb = WLV[b], wc = WLV[c];
+      const mx = Math.max(wa === wa ? wa : -1, wb === wb ? wb : -1, wc === wc ? wc : -1);
+      if (mx < 0) return;
+      if (!(wa === wa)) wa = mx; if (!(wb === wb)) wb = mx; if (!(wc === wc)) wc = mx;
+      if (!(HRF[a] < wa || HRF[b] < wb || HRF[c] < wc)) return;      // 三個頂點都是乾的
+      if (Math.max(wa, wb, wc) < SEA_LEVEL + 0.03) return;             // 海面會畫
+      const ws = [wa, wb, wc], ks = [a, b, c];
+      // 外向
+      const ax = DFn[a * 3], ay = DFn[a * 3 + 1], az = DFn[a * 3 + 2];
+      const ux = DFn[b * 3] - ax, uy = DFn[b * 3 + 1] - ay, uz = DFn[b * 3 + 2] - az;
+      const vx = DFn[c * 3] - ax, vy = DFn[c * 3 + 1] - ay, vz = DFn[c * 3 + 2] - az;
+      const sgn = (uy * vz - uz * vy) * ax + (uz * vx - ux * vz) * ay + (ux * vy - uy * vx) * az;
+      const order = sgn < 0 ? [0, 2, 1] : [0, 1, 2];
+      // 瀑布：同一個三角形裡水位差很大 → 白色水簾
+      const fall = Math.max(wa, wb, wc) - Math.min(wa, wb, wc) > 0.25 ? 1 : 0;
+      for (const o of order) {
+        const k = ks[o], w = ws[o];
+        pos.push(DFn[k * 3] * w, DFn[k * 3 + 1] * w, DFn[k * 3 + 2] * w);
+        const d = w - HRF[k];
+        if (d < 0.4) _bc.lerpColors(cShallow, cMid, smoothstep(0, 0.4, d));
+        else _bc.lerpColors(cMid, cDeep, smoothstep(0.4, 1.0, d));
+        col.push(_bc.r, _bc.g, _bc.b);
+        dep.push(d);
+        const fl = FLV[k];
+        // aFlow.x：流向座標；aFlow.y：白沫（瀑布水簾與瀑布潭）
+        const s = fl < 0 ? -1 : fl;
+        const foam = fall ? 1 : fl < 0 ? 0 : Math.max(0, 1 - Math.abs(s - RIVER_FALL_S - 0.25) / 1.4) * (s > RIVER_LIP_S - 0.4 ? 1 : 0);
+        flow.push(s, foam);
+      }
+    };
+    for (let n = 0; n < nRefined; n++) {
+      const f = refList[n * 4], i = refList[n * 4 + 1], j = refList[n * 4 + 2], up = refList[n * 4 + 3];
+      const baseF = f * LF.per, I0 = i * KF, J0 = j * KF;
+      for (let a = 0; a < KF; a++) {
+        for (let b = 0; b < KF; b++) {
+          const I = I0 + a, J = J0 + b, sab = a + b;
+          if (up ? sab <= KF - 1 : sab >= KF) tri(baseF + rsF[I] + J + 1, baseF + rsF[I + 1] + J, baseF + rsF[I] + J);
+          if (up ? sab <= KF - 2 : sab >= KF - 1) tri(baseF + rsF[I] + J + 1, baseF + rsF[I + 1] + J + 1, baseF + rsF[I + 1] + J);
+        }
+      }
+    }
+    if (pos.length) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      g.setAttribute('aDepth', new THREE.Float32BufferAttribute(dep, 1));
+      g.setAttribute('aFlow', new THREE.Float32BufferAttribute(flow, 2));
+      g.computeVertexNormals();
+      g.computeBoundingSphere();
+      const mat = new THREE.MeshPhongMaterial({
+        vertexColors: true, flatShading: true, transparent: true, opacity: 1,
+        shininess: 120, specular: 0x10181e, depthWrite: false,
+      });
+      mat.onBeforeCompile = (shader) => {
+        shader.uniforms.uSat = uSat;
+        shader.uniforms.uTime = uTime;
+        shader.vertexShader = 'uniform float uTime;\nattribute float aDepth;\nattribute vec2 aFlow;\nvarying float vDepth;\nvarying vec2 vFlow;\nvarying float vWave;\n' +
+          shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+  vDepth = aDepth;
+  vFlow = aFlow;
+  {
+    vec3 tewN = normalize(position);
+    float w = sin(uTime * 1.7 + position.x * 1.3 + position.z * 0.9) * 0.5 + sin(uTime * 2.3 - position.y * 1.1 + position.x * 0.7) * 0.5;
+    transformed += tewN * w * 0.025 * (1.0 - aFlow.y);
+    vWave = w;
+  }`);
+        shader.fragmentShader = 'uniform float uSat;\nuniform float uTime;\nvarying float vDepth;\nvarying vec2 vFlow;\nvarying float vWave;\n' +
+          shader.fragmentShader
+            .replace('#include <color_fragment>', `#include <color_fragment>
+  {
+    float foamEdge = 0.16 + 0.06 * sin(uTime * 2.6 + vWave * 3.0);
+    float foam = 1.0 - smoothstep(0.02, foamEdge, vDepth);
+    // 流動的白色細紋（湖面沒有）
+    float st = vFlow.x >= 0.0 ? smoothstep(0.86, 1.0, sin(vFlow.x * 2.6 - uTime * 3.2 + vWave * 1.5)) * 0.22 : 0.0;
+    // 瀑布水簾與潭裡的白沫
+    float fs = vFlow.y * (0.75 + 0.25 * sin(vFlow.x * 9.0 - uTime * 9.0));
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), clamp(max(foam * 0.75, max(st, fs)), 0.0, 1.0));
+    diffuseColor.rgb += vec3(0.05, 0.07, 0.08) * smoothstep(0.55, 1.0, vWave);
+    diffuseColor.a = mix(0.66, 0.92, smoothstep(0.05, 0.7, vDepth));
+    diffuseColor.a = max(diffuseColor.a, max(foam * 0.9, vFlow.y * 0.92));
+  }`)
+            .replace('#include <dithering_fragment>', DESAT_CHUNK);
+      };
+      riverWater = new THREE.Mesh(g, mat);
+      riverWater.name = 'riverWater';
+      riverWater.renderOrder = 2;
+      root.add(riverWater);
+    }
   }
 
   // =========================================================================
@@ -1951,6 +2623,12 @@ void main() {
   }
 
   const staticParts = [];
+  /** 放在指定半徑（例如水面上的睡蓮） */
+  function placeStaticAt(parts, dir, yaw, scale, radius) {
+    const m = surfaceMatrix(dir, yaw, scale, scale, scale, 0, new THREE.Matrix4(), null, radius);
+    for (const g of parts) { g.applyMatrix4(m); pushGlowable(g, staticParts); }
+    return m;
+  }
   function placeStatic(parts, dir, yaw, scale, sink, lookDir = null) {
     const m = surfaceMatrix(dir, yaw, scale, scale, scale, sink, new THREE.Matrix4(), lookDir);
     for (const g of parts) { g.applyMatrix4(m); pushGlowable(g, staticParts); }
@@ -2014,6 +2692,7 @@ void main() {
       const g = seabed(_d.x, _d.y, _d.z);
       if (g < SEA_LEVEL + (opt.minAbove ?? 0.18)) continue;
       if (opt.maxAbove != null && g > SEA_LEVEL + opt.maxAbove) continue;
+      if (landformKeep(_d.x, _d.y, _d.z, !!opt.radius)) continue; // v4：地形（河、湖、步道、山頂…）
       if (opt.avoidStart !== false && _d.dot(START) > COS_START_CLEAR) continue;
       if (opt.exclude && opt.exclude(_d)) continue;
       if (opt.radius && nearBiomeCenter(_d)) continue;
@@ -2537,6 +3216,301 @@ void main() {
     }), '踩著海上的小石頭一路往外走，最遠最高的海蝕柱在等你。');
   }
 
+  // =========================================================================
+  // v4：地形的道具、知識牌、橋與碼頭（橋面、碼頭是 v2 platforms）
+  // =========================================================================
+  const landforms = [];
+  /** 一組可以站的平台（橋、碼頭、拱門頂）：defs = [{ dir, radius, top, bottom }] */
+  function addPlatGroup(id, kind, defs) {
+    const list = defs.map((d, i) => {
+      const p = { id: `${id}-${i}`, kind, dir: d.dir.clone().normalize(), radius: d.radius, top: d.top, bottom: d.bottom, course: id, index: i };
+      Object.defineProperties(p, {
+        _x: { value: p.dir.x }, _y: { value: p.dir.y }, _z: { value: p.dir.z },
+        _cos: { value: Math.sqrt(1 - (d.radius / d.top) ** 2) },
+        _gc: { value: getGroundRadius(p.dir) }, _gmax: { value: getGroundRadius(p.dir) },
+      });
+      platforms.push(p);
+      return p;
+    });
+    const c = new THREE.Vector3();
+    list.forEach((p) => c.add(p.dir));
+    c.normalize();
+    let maxA = 0;
+    list.forEach((p) => { maxA = Math.max(maxA, Math.acos(clamp(c.dot(p.dir), -1, 1)) + p.radius / p.top); });
+    courseZones.push({ x: c.x, y: c.y, z: c.z, cos: Math.cos(maxA + 0.01), list });
+    reserved.push({ x: c.x, y: c.y, z: c.z, ang: maxA + 0.6 / R });
+    return list;
+  }
+  /** 地形知識牌：at = 牌子的位置（方向），toward = 讀牌的人從哪裡來；回傳牌前的地面點 */
+  function knowledgeSign(kind, at, toward) {
+    // 找一個好位置：牌前的地面點不在水裡、沒有障礙、和牌子差不多高、附近平坦（必要時把方向轉一轉、位置挪一挪）
+    const look0 = toward.clone().sub(at);
+    look0.addScaledVector(at, -look0.dot(at)).normalize();
+    const reader = new THREE.Vector3(), cand = new THREE.Vector3(), side = new THREE.Vector3();
+    const ok = (a, t) => {
+      reader.copy(a).addScaledVector(t, 1.4 / R).normalize();
+      if (isWater(a) || isWater(reader) || !isFree(reader, 0.55) || !isFree(a, 0.3)) return false;
+      const ga = getGroundRadius(a), gr = getGroundRadius(reader);
+      if (Math.abs(ga - gr) > 0.4) return false;
+      const { right, forward } = tangentBasis(reader, _rt, _fw);
+      for (let i = 0; i < 6; i++) {
+        const an = (i / 6) * Math.PI * 2;
+        cand.copy(reader).addScaledVector(right, Math.cos(an) * 0.9 / R).addScaledVector(forward, Math.sin(an) * 0.9 / R).normalize();
+        if (Math.abs(getGroundRadius(cand) - gr) > 0.45 || isWater(cand)) return false;
+      }
+      return true;
+    };
+    let best = null;
+    search: for (const off of [0, 0.8, 1.6, 2.4]) {
+      for (const rot of [0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6]) {
+        for (let k = 0; k < (off ? 6 : 1); k++) {
+          side.crossVectors(at, look0).normalize();
+          const sa = at.clone();
+          if (off) sa.addScaledVector(look0, Math.cos(k * 1.047) * off / R).addScaledVector(side, Math.sin(k * 1.047) * off / R).normalize();
+          const t = look0.clone().applyAxisAngle(sa, rot);
+          t.addScaledVector(sa, -t.dot(sa)).normalize();
+          if (ok(sa, t)) { best = [sa, t]; break search; }
+        }
+      }
+    }
+    if (!best) { best = [at.clone(), look0.clone()]; console.warn('landform sign: no clear spot for', kind); }
+    const [a, t] = best;
+    placeStatic(knowledgeSignParts(kind), a, 0, 1, 0.06, t);
+    addObstacle(a, 0.5);
+    reserve(a, 1.6);
+    const rd = a.clone().addScaledVector(t, 1.4 / R).normalize();
+    reserve(rd, 1.6);
+    return groundPos(rd);
+  }
+  function addLandform(id, name, icon, biome, sign, center) {
+    landforms.push({ id, name, icon, biome, sign, center: center.clone().normalize().multiplyScalar(getGroundRadius(center)) });
+  }
+  const ef = (x, y) => fromLocal(EF, x, y);
+  const mf = (x, y) => fromLocal(MF, x, y);
+  // ---- 高山：山頂瞭望點（旗子、長椅、望遠鏡、石堆）＋ 登山口知識牌 ----
+  {
+    const at = (x, y, parts, r, look = null, yaw = 0) => {
+      const d = mf(x, y);
+      placeStatic(parts, d, yaw, 1, 0.06, look ? mf(x + look[0], y + look[1]).sub(d) : null);
+      if (r) addObstacle(d, r);
+      return d;
+    };
+    at(0.15, 0.62, flagParts(), 0.2, [1, -0.4]);
+    at(0.32, -0.78, benchParts(), 0.5, [0.3, -1]);
+    at(0.86, -0.08, telescopeParts(), 0.22, [1, -0.3]);
+    at(-0.62, 0.5, cairnParts(), 0.3);
+    landmarks.summit = MT.dir.clone();
+    landmarks.trail = TRAIL_PTS.map(([x, y]) => mf(x, y)); // 登山步道的轉折點（山腳 → 山頂）
+    // 登山口：步道起點旁
+    const t0 = TRAIL_PTS[0], t1 = TRAIL_PTS[1];
+    const ox = t0[0] - t1[0], oy = t0[1] - t1[1], ol = Math.hypot(ox, oy);
+    const sgDir = mf(t0[0] + (oy / ol) * 1.3, t0[1] - (ox / ol) * 1.3);
+    const sign = knowledgeSign('mountain', sgDir, mf(t0[0] + (ox / ol) * 2.5, t0[1] + (oy / ol) * 2.5));
+    addLandform('mountain', '高山', '⛰️', 'forest', sign, MT.dir);
+  }
+  // ---- 河流與瀑布：瀑布潭邊的知識牌、潭邊大石、木橋 ----
+  let mistBase = null;
+  {
+    const pool = RIVER_DEF[4];
+    const up3 = RIVER_DEF[3], dx3 = pool[0] - up3[0], dy3 = pool[1] - up3[1], dl3 = Math.hypot(dx3, dy3);
+    const fdx = dx3 / dl3, fdy = dy3 / dl3, ldx = fdy, ldy = -fdx; // 下游方向、側向
+    for (const [lat, dn, s] of [[2.5, 0.6, 1.0], [-2.4, 0.9, 0.8], [2.2, 2.0, 0.7]]) {
+      const x = pool[0] + ldx * lat + fdx * dn, y = pool[1] + ldy * lat + fdy * dn;
+      const d = ef(x, y);
+      placeStatic([part(lumpy(new THREE.IcosahedronGeometry(0.55, 0), 0.25, 1.7, x), 0x9f998e, 0, 0.12, 0, 0, x, 0, 1, 0.75, 1),
+        part(new THREE.IcosahedronGeometry(0.3, 0), 0x86b860, 0.1, 0.42, 0.05, 0, 0, 0, 1.2, 0.35, 1)], d, 0, s, 0.1);
+      addObstacle(d, 0.5 * s);
+    }
+    mistBase = ef(RIVER_DEF[3][0] - 0.05, RIVER_DEF[3][1] - 0.35);
+    const sign = knowledgeSign('river', ef(pool[0] - 2.0, pool[1] + 0.2), ef(pool[0] - 4.0, pool[1] - 0.3));
+    addLandform('river', '河流與瀑布', '🏞️', 'forest', sign, ef(RIVER_DEF[3][0], RIVER_DEF[3][1]));
+    // 木橋：湖與三角洲之間（拱起來的橋面 = 5+2 個平台，兩端各一級小坡）
+    const bx = 0.45, by = -9.4;
+    const q = polyNearest(RIVER, bx, by);
+    const i = q.i, P = RIVER.P;
+    const fx = P[i * 2 + 2] - P[i * 2], fy = P[i * 2 + 3] - P[i * 2 + 1], fl = Math.hypot(fx, fy);
+    const ax = -fy / fl, ay = fx / fl;               // 橋的方向（橫跨河面）
+    const cx = P[i * 2] + fx * q.t, cy = P[i * 2 + 1] + fy * q.t;
+    const wl = riverWL(q.s);
+    const deck = (u) => (Math.abs(u) > 2.2 ? 0.36 : 0.42 + 0.33 * (1 - (u / 2.2) ** 2));
+    const us = [-2.6, -1.8, -0.9, 0, 0.9, 1.8, 2.6];
+    addPlatGroup('bridge-river', 'bridge', us.map((u) => ({ dir: ef(cx + ax * u, cy + ay * u), radius: u === 0 || Math.abs(u) === 0.9 ? 0.62 : 0.58, top: R + wl + deck(u), bottom: R + wl + deck(u) - 0.3 })));
+    // 模型：本地 X = 橋的方向、Z = 水流方向；原點 = 河心水面下 0.35
+    const c = ef(cx, cy), r0 = R + wl - 0.35;
+    const parts = [];
+    const yAt = (u) => wl + deck(u) - (wl - 0.35) - (u * u) / (2 * r0);
+    for (let u = -2.9; u <= 2.91; u += 0.3) {
+      const y = yAt(u) - 0.04, slopeA = Math.atan2(yAt(u + 0.15) - yAt(u - 0.15), 0.3);
+      parts.push(part(new THREE.BoxGeometry(0.27, 0.08, 1.3), (Math.round(u / 0.3) & 1) ? 0xc98d55 : 0xb57744, u, y, 0, 0, 0, slopeA));
+    }
+    for (const z of [-0.66, 0.66]) {
+      for (const u of [-2.6, -1.3, 0, 1.3, 2.6]) {
+        const y = yAt(u);
+        parts.push(part(new THREE.BoxGeometry(0.09, 0.62, 0.09), 0x8a5a3c, u, y + 0.27, z));
+        if (Math.abs(u) > 2) parts.push(part(new THREE.IcosahedronGeometry(0.08, 0), 0xffd35a, u, y + 0.62, z));
+      }
+      for (let k = 0; k < 4; k++) {
+        const u0 = -2.6 + k * 1.3, u1 = u0 + 1.3, y0 = yAt(u0) + 0.5, y1 = yAt(u1) + 0.5;
+        parts.push(part(new THREE.BoxGeometry(1.32, 0.07, 0.07), 0xa0643c, (u0 + u1) / 2, (y0 + y1) / 2, z, 0, 0, Math.atan2(y1 - y0, 1.3)));
+      }
+    }
+    // 橋墩（站在河床上）
+    for (const u of [-1.1, 1.1]) parts.push(part(new THREE.CylinderGeometry(0.1, 0.12, yAt(u), 6), 0x7a4e33, u, yAt(u) / 2 - 0.05, 0));
+    placeStatic(parts, c, 0, 1, 0, ef(cx + fx, cy + fy).sub(c));
+    landmarks.bridge = c.clone();
+  }
+  // ---- 湖泊：西岸（草原那側）的小碼頭、小船、睡蓮、香蒲 ----
+  {
+    const th = Math.PI * 1.02, rs = lakeR(th), dx = Math.cos(th), dy = Math.sin(th);
+    const L0 = (u, v = 0) => ef(LAKE.x + dx * u - dy * v, LAKE.y + dy * u + dx * v);
+    const top = R + LAKE.wl + 0.45;
+    const us = [rs + 0.75, rs + 0.05, rs - 0.65, rs - 1.35, rs - 2.05, rs - 2.6];
+    addPlatGroup('pier-lake', 'pier', us.map((u, k) => ({ dir: L0(u), radius: k === us.length - 1 ? 0.7 : 0.55, top, bottom: top - 0.25 })));
+    // 碼頭模型：本地 Z = 往湖心
+    const c = L0(rs - 1.0), r0 = R + LAKE.wl - 0.35;
+    const parts = [];
+    const yAt = (z) => top - r0 - (z * z) / (2 * r0);
+    for (let z = -1.95; z <= 1.81; z += 0.26) {
+      parts.push(part(new THREE.BoxGeometry(1.15, 0.07, 0.23), (Math.round(z / 0.26) & 1) ? 0xc98d55 : 0xb57744, 0, yAt(z) - 0.04, z));
+    }
+    parts.push(part(new THREE.BoxGeometry(1.9, 0.07, 1.1), 0xc98d55, 0, yAt(1.75) - 0.035, 1.95)); // 盡頭的小平台
+    for (const [x, z] of [[-0.55, -1.0], [0.55, -1.0], [-0.55, 0.4], [0.55, 0.4], [-0.9, 1.5], [0.9, 1.5], [-0.9, 2.4], [0.9, 2.4]]) {
+      parts.push(part(new THREE.CylinderGeometry(0.07, 0.08, 1.15, 5), 0x7a4e33, x, yAt(z) - 0.5, z));
+    }
+    // 盡頭的路燈（夜裡會亮）＋ 救生圈
+    parts.push(part(new THREE.CylinderGeometry(0.04, 0.05, 1.5, 5), 0x3b4a5c, 0.8, yAt(2.3) + 0.75, 2.3));
+    parts.push(part(new THREE.BoxGeometry(0.2, 0.22, 0.2), 0xffe08a, 0.8, yAt(2.3) + 1.55, 2.3));
+    parts.push(part(new THREE.ConeGeometry(0.18, 0.12, 4), 0x3b4a5c, 0.8, yAt(2.3) + 1.72, 2.3, 0, Math.PI / 4, 0));
+    parts.push(part(new THREE.TorusGeometry(0.2, 0.06, 5, 10), 0xe8574c, -0.95, yAt(2.0) + 0.32, 1.9, 0, Math.PI / 2, 0));
+    placeStatic(parts, c, 0, 1, 0, L0(rs - 3).sub(c));
+    // 小船（綁在碼頭旁，水面上）
+    const bd = L0(rs - 2.0, 1.25);
+    placeStatic(boatParts(), bd, 0, 1, -0.33, L0(rs - 4, 1.4).sub(bd)); // 浮在水面（湖裡的地面 = 水面下 0.35）
+    addObstacle(bd, 0.62);
+    // 睡蓮
+    const rng = mulberry32(WORLD_SEED + 909);
+    for (let k = 0; k < 9; k++) {
+      const a = th + 0.9 + rng() * 4.4, rr = lakeR(a) * (0.35 + rng() * 0.45);
+      const d = ef(LAKE.x + Math.cos(a) * rr, LAKE.y + Math.sin(a) * rr);
+      placeStaticAt(lilyParts(k % 3 === 0), d, rng() * 6.28, 0.9 + rng() * 0.5, R + LAKE.wl + 0.015);
+    }
+    // 香蒲（湖岸）
+    for (let k = 0; k < 16; k++) {
+      const a = th + 0.5 + (k / 16) * 5.3 + rng() * 0.2, rr = lakeR(a) + 0.05 + rng() * 0.3;
+      const d = ef(LAKE.x + Math.cos(a) * rr, LAKE.y + Math.sin(a) * rr);
+      placeStatic(cattailParts(0.8 + rng() * 0.5), d, rng() * 6.28, 1, 0.05);
+      if (k % 3 === 1) placeStatic(cattailParts(0.7 + rng() * 0.4), ef(LAKE.x + Math.cos(a + 0.05) * (rr + 0.2), LAKE.y + Math.sin(a + 0.05) * (rr + 0.2)), rng() * 6.28, 1, 0.05);
+    }
+    const sign = knowledgeSign('lake', L0(rs + 1.3, -1.7), L0(rs + 4, -2.2));
+    addLandform('lake', '湖泊', '🛶', 'meadow', sign, ef(LAKE.x, LAKE.y));
+    landmarks.pier = L0(rs).clone();
+  }
+  // ---- 三角洲：河口旁的知識牌、沙洲上的白鷺 ----
+  {
+    const df = (x, y) => fromLocal(DF, x, y);
+    const sign = knowledgeSign('delta', df(0.4, 3.0), df(-0.7, 3.9));
+    addLandform('delta', '三角洲', '🔺', 'ocean', sign, df(4.5, 0));
+    for (const [x, y, yaw] of [[4.3, 0.6, 0.8], [6.0, -0.4, 2.6], [7.4, 2.9, 4.0]]) {
+      const d = df(x, y);
+      if (deltaInfo(x, y).c < 0.2) placeStatic(egretParts(), d, yaw, 1.1, 0.03);
+    }
+  }
+
+  // ---- 峽谷：橫跨峽谷的吊橋（會微微下垂）、北岸的知識牌 ----
+  {
+    const cf = (x, y) => fromLocal(CNF, x, y);
+    const P = CANYON.P, i = 2, t = 0.45;
+    const fx = P[i * 2 + 2] - P[i * 2], fy = P[i * 2 + 3] - P[i * 2 + 1], fl = Math.hypot(fx, fy);
+    let ax = -fy / fl, ay = fx / fl;
+    if (ay < 0) { ax = -ax; ay = -ay; }               // +u = 北岸
+    const cx = P[i * 2] + fx * t, cy = P[i * 2 + 1] + fy * t;
+    const L = CN.wf + CN.wall + 0.6;
+    const gA = getGroundRadius(cf(cx - ax * (L + 0.3), cy - ay * (L + 0.3))), gB = getGroundRadius(cf(cx + ax * (L + 0.3), cy + ay * (L + 0.3)));
+    const topEnd = Math.max(gA, gB) + 0.1;
+    const sag = 0.42;
+    const topAt = (u) => topEnd - sag * (1 - (u / L) ** 2);
+    const us = [];
+    for (let u = -L; u <= L + 1e-6; u += (2 * L) / 10) us.push(u);
+    addPlatGroup('bridge-canyon', 'rope', us.map((u) => ({ dir: cf(cx + ax * u, cy + ay * u), radius: 0.5, top: topAt(u), bottom: topAt(u) - 0.16 })));
+    const c = cf(cx, cy), r0 = getGroundRadius(c);
+    placeStatic(ropeBridgeParts(L, (u) => topAt(u) - r0 - (u * u) / (2 * r0)), c, 0, 1, 0, cf(cx + fx, cy + fy).sub(c));
+    // 吊橋兩端的平台位置要淨空（ropeBridgeParts 的 +X = 橋的方向，需要 +X 指向北岸）
+    landmarks.ropeBridge = c.clone();
+    const ur = CN.wf + CN.wall + 0.75;          // 北岸台地頂
+    const sg = cf(cx + ax * ur - (fx / fl) * 1.3, cy + ay * ur - (fy / fl) * 1.3);
+    const sign = knowledgeSign('canyon', sg, cf(cx + ax * ur - (fx / fl) * 3.0, cy + ay * ur - (fy / fl) * 3.0));
+    addLandform('canyon', '峽谷', '🏜️', 'desert', sign, c);
+  }
+  // ---- 梯田：山頂的小倉庫、稻草人、茶樹、稻苗、石階前的知識牌 ----
+  {
+    const tf = (x, y) => fromLocal(TRF, x, y);
+    const top = tf(0.25, 0.2);
+    placeStatic(shedParts(), top, 0, 1, 0.05, tf(Math.cos(TR_STAIR), Math.sin(TR_STAIR)).sub(top));
+    addObstacle(top, 0.75);
+    const rngT = mulberry32(WORLD_SEED + 1212);
+    // 茶樹：上面兩階，沿著等高線排成一列
+    for (let lv = 4; lv < TR.n; lv++) {
+      const rp = TR.top + (TR.Rt - TR.top) * (1 - (lv + 0.45) / TR.n);
+      for (let a = 0; a < Math.PI * 2; a += 0.62 / rp) {
+        if (Math.abs(Math.sin((a - TR_STAIR) / 2)) * rp < 0.55) continue;
+        const rr = rp * trWave(a);
+        placeStatic(teaBushParts(Math.floor(a * 10)), tf(Math.cos(a) * rr, Math.sin(a) * rr), rngT() * 6.28, 0.9 + rngT() * 0.25, 0.04);
+      }
+    }
+    // 稻苗：下面四階
+    const riceCols = [0x86cf52, 0x9bd66a, 0x7cc95a];
+    for (let k = 0; k < Math.round(110 * decoScale); k++) {
+      const lv = Math.floor(rngT() * 4);
+      const rp = TR.top + (TR.Rt - TR.top) * (1 - (lv + 0.3 + rngT() * 0.4) / TR.n);
+      const a = rngT() * Math.PI * 2;
+      if (Math.abs(Math.sin((a - TR_STAIR) / 2)) * rp < 0.45) continue;
+      const rr = rp * trWave(a);
+      addInst('grass', surfaceMatrix(tf(Math.cos(a) * rr, Math.sin(a) * rr), rngT() * 6.28, 0.8, 0.75, 0.8, 0.03, _im), riceCols[k % 3]);
+    }
+    // 稻草人（第二階）
+    {
+      const a = TR_STAIR + 1.1, rp = TR.top + (TR.Rt - TR.top) * (1 - 1.5 / TR.n), rr = rp * trWave(a);
+      const d = tf(Math.cos(a) * rr, Math.sin(a) * rr);
+      placeStatic(scarecrowParts(), d, 0, 1, 0.04, tf(Math.cos(TR_STAIR) * 9, Math.sin(TR_STAIR) * 9).sub(d));
+      addObstacle(d, 0.25);
+    }
+    const rs = (TR.Rt + 1.3) * trWave(TR_STAIR);
+    const sg = tf(Math.cos(TR_STAIR) * rs - Math.sin(TR_STAIR) * 1.4, Math.sin(TR_STAIR) * rs + Math.cos(TR_STAIR) * 1.4);
+    const sign = knowledgeSign('terraces', sg, tf(Math.cos(TR_STAIR) * (rs + 3), Math.sin(TR_STAIR) * (rs + 3)));
+    addLandform('terraces', '梯田', '🌾', 'meadow', sign, TRF.up);
+  }
+  // ---- 冰河：冰崖前漂著的冰山、海岸邊的知識牌 ----
+  {
+    const gf = (x, y) => fromLocal(GLF, x, y);
+    for (const [x, y, sz, k] of [[-7.6, 0.6, 1.0, 1], [-4.2, 1.2, 0.75, 2], [-6.1, 2.9, 0.6, 3], [-3.0, 3.4, 0.5, 4], [-9.0, 3.0, 0.8, 5]]) {
+      const d = gf(x, y);
+      placeStaticAt(icebergParts(k, sz), d, k, 1, SEA_LEVEL - 0.05);
+      addObstacle(d, 0.95 * sz);
+    }
+    const sign = knowledgeSign('glacier', gf(-1.4, -5.6), gf(0.2, -6.4));
+    addLandform('glacier', '冰河', '🧊', 'polar', sign, gf(-6.2, -6.5));
+    landmarks.glacier = gf(-6.0, -1.7);
+  }
+  // ---- 海蝕拱門：兩根岩柱 + 岩橋（頂面、岩柱都是平台；底下可以涉水走過去） ----
+  {
+    const af = (x, y) => fromLocal(ARF, x, y);
+    const xc = 3.15, pz = 2.15, pr = 0.9, open = 1.25, ht = 2.7;
+    const c = af(xc, 0), g0 = getGroundRadius(c);
+    const yTop = R + AR.top + 0.05 - g0;
+    const top = R + AR.top + 0.05;
+    addPlatGroup('arch', 'arch', [
+      { dir: af(xc - pz, 0), radius: pr, top, bottom: getGroundRadius(af(xc - pz, 0)) - 0.45 },
+      { dir: af(xc - 0.75, 0), radius: 0.72, top, bottom: g0 + ht * Math.sqrt(1 - (0.75 / open) ** 2) },
+      { dir: af(xc, 0), radius: 0.72, top, bottom: g0 + ht },
+      { dir: af(xc + 0.75, 0), radius: 0.72, top, bottom: g0 + ht * Math.sqrt(1 - (0.75 / open) ** 2) },
+      { dir: af(xc + pz, 0), radius: pr * 1.04, top, bottom: getGroundRadius(af(xc + pz, 0)) - 0.45 },
+    ]);
+    placeStatic(archParts(yTop, pz, pr, open, ht), c, 0, 1, 0, af(xc + 1, 0).sub(c));
+    const sign = knowledgeSign('arch', af(-2.2, 3.6), af(-2.3, 5.1));
+    addLandform('arch', '海蝕拱門', '🌉', 'ocean', sign, c);
+    landmarks.arch = c.clone();
+  }
+
   // 平台網格（全部一個 draw call）
   const platformMesh = new THREE.Mesh(merge(platParts3), propMat);
   platformMesh.name = 'platforms';
@@ -2737,6 +3711,17 @@ void main() {
     for (let i = 0; i < SMOKE_N; i++) smoke.setColorAt(i, c.setHSL(0.07, 0.06, 0.74 + (i % 3) * 0.08));
   }
   root.add(smoke);
+  // v4：瀑布潭的水霧
+  const MIST_N = 8;
+  const mist = new THREE.InstancedMesh(prep(new THREE.IcosahedronGeometry(0.42, 0), 0xffffff), spoutMat, MIST_N);
+  mist.name = 'waterfallMist';
+  mist.frustumCulled = false;
+  const mistUp = mistBase ? mistBase.clone() : new THREE.Vector3(0, 1, 0);
+  const mistPos = mistBase ? mistBase.clone().multiplyScalar(getGroundRadius(mistBase) + 0.15) : new THREE.Vector3();
+  const mistQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), mistUp);
+  const mistT1 = new THREE.Vector3(), mistT2 = new THREE.Vector3();
+  tangentBasis(mistUp, mistT1, mistT2);
+  if (mistBase) root.add(mist);
 
   // =========================================================================
   // 鯨魚
@@ -3182,6 +4167,19 @@ void main() {
       smoke.setMatrixAt(i, _m1);
     }
     smoke.instanceMatrix.needsUpdate = true;
+    // 瀑布水霧：在潭面上冒起、散開、淡出（用縮放表現）
+    if (mistBase) {
+      for (let i = 0; i < MIST_N; i++) {
+        const p = (t * 0.45 + i / MIST_N) % 1;
+        const a = i * 2.4 + t * 0.3;
+        _v1.copy(mistPos).addScaledVector(mistUp, p * 1.3)
+          .addScaledVector(mistT1, Math.cos(a) * (0.3 + p * 0.9)).addScaledVector(mistT2, Math.sin(a) * (0.3 + p * 0.9));
+        const s = (0.45 + p * 0.8) * smoothstep(0, 0.15, p) * (1 - smoothstep(0.55, 1, p));
+        _m1.compose(_v1, mistQuat, _s1.set(s, s * 0.8, s));
+        mist.setMatrixAt(i, _m1);
+      }
+      mist.instanceMatrix.needsUpdate = true;
+    }
     // 鯨魚：繞圈游，週期性浮出換氣噴水
     {
       const th = t * 0.07;
@@ -3288,6 +4286,9 @@ void main() {
     setTimeOfDay,
     isNight,
     setDayNightEnabled, // false：平滑回到白天 0.42 並停住
+    // ---- v4 ----
+    landforms,          // [{ id, name, icon, biome, sign, center }]（sign = 知識牌前的地面點）
+    getWaterSurface,    // 額外：dir 處水面的半徑（海、河、湖），不在水裡 = NaN
   };
   return api;
 }

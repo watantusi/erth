@@ -1443,7 +1443,13 @@ export function createPlayer({ scene, world }) {
   function physicsStep(h) {
     const wasGrounded = api.grounded;
     // 站在海上踏石、或跳得比海面高時不算在水裡
-    api.inWater = radius < SEA_LEVEL + IN_WATER_MAX_HEIGHT && waterAt(up);
+    // 整合者 v4：河流、湖泊等內陸水面用 world.getWaterSurface 判斷
+    if (world.getWaterSurface) {
+      const ws = world.getWaterSurface(up);
+      api.inWater = ws === ws && radius < ws + IN_WATER_MAX_HEIGHT && waterAt(up);
+    } else {
+      api.inWater = radius < SEA_LEVEL + IN_WATER_MAX_HEIGHT && waterAt(up);
+    }
 
     // 目標速度
     _target.copy(_desired);
