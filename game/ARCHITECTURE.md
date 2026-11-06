@@ -178,3 +178,118 @@ renderer.render(scene, camera); input.endFrame()
 ```
 main 負責：renderer 建立與縮放、畫質、存檔（localStorage，try/catch）、把 player.onJump 等接到 audio、
 表情 → `ui.addBubble(player.getHeadPosition, emoji)` + `gameplay.onPlayerEmote(emoji)` + `audio.play('emote')`。
+
+---
+
+# v2：平台挑戰、指南針解鎖、任務 NPC
+
+v1 的合約全部保留（向下相容），以下是新增或修改的部分。之後還會加入 v3（知識測驗、收集裝扮、日夜循環、計時挑戰），設計時請預留彈性，但現在不要實作。
+
+## 新的遊戲流程
+- 12 顆晶石中，每個生態區有 **1 顆放在平台挑戰的頂端**（要跳上石柱、樹樁、冰柱等才拿得到），另 1 顆維持原本的地面擺放。
+- 指南針一開始**沒有箭頭**，只顯示目前所在生態區與該區剩餘晶石數。完成居民任務可以得到 **地圖碎片**，逐步升級：
+  - Lv0（0 片）：無箭頭。靠近機器人「嗶嗶」會給一次 20 秒的「訊號」，訊號期間顯示指向最近晶石的箭頭與距離（每台機器人冷卻 60 秒）。
+  - Lv1（1 片）：常駐箭頭指向最近的晶石，不顯示距離。
+  - Lv2（2 片）：箭頭加距離；目標也包含種子、荒地、進行中任務的目標。
+  - Lv3（3 片以上）：再加上右上角的雷達小地圖（附近 30 單位內的所有目標與居民）。
+- 6 個生態區各有一位任務居民，各給 1 片地圖碎片（共 6 片；超過 3 片的碎片在 v3 會換成裝扮獎勵，現在只要記錄數量）。
+- 星球完全恢復（勝利）需要：12 晶石 + 8 棵樹 + 6 個任務。恢復度 = (晶石 + 樹 + 任務) / 26。
+
+## 任務（邏輯在 quests.js，模型在 characters.js）
+| 生態區 | 居民 | 任務 |
+|---|---|---|
+| meadow | 咩咩村長（羊） | 找回 3 隻走失的小雞：碰到小雞後牠會排隊跟著你，帶回雞舍（world.questSpots.meadow.home） |
+| forest | 松鼠栗栗 | 收集 5 顆松果，其中至少 2 顆在森林平台挑戰上（world.challenges 的 spots） |
+| desert | 駱駝阿沙 | 到極地的冰塊點拿一塊冰（world.questSpots.polar.ice），在 120 秒內帶回沙漠；冰會在頭上慢慢變小，融化了要重拿 |
+| polar | 企鵝媽媽 | 找到 3 隻企鵝寶寶（其中 1 隻在極地平台挑戰頂端），牠們會跟著你回到媽媽身邊 |
+| volcano | 岩岩博士（地質機器人） | 60 秒內依序踩過 3 個量測點（在火山平台挑戰上）；超時就重來 |
+| ocean | 燈塔海龜 | 收集 3 顆發光海星（在海上踏石與海蝕柱上），帶回燈塔，燈塔會亮起來 |
+
+## 檔案所有權（v2）
+| 檔案 | 擁有者 |
+|---|---|
+| `js/main.js`, `js/config.js`, `js/utils.js`, `index.html`, `style.css` | 整合者 |
+| `js/world.js` | 分身 1 |
+| `js/player.js`, `js/characters.js`（新） | 分身 2 |
+| `js/input.js`, `js/cameraRig.js`, `js/radar.js`（新）, `css/controls.css` | 分身 3 |
+| `js/gameplay.js`, `js/quests.js`（新）, `js/content.js` | 分身 4 |
+| `js/ui.js`, `js/audio.js`, `js/effects.js`, `css/ui.css` | 分身 5 |
+
+## API 新增
+
+### world（分身 1）
+```js
+world.platforms   // Array<{ id, kind, dir: Vector3, radius, top, bottom, bounce? }>
+                  //  dir：中心方向（單位向量）；radius：頂面水平半徑；top：頂面離星球中心的半徑；
+                  //  bottom：底面半徑（落地的柱子 = 地面高度以下；浮空平台 > 地面）；bounce：有值就是彈跳蘑菇，落上去以這個速度往上彈
+world.getSupportRadius(dir, currentRadius) // → number：腳下最高可站立的表面 = max(地面, 所有覆蓋 dir 且 top <= currentRadius + 0.4 的平台頂面)
+world.lastSupport  // 最近一次 getSupportRadius 選中的平台物件（是地面時為 null）
+world.challenges  // Array<{ id, biome, name, start: Vector3, goal: Vector3, spots: Vector3[] }>
+                  //  每個生態區 1 個；goal = 晶石懸浮的世界座標（在最高平台上方約 1.1）；spots = 其他平台頂面上的點（放任務物品用，每個挑戰至少 3 個）
+world.questSpots  // { [biomeId]: { npc: Vector3, home?: Vector3, ice?: Vector3, lighthouse?: Vector3 } }
+                  //  npc：居民站的位置（平坦、無障礙、不在水裡）；meadow.home = 雞舍門口；polar.ice = 拿冰的地方；ocean.lighthouse = 燈塔門口
+world.setLighthouseLit(bool) // 燈塔亮燈
+```
+- 平台挑戰的難度：相鄰平台高度差 ≤ 1.7、水平間隙 1.2–3.2（角色跳高約 2.3、跑跳水平約 6）。從地面走到第一階要很明顯。每個挑戰 5–9 個平台，可加 1–2 個彈跳蘑菇（bounce 約 17–19）。
+- 平台不放進 `world.obstacles`（由 player 自己處理側面碰撞），但其他道具不可和平台重疊。
+
+### player（分身 2）
+- 站立改用 `world.getSupportRadius`；平台側面碰撞（腳低於頂面 0.4 以上又在半徑內 → 推出去）；從下方撞到浮空平台底部會停住上升；落到 `bounce` 平台時彈起並呼叫 `player.onBounce()`。
+- 可變跳躍高度：`input.jumpHeld` 提早放開時截短上升。
+- `player.supportPlatform`：目前站著的平台或 null。
+- `player.setCarry(kind | null)`、`player.setCarryScale(s)`：頭上頂著的東西（目前只有 `'ice'`），縮放用來表示融化。
+
+### characters.js（分身 2，新）
+```js
+export function createCharacter(kind) // kind: 'sheepElder' | 'squirrel' | 'camel' | 'penguinMom' | 'penguinChick' | 'chick' | 'geoBot' | 'turtle'
+  → { object, update(dt, { moving, speed }), setHappy(bool), headHeight }
+  // object 原點在腳底，+Y 朝上、+Z 朝前；放置與移動由 quests.js 負責（utils.placeOnSphere）
+export function createItem(kind)      // kind: 'pinecone' | 'starfish' | 'mapFragment' | 'stationFlag' | 'iceBlock' → THREE.Object3D
+```
+
+### input（分身 3）
+- `state.jumpHeld`（boolean）、`state.interactPressed`（edge：鍵盤 F 或 Enter、手把 X/Y、觸控互動鈕）。
+- `input.setInteractHint(label | null)`：觸控時在跳躍鈕左邊顯示情境互動鈕（64px，`right: 124px+S右`、`bottom: 40px+S下`），例如「💬 對話」。
+
+### cameraRig（分身 3）
+- 鏡頭不可進入平台柱體內；站在高處時稍微拉遠、俯角加大，方便看到下一階。
+
+### radar.js（分身 3，新）
+```js
+export function createRadar({ root }) → { update(nav, player, camera), setVisible(bool) }
+// 圓形小地圖，放在 root（#touch）裡、右上角設定鈕下方：top: 84px+S上、right: 16px+S右，桌機 112px、手機 96px。
+// 以玩家為中心、鏡頭朝向為上，顯示 nav.radar 裡的點（依 kind 用不同圖示/顏色）。nav.radar 為 null 時隱藏。
+```
+
+### gameplay / quests（分身 4）
+```js
+gameplay.getProgress()   // 新增 quests, totalQuests, fragments
+gameplay.getNavInfo()    // → 同一個物件（每次就地更新）：
+  // { level, fragments, ping (剩餘秒數), showArrow, showDistance, target: {position,label}|null,
+  //   biome: {id,name,icon}, biomeLeft: {crystals, total}, radar: Array<{position, kind}>|null }
+  //   radar kind: 'crystal' | 'seed' | 'plot' | 'npc' | 'quest'
+gameplay.getInteractHint() // → string | null（例如「對話」），靠近任務居民時
+gameplay.interact()        // 玩家按下互動
+// getNearestTarget() 保留（= getNavInfo().target）
+```
+- 第一次靠近任務居民（2.6 內）自動開啟對話；之後要按互動。任務狀態：未接 → 進行中 → 完成（回報居民後給碎片）。
+- 存檔延伸要能讀 v1 的存檔。
+
+### ui（分身 5）
+```js
+ui.showDialogue({ name, icon, lines: string[], choices?: [{label, value}] }) // → Promise<value>；逐字顯示、點一下下一句；屬於 modal
+ui.setQuests(list)       // [{ id, icon, title, progress: '1/3' 或 '剩 42 秒', state: 'active'|'done' }]：左側任務追蹤
+ui.setNav(nav)           // 依 nav.level 顯示指南針（取代 setTarget；setTarget 保留相容）
+ui.setPrompt(text|null)  // 畫面下方中央的小提示（桌機的「F 對話」）
+ui.showFragment({ fragments, level, title, text }) // 取得地圖碎片的慶祝彈窗（modal）
+// updateProgress 多一個「📜 任務 2/6」，勝利畫面統計加上任務
+```
+audio 新增：'bounce' | 'talk' | 'quest' | 'questDone' | 'fragment' | 'tick' | 'ping'
+
+## 主迴圈新增（整合者）
+```
+if (input.state.interactPressed) gameplay.interact()
+const hint = gameplay.getInteractHint(); input.setInteractHint(hint); ui.setPrompt(hint && !input.isTouch ? `F ${hint}` : null)
+const nav = gameplay.getNavInfo(); ui.setNav(nav); radar.update(nav, player, camera)
+player.onBounce = () => audio.play('bounce')
+```
