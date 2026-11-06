@@ -385,3 +385,85 @@ effects.trail(position, up, kind) // kind: 'leaf' | 'star' | 'bubble' | 'snow'�
 - `createUI` 的 callbacks 新增：getWardrobe、onEquip、onWardrobeOpen（切換鏡頭 closeup/follow）、getJournal、onRetryQuiz、onDayNight、canTimeTrial、onTimeTrial。
 - `player.onStep` 時若有 trail → `effects.trail(...)`；`world.isNight()` 變化時 → `audio.setNight()`。
 - 存檔加上時間與日夜循環開關。
+
+---
+
+# v4：放慢移動、可選角色、更多地形
+
+v1–v3 合約全部保留。新常數在 `config.js`：`WALK_SPEED` 5.2、`RUN_SPEED` 8.4（原本 7.5 / 12），
+任務時限與計時獎牌門檻已按比例放寬（`ICE_MELT_TIME` 170、`VOLCANO_TIME` 85、`TRIAL_MEDALS` 130/200/310），
+新增 `SPEED_SCALES`（慢 0.8／標準 1／快 1.3）與 `CHARACTERS`（選角順序）。**任何寫死的秒數文字都要改成讀常數。**
+
+## 玩法
+- **移動速度設定**：設定裡「移動速度：慢／標準／快」，預設標準（已比 v3 慢約 3 成）。
+- **選角**：按「開始旅程」（新遊戲）後先進入選角畫面；「繼續旅程」直接用存檔裡的角色。衣櫥多一個「角色」分頁可以隨時換。
+  5 位原創角色，共用同一套骨架與動畫（帽子、圍巾、搬冰都要能用）：
+  | id | 名字 | 造型重點 |
+  |---|---|---|
+  | wanderer | 小旅人 | 現在的橘色兜帽（預設） |
+  | fox | 狐狸探險家 | 狐狸耳朵兜帽、蓬鬆尾巴、綠色外套 |
+  | astro | 太空小子 | 白色太空衣、圓頭盔與小天線、背上小噴射背包 |
+  | bear | 熊熊 | 熊耳朵棕色連帽衣、圓尾巴 |
+  | cloud | 雲朵仙子 | 蓬鬆的雲朵頭髮、淺藍衣服、小翅膀 |
+  角色只是外觀，不影響能力。
+- **地形**：星球上加入明顯的地形，每種地形有一塊「地形知識牌」，走近按互動（或第一次走近自動）會跳出地形知識卡和一題測驗，收進圖鑑的「地形」分頁：
+  | id | 地形 | 位置建議 | 重點 |
+  |---|---|---|---|
+  | mountain | 高山 | 森林與北極之間 | 可以走上去的山脊，山頂積雪，山頂有瞭望點 |
+  | river | 河流與瀑布 | 從高山流經森林注入海洋 | 懸崖瀑布、可以涉水的淺河、木橋 |
+  | lake | 湖泊 | 草原與森林交界 | 平靜的湖、湖邊小碼頭 |
+  | canyon | 峽谷 | 沙漠 | 一層層顏色不同的岩壁（沉積岩層）、吊橋 |
+  | glacier | 冰河 | 極地 | 冰舌延伸到海邊、冰裂縫 |
+  | terraces | 梯田 | 草原外圍山坡 | 一階一階的田（可以走上去） |
+  | arch | 海蝕拱門 | 海岸 | 可以從底下走過、頂上可以站的天然拱門 |
+  | delta | 三角洲 | 河口 | 分岔的小水道與沙洲 |
+
+## 檔案所有權（v4，同 v3）
+`main.js`、`config.js`、`utils.js`、`index.html`、`style.css` → 整合者；`world.js` → 分身 1；`player.js`、`characters.js` → 分身 2；
+`input.js`、`cameraRig.js`、`radar.js`、`timetrial.js`、`controls.css` → 分身 3；`gameplay.js`、`quests.js`、`content.js`、`cosmetics.js` → 分身 4；
+`ui.js`、`audio.js`、`effects.js`、`ui.css` → 分身 5。
+
+## API 新增
+
+### world（分身 1）
+```js
+world.landforms   // Array<{ id, name, icon, biome, sign: Vector3 /* 知識牌前方的地面點 */, center: Vector3 }>（上表 8 個）
+// getGroundRadius / getSupportRadius / isWater / isFree 都要反映新地形（河流、湖泊是可涉水的淺水：isWater = true，地面 = 水面下約 0.35）
+// 既有的平台挑戰、任務地點、祕密點、村莊與起點都不能被新地形破壞（必要時移動新地形，不要移動舊東西）
+```
+
+### player / characters（分身 2）
+```js
+player.setCharacter(id)    // CHARACTERS 之一；立即換外觀，帽子/圍巾/搬冰/動畫照常
+player.character           // 目前角色 id
+player.setSpeedScale(s)    // 乘在 WALK/RUN 速度上（SPEED_SCALES 的值）
+export const CHARACTER_INFO // { [id]: { name, desc, icon } }（從 characters.js 或 player.js 匯出；選角畫面用）
+```
+
+### cameraRig（分身 3）
+```js
+cameraRig.setMode('select') // 選角用：角色正面特寫置中偏上（下方留給選角卡片），慢慢轉動展示
+```
+- 用新的速度重新確認計時挑戰獎牌門檻合理（金牌要努力、銅牌一般玩家拿得到），把建議值回報給整合者。
+
+### gameplay / content（分身 4）
+```js
+gameplay.getCharacter() / gameplay.setCharacter(id) // 存在存檔裡；setCharacter 會呼叫 player.setCharacter
+// 地形知識牌：靠近 world.landforms[i].sign（INTERACT_RADIUS）→ getInteractHint() 回傳「看看」→ interact() → ui.showFact(地形卡) → ui.showQuiz
+// getJournal() 多一個 landforms: [{ id, name, icon, biome, collected, title, text, quiz }]
+// getProgress() 多 landforms / totalLandforms（不列入勝利條件，是額外收集）
+```
+- content.js：8 則地形知識（繁中、正確、適合小朋友）與 8 題測驗；所有提到秒數的台詞改用 config 常數。
+- 確認在新速度下：冰塊任務（極地→沙漠）用跑的時間足夠且有一點緊張感；火山量測時限合理。回報實際路程秒數。
+
+### ui（分身 5）
+```js
+ui.showCharacterSelect({ characters: [{ id, name, desc, icon }], current }) // → Promise<id>；呼叫 callbacks.onPreviewCharacter(id) 讓主程式即時換外觀
+// 衣櫥加「角色」分頁（callbacks.getCharacters()、callbacks.onSelectCharacter(id)）
+// 圖鑑加「地形」分頁（getJournal().landforms）
+// 設定加「移動速度」慢／標準／快（callbacks.onSpeed(key)、callbacks.getSpeed()）
+```
+
+## 主程式（整合者）
+- 新遊戲：`onStart` → 鏡頭 `select` → `await ui.showCharacterSelect` → `gameplay.setCharacter` → 鏡頭 `follow`。
+- 速度設定存在 localStorage（`SAVE_KEY + ':speed'`），啟動時 `player.setSpeedScale`。

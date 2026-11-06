@@ -12,8 +12,8 @@ export const MAX_TERRAIN = 3.2;      // 地形最高約可高出基準多少（�
 
 // 角色物理
 export const GRAVITY = 32;
-export const WALK_SPEED = 7.5;
-export const RUN_SPEED = 12;
+export const WALK_SPEED = 5.2;   // v4：放慢約 3 成（設定可調 慢/標準/快）
+export const RUN_SPEED = 8.4;
 export const JUMP_SPEED = 12.5;
 export const PLAYER_RADIUS = 0.45;   // 與障礙物碰撞的半徑
 export const PLAYER_HEIGHT = 1.4;
@@ -90,8 +90,8 @@ export const INTERACT_RADIUS = 2.6;     // 與任務居民對話的距離
 export const PING_DURATION = 20;        // 機器人訊號持續秒數（指南針 Lv0）
 export const PING_COOLDOWN = 60;        // 每台機器人的訊號冷卻
 export const COMPASS_LEVELS = [0, 1, 2, 3]; // 碎片數 → 指南針等級（3 片以上 = Lv3）
-export const ICE_MELT_TIME = 120;       // 駱駝任務：冰塊融化時間
-export const VOLCANO_TIME = 60;         // 火山任務：量測時限
+export const ICE_MELT_TIME = 170;       // 駱駝任務：冰塊融化時間
+export const VOLCANO_TIME = 85;          // 火山任務：量測時限
 export const RADAR_RANGE = 30;          // 雷達顯示範圍（世界單位）
 export const TOTAL_QUESTS = 6;
 
@@ -99,4 +99,8 @@ export const TOTAL_QUESTS = 6;
 export const DAY_LENGTH = 480;          // 一整天（秒）：白天約 5 分、夜晚約 3 分
 export const START_TIME_OF_DAY = 0.3;   // 0 = 午夜、0.25 日出、0.5 正午、0.75 日落
 export const TRIAL_COUNT = 8;           // 計時挑戰的時光晶石數
-export const TRIAL_MEDALS = { gold: 90, silver: 140, bronze: 220 }; // 秒
+export const TRIAL_MEDALS = { gold: 130, silver: 200, bronze: 310 }; // 秒（v4 配合放慢的速度）
+
+// ---- v4：可選角色、移動速度設定、地形 ----
+export const SPEED_SCALES = { slow: 0.8, normal: 1, fast: 1.3 }; // 設定「移動速度」
+export const CHARACTERS = ['wanderer', 'fox', 'astro', 'bear', 'cloud']; // 可選的玩家角色 id（順序 = 選角畫面順序）
