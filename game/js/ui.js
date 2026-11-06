@@ -502,6 +502,8 @@ export function createUI({ root, audio, callbacks = {} }) {
     });
   }
   function setupFact(f) {
+    // 整合者：地形知識牌用不同的標題
+    factKicker.textContent = f.kind === 'landform' ? '發現新地形！' : '找到知識晶石！';
     {
       factIcon.textContent = f.icon || '💎';
       factTitle.textContent = f.title || '';

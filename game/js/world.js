@@ -136,6 +136,305 @@ function terrainHeight(x, y, z) {
   return h;
 }
 
+// ===========================================================================
+// v4：地形（高山、河流與瀑布、湖泊、峽谷、冰河、梯田、海蝕拱門、三角洲）
+// 全部是方向的確定性函式，疊加在 terrainHeight 上（heightAt）；網格在這些區域用細格點（見 createWorld）
+// ===========================================================================
+const D2R = Math.PI / 180;
+function dirLL(lon, lat, out = new THREE.Vector3()) {
+  const a = lon * D2R, b = lat * D2R;
+  return out.set(Math.cos(b) * Math.sin(a), Math.sin(b), Math.cos(b) * Math.cos(a));
+}
+/** 局部座標系（指數映射）：x 沿 ex（預設朝東）、y 沿 ey（預設朝北），單位 = 地表世界長度 */
+function frameAt(center, east = null) {
+  const up = center.clone().normalize();
+  const ex = east ? east.clone() : new THREE.Vector3(0, 1, 0).cross(up);
+  ex.addScaledVector(up, -ex.dot(up));
+  if (ex.lengthSq() < 1e-8) ex.set(1, 0, 0).addScaledVector(up, -up.x);
+  ex.normalize();
+  const ey = new THREE.Vector3().crossVectors(up, ex).normalize();
+  return { up, ex, ey };
+}
+const LC = new Float64Array(2);
+/** 單位方向 → 局部 (x, y)（寫入 out），回傳與中心的 cos */
+function toLocal(F, x, y, z, out = LC) {
+  const u = F.up;
+  const c = x * u.x + y * u.y + z * u.z;
+  const tx = x - u.x * c, ty = y - u.y * c, tz = z - u.z * c;
+  const tl = Math.hypot(tx, ty, tz);
+  if (tl < 1e-12) { out[0] = 0; out[1] = 0; return c; }
+  const k = (Math.atan2(tl, c) * R) / tl;
+  out[0] = (tx * F.ex.x + ty * F.ex.y + tz * F.ex.z) * k;
+  out[1] = (tx * F.ey.x + ty * F.ey.y + tz * F.ey.z) * k;
+  return c;
+}
+function fromLocal(F, x, y, out = new THREE.Vector3()) {
+  const d = Math.hypot(x, y);
+  if (d < 1e-12) return out.copy(F.up);
+  const a = d / R, s = Math.sin(a) / d;
+  return out.copy(F.up).multiplyScalar(Math.cos(a)).addScaledVector(F.ex, x * s).addScaledVector(F.ey, y * s).normalize();
+}
+/** 折線（局部平面座標）：P = [x0,y0,x1,y1...]、S = 累積長度 */
+function makePolyline(pts) {
+  const n = pts.length, P = new Float64Array(n * 2), S = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    P[i * 2] = pts[i][0]; P[i * 2 + 1] = pts[i][1];
+    if (i) S[i] = S[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+  }
+  return { n, P, S, len: S[n - 1] };
+}
+const PQ = { d: 0, s: 0, i: 0, t: 0, side: 0 };
+/** 最近點：d 距離、s 弧長、i 段、t 段內參數、side 左(+)/右(−) */
+function polyNearest(pl, x, y, out = PQ) {
+  const P = pl.P;
+  let best = Infinity, bi = 0, bt = 0, bside = 0;
+  for (let i = 0; i < pl.n - 1; i++) {
+    const ax = P[i * 2], ay = P[i * 2 + 1], dx = P[i * 2 + 2] - ax, dy = P[i * 2 + 3] - ay;
+    let t = ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy);
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const ex = ax + dx * t - x, ey = ay + dy * t - y;
+    const d2 = ex * ex + ey * ey;
+    if (d2 < best) { best = d2; bi = i; bt = t; bside = dx * (y - ay) - dy * (x - ax); }
+  }
+  out.d = Math.sqrt(best); out.i = bi; out.t = bt; out.side = bside >= 0 ? 1 : -1;
+  out.s = pl.S[bi] + bt * (pl.S[bi + 1] - pl.S[bi]);
+  return out;
+}
+/** 折線上弧長 s 的點與單位切線（寫入 out[0..3]） */
+function polyAt(pl, s, out) {
+  const S = pl.S, P = pl.P;
+  let i = 0;
+  while (i < pl.n - 2 && S[i + 1] < s) i++;
+  const L = S[i + 1] - S[i] || 1, t = clamp((s - S[i]) / L, 0, 1);
+  const dx = P[i * 2 + 2] - P[i * 2], dy = P[i * 2 + 3] - P[i * 2 + 1];
+  out[0] = P[i * 2] + dx * t; out[1] = P[i * 2 + 1] + dy * t;
+  out[2] = dx / L; out[3] = dy / L;
+  return out;
+}
+const lerpArr = (A, i, t) => A[i] + (A[i + 1] - A[i]) * t;
+
+// ---------------------------------------------------------------------------
+// 東區水系：高山 → 瀑布 → 河流 → 湖泊 → 河流 → 三角洲（同一個局部座標 EF：x 東、y 北）
+// ---------------------------------------------------------------------------
+const EF = frameAt(dirLL(45, 20));
+const MT = { H: 5.6, Rm: 7.6, top: 1.25, shelfH: 2.45, lip: 6.2 };
+MT.dir = fromLocal(EF, 5.5, 17.5);
+const MF = frameAt(MT.dir);
+const MT_COS = Math.cos((MT.Rm + 0.6) / R);
+// 河流中心線（EF 平面座標）、半寬、氾濫平原寬、融入原地形的寬度
+const RIVER_DEF = [
+  // x, y, 半寬, 平原, 融合
+  [5.0, 13.94, 0.42, 0.2, 0.8],   // 山泉
+  [4.84, 12.8, 0.55, 0.25, 0.9],
+  [4.64, 11.36, 0.62, 0.25, 0.9],  // 瀑布頂
+  [4.59, 11.0, 0.7, 0.3, 1.0],     // 瀑布底
+  [4.46, 10.15, 1.2, 0.5, 1.4],    // 瀑布潭
+  [3.85, 7.2, 0.85, 1.0, 1.8],
+  [3.6, 4.4, 0.9, 1.3, 2.0],
+  [2.6, 2.4, 0.95, 1.6, 2.0],
+  [1.5, -0.5, 1.0, 1.8, 2.0],      // 湖心
+  [0.6, -4.3, 1.0, 1.8, 2.0],
+  [1.1, -7.7, 1.05, 2.0, 2.2],
+  [-0.3, -11.2, 1.1, 2.0, 2.2],
+  [-2.6, -14.6, 1.15, 2.0, 2.2],
+  [-4.3, -17.8, 1.2, 1.8, 2.0],
+  [-5.5, -20.9, 1.3, 1.5, 1.8],    // 三角洲頂點
+];
+const RIVER = makePolyline(RIVER_DEF);
+const RW = Float64Array.from(RIVER_DEF, (r) => r[2]);
+const RFP = Float64Array.from(RIVER_DEF, (r) => r[3]);
+const RBW = Float64Array.from(RIVER_DEF, (r) => r[4]);
+const RIVER_LIP_S = RIVER.S[2], RIVER_FALL_S = RIVER.S[3];
+const LAKE = { x: 1.5, y: -0.5, r0: 3.4, fp: 1.4, bw: 2.0, wl: 0 };
+const lakeR = (th) => LAKE.r0 * (1 + 0.13 * Math.sin(2 * th + 1.0) + 0.07 * Math.sin(3 * th + 2.2));
+// 東區水系的範圍（快速排除）
+const EAST_DIR = fromLocal(EF, 0.5, -2);
+const EAST_COS = Math.cos(23.5 / R);
+// 瀑布方向（高山局部座標的方位角）
+const MT_FALL_TH = (() => { const d = fromLocal(EF, RIVER_DEF[2][0], RIVER_DEF[2][1]); toLocal(MF, d.x, d.y, d.z); return Math.atan2(LC[1], LC[0]); })();
+// 之字形登山步道（高山局部極座標 [半徑, 方位角°]）
+const TRAIL_PTS = [[8.6, 190], [6.2, 150], [4.6, 214], [3.25, 152], [1.95, 206], [0.5, 180]]
+  .map(([r, a]) => [r * Math.cos(a * D2R), r * Math.sin(a * D2R)]);
+const TRAIL = makePolyline(TRAIL_PTS);
+
+/** 高山（不含步道），回傳加在原地形上的高度 */
+function mountainRaw(mx, my) {
+  const rho = Math.hypot(mx, my);
+  if (rho >= MT.Rm) return 0;
+  const th = Math.atan2(my, mx);
+  const u = clamp((rho - MT.top) / (MT.Rm - MT.top), 0, 1);
+  const f = (1 - u) * (1 - u) * (1 + 2 * u);
+  const su = Math.sin(Math.PI * u);
+  let h = MT.H * f * (1 + 0.16 * Math.cos(3 * th + 0.9) * su + 0.07 * Math.cos(5 * th + 2.1) * su);
+  // 瀑布的岩棚：沿瀑布方向的一塊平台，外緣是懸崖（兩側緩緩降下 = 繞過懸崖的小路）
+  let dth = th - MT_FALL_TH; dth -= Math.round(dth / (2 * Math.PI)) * 2 * Math.PI;
+  const p = rho * Math.cos(dth), q = Math.abs(rho * Math.sin(dth));
+  if (p > 3 && p < MT.lip + 0.6 && q < 3.6) {
+    const m = (1 - smoothstep(1.5, 3.4, q)) * (1 - smoothstep(MT.lip, MT.lip + 0.32, p)) * smoothstep(3.2, 4.2, p);
+    h = Math.max(h, lerp(h, MT.shelfH, m));
+  }
+  return h;
+}
+const TRAIL_H = Float64Array.from(TRAIL_PTS, ([x, y]) => mountainRaw(x, y));
+TRAIL_H[TRAIL_H.length - 1] = MT.H;
+/** 高山（含步道的平台切面）：mx,my = 高山局部座標 */
+function mountainH(mx, my) {
+  let h = mountainRaw(mx, my);
+  const q = polyNearest(TRAIL, mx, my);
+  if (q.d < 1.25) {
+    const ht = lerpArr(TRAIL_H, q.i, q.t);
+    h = lerp(h, ht, 1 - smoothstep(0.55, 1.2, q.d));
+  }
+  return h;
+}
+/** 東區的「自然地形」（原地形 + 高山），用來決定河流水位 */
+function eastNatural(x, y, z) {
+  let h = terrainHeight(x, y, z);
+  if (x * MF.up.x + y * MF.up.y + z * MF.up.z > MT_COS) { toLocal(MF, x, y, z); h += mountainH(LC[0], LC[1]); }
+  return h;
+}
+// ---- 河流水位：沿中心線取樣兩岸最低的自然地形，往下游單調遞減；湖泊是平的 ----
+const RIVER_DS = 0.2;
+const RIVER_WL = new Float64Array(Math.ceil(RIVER.len / RIVER_DS) + 2);
+{
+  const pa = new Float64Array(4), v = new THREE.Vector3();
+  const n = RIVER_WL.length;
+  const raw = new Float64Array(n), inLake = new Uint8Array(n);
+  for (let k = 0; k < n; k++) {
+    const s = Math.min(k * RIVER_DS, RIVER.len);
+    polyAt(RIVER, s, pa);
+    polyNearest(RIVER, pa[0], pa[1]);
+    const w = lerpArr(RW, PQ.i, PQ.t) + 0.6;
+    let mn = Infinity;
+    for (const o of [-1, -0.5, 0, 0.5, 1]) {
+      fromLocal(EF, pa[0] - pa[3] * o * w, pa[1] + pa[2] * o * w, v);
+      mn = Math.min(mn, eastNatural(v.x, v.y, v.z));
+    }
+    raw[k] = mn - 0.42;
+    const lx = pa[0] - LAKE.x, ly = pa[1] - LAKE.y;
+    inLake[k] = Math.hypot(lx, ly) < lakeR(Math.atan2(ly, lx)) - 0.3 ? 1 : 0;
+  }
+  // 湖面：湖岸外一圈的最低自然地形
+  let ring = Infinity;
+  for (let i = 0; i < 32; i++) {
+    const th = (i / 32) * Math.PI * 2, rr = lakeR(th) + 1.2;
+    fromLocal(EF, LAKE.x + Math.cos(th) * rr, LAKE.y + Math.sin(th) * rr, v);
+    ring = Math.min(ring, eastNatural(v.x, v.y, v.z));
+  }
+  let cur = Infinity, lakeSet = false;
+  for (let k = 0; k < n; k++) {
+    if (inLake[k]) {
+      if (!lakeSet) { LAKE.wl = Math.min(cur, ring - 0.42); lakeSet = true; }
+      cur = LAKE.wl;
+    } else cur = Math.min(cur, raw[k]);
+    RIVER_WL[k] = Math.max(cur, SEA_H + 0.02);
+  }
+}
+const riverWL = (s) => {
+  const f = clamp(s / RIVER_DS, 0, RIVER_WL.length - 1.001), i = Math.floor(f);
+  return RIVER_WL[i] + (RIVER_WL[i + 1] - RIVER_WL[i]) * (f - i);
+};
+const RQ = { e: 0, wl: 0, fp: 0, bw: 0, lake: false, s: 0, pool: 0 };
+/** 河流 / 湖泊：離水邊的距離 e（< 0 = 水裡）與水位 */
+function riverInfo(ex, ey) {
+  polyNearest(RIVER, ex, ey);
+  const i = PQ.i, t = PQ.t;
+  RQ.e = PQ.d - lerpArr(RW, i, t);
+  RQ.fp = lerpArr(RFP, i, t); RQ.bw = lerpArr(RBW, i, t);
+  RQ.wl = riverWL(PQ.s); RQ.s = PQ.s; RQ.lake = false;
+  RQ.pool = i === 3 || i === 4 ? 1 - Math.abs(PQ.s - RIVER.S[4]) / 2.2 : 0;
+  const lx = ex - LAKE.x, ly = ey - LAKE.y, dL = Math.hypot(lx, ly);
+  if (dL < LAKE.r0 * 1.25 + 4) {
+    const eL = dL - lakeR(Math.atan2(ly, lx));
+    if (eL < RQ.e) { RQ.e = eL; RQ.wl = LAKE.wl; RQ.fp = LAKE.fp; RQ.bw = LAKE.bw; RQ.lake = true; }
+  }
+  return RQ;
+}
+function riverProfile(h, I) {
+  const e = I.e, wl = I.wl, outer = 0.45 + I.fp + I.bw;
+  if (e >= outer) return h;
+  let g;
+  if (e < -0.35) {
+    g = wl - 0.35;
+    if (I.lake) g -= 0.65 * smoothstep(-0.4, -2.6, e);
+    else if (I.pool > 0) g -= 0.45 * I.pool * smoothstep(-0.3, -1.0, e);
+  } else if (e < 0.45) g = wl - 0.35 + 0.57 * smoothstep(-0.35, 0.45, e);
+  else g = wl + 0.22 + 0.1 * smoothstep(0.45, 0.45 + I.fp, e);
+  return lerp(g, h, smoothstep(0.45 + I.fp, outer, e));
+}
+
+// ---- 三角洲（河口；局部座標 DF：x 朝外海，y 朝左） ----
+const DELTA_DIR = fromLocal(EF, -5.5, -20.9);
+const DF = frameAt(DELTA_DIR, fromLocal(EF, -7.6, -22.8).sub(DELTA_DIR));
+const DELTA_COS = Math.cos(11.5 / R);
+const DELTA_CH = [
+  { pts: [[-1.5, 0], [0.8, 0.05], [2.2, 0.2]], w0: 1.05, w1: 0.85 },
+  { pts: [[2.2, 0.2], [3.6, 1.5], [5.2, 2.5], [6.6, 4.0], [8.4, 5.2], [10.4, 6.2]], w0: 0.75, w1: 0.5 },
+  { pts: [[2.2, 0.2], [3.7, -1.1], [5.0, -2.6], [6.5, -3.5], [8.0, -5.1], [9.8, -6.6]], w0: 0.75, w1: 0.5 },
+  { pts: [[5.2, 2.5], [6.7, 1.8], [8.3, 1.6], [10.2, 1.2]], w0: 0.55, w1: 0.45 },
+  { pts: [[5.0, -2.6], [6.7, -1.5], [8.2, -1.25], [10.0, -1.6]], w0: 0.55, w1: 0.45 },
+].map((c) => Object.assign(c, { pl: makePolyline(c.pts) }));
+const DQ = { m: 0, c: 0 };
+/** 三角洲：沙洲遮罩 m 與水道遮罩 c */
+function deltaInfo(dx, dy) {
+  const r = Math.hypot(dx, dy), phi = Math.atan2(dy, dx);
+  let m;
+  if (dx < 0) m = 1 - smoothstep(1.0, 2.6, r);
+  else {
+    const Rf = 8.9 - 3.2 * (phi / 1.15) * (phi / 1.15);
+    m = (1 - smoothstep(Rf - 2.0, Rf + 0.4, r)) * (1 - smoothstep(0.95, 1.22, Math.abs(phi)));
+  }
+  let c = 0;
+  for (let k = 0; k < DELTA_CH.length; k++) {
+    const ch = DELTA_CH[k];
+    const q = polyNearest(ch.pl, dx, dy);
+    const w = lerp(ch.w0, ch.w1, q.s / ch.pl.len);
+    c = Math.max(c, 1 - smoothstep(w - 0.2, w + 0.3, q.d));
+  }
+  DQ.m = m; DQ.c = c;
+  return DQ;
+}
+function deltaApply(h, dx, dy, x, y, z) {
+  const I = deltaInfo(dx, dy);
+  if (I.m > 0) {
+    const r = Math.hypot(dx, dy);
+    const bar = SEA_H + 0.21 - 0.1 * Math.min(r, 9) / 9 + 0.05 * noise3(x * 14 + 2.2, y * 14 + 5.1, z * 14 + 8.3);
+    h = lerp(h, bar, I.m);
+  }
+  if (I.c > 0 && (I.m > 0.02 || h < SEA_H)) h = lerp(h, Math.min(h, SEA_H - 0.3), I.c);
+  return h;
+}
+
+/** 河流 / 湖泊在 (x,y,z) 的水面高度（相對 R）；不在範圍內回傳 NaN（三角洲直接用海面） */
+function eastWater(x, y, z) {
+  if (x * EAST_DIR.x + y * EAST_DIR.y + z * EAST_DIR.z < EAST_COS) return NaN;
+  toLocal(EF, x, y, z);
+  const I = riverInfo(LC[0], LC[1]);
+  return I.e < 0.45 + I.fp ? I.wl : NaN;
+}
+
+// ---------------------------------------------------------------------------
+// 總高度：原地形 + 各地形修改
+// ---------------------------------------------------------------------------
+const _hd = new Float64Array(2);
+function heightAt(x, y, z) {
+  let h = terrainHeight(x, y, z);
+  if (x * MF.up.x + y * MF.up.y + z * MF.up.z > MT_COS) { toLocal(MF, x, y, z); h += mountainH(LC[0], LC[1]); }
+  if (x * EAST_DIR.x + y * EAST_DIR.y + z * EAST_DIR.z > EAST_COS) {
+    toLocal(EF, x, y, z);
+    h = riverProfile(h, riverInfo(LC[0], LC[1]));
+  }
+  if (x * DF.up.x + y * DF.up.y + z * DF.up.z > DELTA_COS) {
+    toLocal(DF, x, y, z, _hd);
+    h = deltaApply(h, _hd[0], _hd[1], x, y, z);
+  }
+  return h;
+}
+/** 本地水面（河流、湖泊）：相對 R 的高度或 NaN */
+function localWaterH(x, y, z) {
+  return eastWater(x, y, z);
+}
+
 // ---------------------------------------------------------------------------
 // 二十面體細分格點（自己建，才能精確反查三角形 → getGroundRadius 與網格完全一致）
 // ---------------------------------------------------------------------------

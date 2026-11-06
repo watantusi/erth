@@ -90,8 +90,8 @@ export const INTERACT_RADIUS = 2.6;     // 與任務居民對話的距離
 export const PING_DURATION = 20;        // 機器人訊號持續秒數（指南針 Lv0）
 export const PING_COOLDOWN = 60;        // 每台機器人的訊號冷卻
 export const COMPASS_LEVELS = [0, 1, 2, 3]; // 碎片數 → 指南針等級（3 片以上 = Lv3）
-export const ICE_MELT_TIME = 170;       // 駱駝任務：冰塊融化時間
-export const VOLCANO_TIME = 85;          // 火山任務：量測時限
+export const ICE_MELT_TIME = 60;        // 駱駝任務：冰塊融化時間
+export const VOLCANO_TIME = 35;          // 火山任務：量測時限
 export const RADAR_RANGE = 30;          // 雷達顯示範圍（世界單位）
 export const TOTAL_QUESTS = 6;
 
