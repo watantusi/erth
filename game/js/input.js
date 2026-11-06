@@ -1,5 +1,6 @@
-// 操控（分身 3）：鍵盤、滑鼠、觸控（浮動搖桿 + 跳躍鈕 + 拖曳視角 + 雙指縮放）、遊戲手把。
-// 合約：createInput({ canvas, touchRoot }) → { state, isTouch, setEnabled, endFrame }
+// 操控（分身 3）：鍵盤、滑鼠、觸控（浮動搖桿 + 跳躍鈕 + 互動鈕 + 拖曳視角 + 雙指縮放）、遊戲手把。
+// 合約：createInput({ canvas, touchRoot }) → { state, isTouch, setEnabled, endFrame, setInteractHint }
+// v2：state.jumpHeld（持續按住跳躍）、state.interactPressed（edge：F / Enter / 手把 X、Y / 觸控互動鈕）
 import { clamp } from './utils.js';
 
 // ---- 可調參數 ----
@@ -20,13 +21,31 @@ const GAME_KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD',
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'ShiftLeft', 'ShiftRight', 'Space', 'KeyQ', 'KeyE',
+  'KeyF', 'Enter', 'NumpadEnter',
 ]);
+const INTERACT_KEYS = new Set(['KeyF', 'Enter', 'NumpadEnter']);
 const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
 const JUMP_SVG =
   '<svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">' +
   '<path d="M12 4.5 4.8 12.2a1.3 1.3 0 0 0 1.9 1.8L10.7 9.8V19a1.3 1.3 0 0 0 2.6 0V9.8l4 4.2a1.3 1.3 0 0 0 1.9-1.8Z" fill="currentColor"/>' +
   '</svg>';
+
+// 互動鈕圖示：label 開頭若本身是 emoji 就直接用，否則依關鍵字挑一個
+const ICON_RULES = [
+  [/對話|聊|說|問|回報|交/, '💬'],
+  [/種|栽/, '🌱'],
+  [/拿|撿|取|收|抱/, '✋'],
+  [/看|讀|查/, '👀'],
+  [/放|交給|給/, '🎁'],
+];
+function splitHint(label) {
+  const s = String(label).trim();
+  const m = s.match(/^(\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*)\s*(.*)$/u);
+  if (m) return { icon: m[1], text: m[2] };
+  for (let i = 0; i < ICON_RULES.length; i++) if (ICON_RULES[i][0].test(s)) return { icon: ICON_RULES[i][1], text: s };
+  return { icon: '✨', text: s };
+}
 
 function mq(query) {
   try { return !!(window.matchMedia && window.matchMedia(query).matches); } catch { return false; }
@@ -37,6 +56,8 @@ export function createInput({ canvas, touchRoot }) {
     moveX: 0, moveY: 0,
     run: false,
     jumpPressed: false,
+    jumpHeld: false,
+    interactPressed: false,
     lookX: 0, lookY: 0,
     zoom: 0,
   };
@@ -51,11 +72,16 @@ export function createInput({ canvas, touchRoot }) {
   container.innerHTML =
     '<div class="tew-joy idle"><div class="tew-joy-knob"></div></div>' +
     '<div class="tew-jump" role="button" aria-label="跳躍">' + JUMP_SVG + '<span class="tew-jump-label">跳</span></div>' +
+    '<div class="tew-act" role="button" aria-label="互動" aria-hidden="true">' +
+    '<span class="tew-act-ic"></span><span class="tew-act-label"></span></div>' +
     '<div class="tew-safe-probe"></div>';
   root.appendChild(container);
   const joyBase = container.querySelector('.tew-joy');
   const joyKnob = container.querySelector('.tew-joy-knob');
   const jumpBtn = container.querySelector('.tew-jump');
+  const actBtn = container.querySelector('.tew-act');
+  const actIcon = container.querySelector('.tew-act-ic');
+  const actLabel = container.querySelector('.tew-act-label');
   const probe = container.querySelector('.tew-safe-probe');
 
   function applyClasses() {
@@ -87,7 +113,7 @@ export function createInput({ canvas, touchRoot }) {
 
   // ---- 鍵盤 ----
   const keys = new Set();
-  let kbX = 0, kbY = 0, kbLook = 0, kbRun = false;
+  let kbX = 0, kbY = 0, kbLook = 0, kbRun = false, kbJump = false;
 
   function computeKeys() {
     const h = (c) => (keys.has(c) ? 1 : 0);
@@ -97,6 +123,7 @@ export function createInput({ canvas, touchRoot }) {
     kbX = x; kbY = y;
     kbLook = h('KeyE') - h('KeyQ');
     kbRun = keys.has('ShiftLeft') || keys.has('ShiftRight');
+    kbJump = keys.has('Space');
   }
 
   const isTypingTarget = (t) => !!t && t.nodeType === 1 &&
@@ -120,6 +147,16 @@ export function createInput({ canvas, touchRoot }) {
     const t = e.target;
     if (isTypingTarget(t)) return;
     if (!enabled) return;
+    if (INTERACT_KEYS.has(code)) {
+      if (code === 'KeyF') {
+        if (!e.repeat) state.interactPressed = true;
+      } else if (isGameTarget(t)) {
+        // Enter 只在焦點是畫面本身時當作互動；聚焦在按鈕上時交給按鈕
+        e.preventDefault();
+        if (!e.repeat) state.interactPressed = true;
+      }
+      return;
+    }
     if (code === 'Space' || code.startsWith('Arrow')) {
       if (isGameTarget(t)) {
         e.preventDefault();
@@ -319,20 +356,80 @@ export function createInput({ canvas, touchRoot }) {
     capture(jumpBtn, e.pointerId);
     state.jumpPressed = true;
     jumpBtn.classList.add('pressed');
+    recompute();
   }
   function onJumpUp(e) {
     if (e.pointerId !== jumpPtr) return;
     jumpPtr = -1;
     jumpBtn.classList.remove('pressed');
+    recompute();
   }
   function releaseJumpBtn() {
     jumpPtr = -1;
     jumpBtn.classList.remove('pressed');
   }
 
+  // ---- 情境互動鈕（觸控） ----
+  let actPtr = -1;
+  let hintLabel = null;     // 目前要求的提示（null = 無）
+  let hintShown = false;
+  let shownText = '';
+  function onActDown(e) {
+    if (e.pointerType !== 'mouse') setTouchMode(true);
+    if (e.cancelable) e.preventDefault();
+    e.stopPropagation();
+    if (!enabled || !hintShown) return;
+    if (actPtr !== -1) return;
+    actPtr = e.pointerId;
+    capture(actBtn, e.pointerId);
+    state.interactPressed = true;
+    actBtn.classList.add('pressed');
+  }
+  function onActUp(e) {
+    if (e.pointerId !== actPtr) return;
+    releaseActBtn();
+  }
+  function releaseActBtn() {
+    actPtr = -1;
+    actBtn.classList.remove('pressed');
+  }
+  function syncHint() {
+    const want = enabled && hintLabel !== null;
+    if (want) {
+      const text = hintLabel;
+      if (text !== shownText) {
+        const h = splitHint(text);
+        actIcon.textContent = h.icon;
+        actLabel.textContent = h.text;
+        actBtn.setAttribute('aria-label', h.text || '互動');
+        actBtn.classList.toggle('no-label', !h.text);
+        if (hintShown) {
+          // 換內容時輕輕彈一下
+          actBtn.classList.remove('bump');
+          void actBtn.offsetWidth;
+          actBtn.classList.add('bump');
+        }
+        shownText = text;
+      }
+    }
+    if (want !== hintShown) {
+      hintShown = want;
+      actBtn.classList.toggle('show', want);
+      actBtn.setAttribute('aria-hidden', want ? 'false' : 'true');
+      if (!want) { releaseActBtn(); actBtn.classList.remove('bump'); }
+    }
+  }
+  /** 顯示/隱藏情境互動鈕（只在觸控模式看得到；label = null 隱藏） */
+  function setInteractHint(label) {
+    const v = label === null || label === undefined || label === '' || label === false ? null : String(label);
+    if (v === hintLabel) return;
+    hintLabel = v;
+    syncHint();
+  }
+
   // ---- 遊戲手把 ----
   let padConnected = false;
-  let padX = 0, padY = 0, padRun = false, padJumpPrev = true;
+  let padX = 0, padY = 0, padRun = false, padJumpPrev = true, padJump = false, padActPrev = true;
   const padBtn = (gp, i) => {
     const b = gp.buttons[i];
     return !!b && (b.pressed || b.value > 0.5);
@@ -346,7 +443,7 @@ export function createInput({ canvas, touchRoot }) {
       if (pads[i] && pads[i].connected) { gp = pads[i]; break; }
     }
     if (!gp) {
-      if (padX || padY || padRun) { padX = 0; padY = 0; padRun = false; recompute(); }
+      if (padX || padY || padRun || padJump) { padX = 0; padY = 0; padRun = false; padJump = false; recompute(); }
       return;
     }
     const ax = gp.axes;
@@ -377,24 +474,31 @@ export function createInput({ canvas, touchRoot }) {
     const jump = padBtn(gp, 0);
     if (jump && !padJumpPrev) state.jumpPressed = true;
     padJumpPrev = jump;
+    padJump = jump && !padJumpBlocked;
+    if (!jump) padJumpBlocked = false;
+    const act = padBtn(gp, 2) || padBtn(gp, 3);
+    if (act && !padActPrev) state.interactPressed = true;
+    padActPrev = act;
     padRun = padBtn(gp, 5) || padBtn(gp, 7) || padBtn(gp, 10);
     recompute();
   }
-  function onPadConnected() { padConnected = true; padJumpPrev = true; }
+  // 啟用/連線當下已按住的按鈕不算（要放開再按）
+  let padJumpBlocked = true;
+  function onPadConnected() { padConnected = true; padJumpPrev = true; padActPrev = true; padJumpBlocked = true; }
   function onPadDisconnected() {
     try {
       const pads = navigator.getGamepads ? navigator.getGamepads() : [];
       padConnected = false;
       for (let i = 0; i < pads.length; i++) if (pads[i] && pads[i].connected) padConnected = true;
     } catch { padConnected = false; }
-    padX = 0; padY = 0; padRun = false;
+    padX = 0; padY = 0; padRun = false; padJump = false;
     recompute();
   }
 
   // ---- 合成輸出 ----
   function recompute() {
     if (!enabled) {
-      state.moveX = 0; state.moveY = 0; state.run = false;
+      state.moveX = 0; state.moveY = 0; state.run = false; state.jumpHeld = false;
       return;
     }
     let x, y;
@@ -408,6 +512,7 @@ export function createInput({ canvas, touchRoot }) {
     state.moveX = x;
     state.moveY = y;
     state.run = kbRun || joy.run || padRun;
+    state.jumpHeld = kbJump || jumpPtr !== -1 || padJump;
   }
 
   function clearHeld() {
@@ -418,7 +523,9 @@ export function createInput({ canvas, touchRoot }) {
     pinchDist = 0;
     if (mouse.dragging) { mouse.dragging = false; mouse.id = -1; canvas.style.cursor = ''; }
     releaseJumpBtn();
-    padX = 0; padY = 0; padRun = false; padJumpPrev = true;
+    releaseActBtn();
+    padX = 0; padY = 0; padRun = false; padJumpPrev = true; padActPrev = true;
+    padJump = false; padJumpBlocked = true;
     recompute();
   }
 
@@ -428,14 +535,17 @@ export function createInput({ canvas, touchRoot }) {
       enabled = v;
       clearHeld();
       state.jumpPressed = false;
+      state.interactPressed = false;
       state.lookX = 0; state.lookY = 0; state.zoom = 0;
     }
     applyClasses();
+    syncHint();
   }
 
   let lastT = performance.now();
   function endFrame() {
     state.jumpPressed = false;
+    state.interactPressed = false;
     state.lookX = 0;
     state.lookY = 0;
     state.zoom = 0;
@@ -470,6 +580,10 @@ export function createInput({ canvas, touchRoot }) {
     [jumpBtn, 'pointerup', onJumpUp, false],
     [jumpBtn, 'pointercancel', onJumpUp, false],
     [jumpBtn, 'lostpointercapture', onJumpUp, false],
+    [actBtn, 'pointerdown', onActDown, { passive: false }],
+    [actBtn, 'pointerup', onActUp, false],
+    [actBtn, 'pointercancel', onActUp, false],
+    [actBtn, 'lostpointercapture', onActUp, false],
     [container, 'contextmenu', preventDefault, false],
     [container, 'touchstart', preventDefault, { passive: false }],
     // iOS Safari 的雙指縮放手勢
@@ -491,6 +605,7 @@ export function createInput({ canvas, touchRoot }) {
     get enabled() { return enabled; },
     setEnabled,
     endFrame,
+    setInteractHint,
     dispose() {
       for (const [t, n, f, o] of listeners) t.removeEventListener(n, f, o);
       window.removeEventListener('resize', readSafe);
