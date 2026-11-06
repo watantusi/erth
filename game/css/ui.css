@@ -339,6 +339,9 @@
 .tw-toast.is-in { animation: tw-toast-in 0.45s var(--pop) forwards; }
 .tw-toast.is-out { animation: tw-toast-out 0.3s ease forwards; }
 @keyframes tw-toast-in { to { opacity: 1; transform: none; } }
+/* 直立手機：從下方（表情鈕上方）往上疊 */
+.tw-toasts.is-bottom { top: auto; bottom: calc(204px + var(--sb)); }
+.tw-toasts.is-bottom .tw-toast { transform: translateY(10px) scale(0.9); }
 @keyframes tw-toast-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-8px) scale(0.95); } }
 
 /* ---- 右上按鈕 ---- */
@@ -992,7 +995,8 @@
 .tw-prompt-t { overflow: hidden; text-overflow: ellipsis; }
 .tw-prompt:has(.tw-kbd) { padding-left: 7px; }
 /* 觸控裝置下方中央是操控區，萬一有提示就放在表情鈕上方的高度 */
-@media (pointer: coarse) and (orientation: portrait) { .tw-prompt { bottom: calc(212px + var(--sb)); } }
+@media (pointer: coarse) and (orientation: portrait) { .tw-prompt { bottom: calc(204px + var(--sb)); } }
+.tw-hud.has-prompt .tw-toasts.is-bottom { bottom: calc(256px + var(--sb)); }
 .tw-hud.is-dimmed .tw-prompt { opacity: 0; }
 .tw-hud.is-talking .tw-emote { opacity: 0; visibility: hidden; }
 

@@ -723,7 +723,7 @@ export function createUI({ root, audio, callbacks = {} }) {
   function dlgTick(now) {
     D.raf = 0;
     if (!D.typing) return;
-    const dt = Math.min(0.1, Math.max(0, (now - D.lastT) / 1000));
+    const dt = Math.min(0.25, Math.max(0, (now - D.lastT) / 1000)); // 幀率很低時也維持約略的速度
     D.lastT = now;
     if (current === 'dialogue') {
       D.budget += dt * DLG_CPS;
@@ -798,6 +798,8 @@ export function createUI({ root, audio, callbacks = {} }) {
     if (D.single) dlgPick(D.defaultValue);
   }
   dlg.m.addEventListener('click', () => dlgAdvance(false));
+  // 點背景不要搶走選項按鈕的焦點（鍵盤使用者可以繼續用方向鍵選）
+  dlg.m.addEventListener('mousedown', (e) => { if (!e.target.closest('button')) e.preventDefault(); });
   function abortDialogue() {
     D.typing = false;
     if (D.resolve) {
@@ -1013,6 +1015,7 @@ export function createUI({ root, audio, callbacks = {} }) {
     text = text ? String(text) : null;
     if (text === promptText) return;
     promptText = text;
+    hud.classList.toggle('has-prompt', !!text);
     if (!text) { prompt.classList.remove('is-visible'); return; }
     prompt.textContent = '';
     const m = /^([A-Za-z0-9]|Enter|Space|空白鍵)\s+(.+)$/.exec(text);
@@ -1311,12 +1314,24 @@ export function createUI({ root, audio, callbacks = {} }) {
   function layoutToasts() {
     if (!started) return;
     const st = parseFloat(getComputedStyle(safeProbe).paddingTop) || 0;
-    let top, width;
-    if (mqNarrow.matches) {
-      // 窄螢幕：放在左欄與右上雷達區的下方
-      const lb = leftCol.getBoundingClientRect().bottom;
-      top = Math.max(lb, st + RADAR_ZONE_BOTTOM) + 8;
+    let top = 0, width, cx = vw / 2, bottom = false;
+    if (mqNarrow.matches && vh >= vw) {
+      // 直立手機：上方已經被進度、指南針、任務與雷達佔滿，改放在下方操控區（表情鈕）上面、角色腳下
+      bottom = true;
       width = Math.min(vw * 0.88, 420);
+    } else if (mqNarrow.matches) {
+      // 窄的橫向畫面：放在上方，進度卡與右上按鈕之間
+      const pr = progress.getBoundingClientRect();
+      const tr = topRight.getBoundingClientRect();
+      const l = pr.right + 8, r = tr.left - 8;
+      if (r - l >= 160) {
+        top = pr.top;
+        cx = (l + r) / 2;
+        width = Math.min(420, r - l);
+      } else {
+        bottom = true;
+        width = Math.min(vw * 0.88, 420);
+      }
     } else {
       const cr = compass.getBoundingClientRect();
       top = (compassVisible && cr.height ? cr.bottom : st + 12) + 10;
@@ -1326,7 +1341,9 @@ export function createUI({ root, audio, callbacks = {} }) {
       const half = vw / 2 - Math.max(leftEdge, 140) - 8;
       width = Math.max(220, Math.min(420, half * 2));
     }
-    toasts.style.top = `${Math.round(top)}px`;
+    toasts.classList.toggle('is-bottom', bottom);
+    toasts.style.top = bottom ? '' : `${Math.round(top)}px`;
+    toasts.style.left = `${Math.round(cx)}px`;
     toasts.style.width = `${Math.round(width)}px`;
   }
   function relayout() {

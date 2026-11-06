@@ -45,7 +45,7 @@ const ISLANDS = [
   { dir: dirAt(OCEAN1, 0.37, 215), r: 0.08, h: 3.8 },
   { dir: dirAt(OCEAN2, 0.15, 120), r: 0.095, h: 3.25 },
   // v2：燈塔島（平頂較寬，放燈塔、海龜與海上踏石的起點）
-  { dir: dirAt(OCEAN1, 0.42, 300), r: 0.19, h: 3.3, top: 0.6, lighthouse: true },
+  { dir: dirAt(OCEAN2, 0.12, 250), r: 0.19, h: 3.3, top: 0.6, lighthouse: true },
 ];
 ISLANDS.forEach((I) => { I.cosR = Math.cos(I.r); I.cosTop = Math.cos(I.r * (I.top || 0.3)); });
 const LIGHT_ISLAND = ISLANDS[ISLANDS.length - 1];
@@ -608,10 +608,10 @@ function platTower(r, h, gy) {
 }
 function platStump(r, h, gy, k) {
   const parts = [];
-  parts.push(cyl(r, r * 1.04, -h, 0, 10, 0x8a5a3c, k));
+  parts.push(cyl(r, r * 1.04, -h, 0, 10, 0xa06a46, k));
   for (let i = 0; i < 7; i++) {
     const a = (i / 7) * Math.PI * 2 + k;
-    parts.push(part(new THREE.BoxGeometry(0.13, h - 0.15, 0.08), 0x6e4630, Math.sin(a) * r * 1.01, -h / 2 - 0.08, Math.cos(a) * r * 1.01, 0, a, 0));
+    parts.push(part(new THREE.BoxGeometry(0.13, h - 0.15, 0.08), 0x82553a, Math.sin(a) * r * 1.01, -h / 2 - 0.08, Math.cos(a) * r * 1.01, 0, a, 0));
   }
   parts.push(cap(r * 0.97, 10, 0xf0d9a8, 0.004, k));
   parts.push(ringTop(r * 0.3, r * 0.37, 10, 0xd8b47a), ringTop(r * 0.62, r * 0.68, 10, 0xd8b47a));
@@ -629,10 +629,10 @@ function platStump(r, h, gy, k) {
 }
 function platTreehouse(r, h, gy) {
   const parts = [];
-  parts.push(cyl(r, r * 1.05, -h, -0.35, 12, 0x8a5a3c));
+  parts.push(cyl(r, r * 1.05, -h, -0.35, 12, 0xa06a46));
   for (let i = 0; i < 9; i++) {
     const a = (i / 9) * Math.PI * 2;
-    parts.push(part(new THREE.BoxGeometry(0.16, h - 0.5, 0.1), 0x6e4630, Math.sin(a) * r * 1.01, -h / 2 - 0.2, Math.cos(a) * r * 1.01, 0, a, 0));
+    parts.push(part(new THREE.BoxGeometry(0.16, h - 0.5, 0.1), 0x82553a, Math.sin(a) * r * 1.01, -h / 2 - 0.2, Math.cos(a) * r * 1.01, 0, a, 0));
   }
   parts.push(...stripes(r, r, -0.35, 0, 12, 0xd9a066, 0xc98d55));   // 木平台
   parts.push(cap(r, 12, 0xe2b077));
@@ -698,7 +698,6 @@ function platMesa(r, h, gy, k) {
     parts.push(cyl(i === 0 ? r : rr, rr, y0, y1 + (i === 0 ? 0 : 0.001), 8, cols[(i + k) % 4], (i * 0.37 + k) % 1));
   }
   parts.push(cap(r * 0.985, 8, 0xf4d595, 0.004, k % 1));
-  parts.push(part(new THREE.IcosahedronGeometry(0.12, 0), 0xd9894f, r * 0.4, 0.02, -r * 0.3, 0, 0, 0, 1, 0.5, 1));
   for (let i = 0; i < 4; i++) {
     const a = i * 1.6 + k;
     parts.push(part(new THREE.IcosahedronGeometry(0.22 + (i % 2) * 0.12, 0), 0xd98c4e, Math.sin(a) * (r + 0.2), gy + 0.05, Math.cos(a) * (r + 0.2), 0, a, 0, 1, 0.6, 1));
@@ -708,7 +707,7 @@ function platMesa(r, h, gy, k) {
 function platIce(r, h, gy, k) {
   const parts = [];
   const th = (k * 0.7) % 1;
-  for (let i = 0; i < 6; i++) parts.push(cyl(r, r * 1.03, -h, -0.22, 1, i % 2 ? 0x9ad8f4 : 0xbdeafc, th + (i * Math.PI) / 3, Math.PI / 3, true));
+  for (let i = 0; i < 6; i++) parts.push(cyl(r, r * 1.03, -h, -0.22, 1, i % 2 ? [0xbfe9fb, 1.25] : [0xe2f7ff, 1.28], th + (i * Math.PI) / 3, Math.PI / 3, true));
   parts.push(cyl(r * 1.04, r * 1.04, -0.24, 0, 6, [0xf6fbff, 1.2], th));
   parts.push(cap(r * 1.0, 6, [0xffffff, 1.2], 0.004, th));
   for (let i = 0; i < 6; i++) {
@@ -725,15 +724,15 @@ function platIce(r, h, gy, k) {
 function platBasalt(r, h, gy, k) {
   const parts = [];
   const th = (k * 0.9) % 1;
-  for (let i = 0; i < 6; i++) parts.push(cyl(r, r, -h, 0, 1, i % 2 ? 0x463d42 : 0x574c52, th + (i * Math.PI) / 3, Math.PI / 3, true));
-  parts.push(cap(r, 6, 0x6e6266, 0.004, th));
+  for (let i = 0; i < 6; i++) parts.push(cyl(r, r, -h, 0, 1, i % 2 ? 0x6b5f66 : 0x82757b, th + (i * Math.PI) / 3, Math.PI / 3, true));
+  parts.push(cap(r, 6, 0x9a8d8f, 0.004, th));
   parts.push(part(new THREE.BoxGeometry(r * 1.1, 0.02, 0.06), 0xff8a3d, 0, 0.008, 0.1, 0, 0.5 + k, 0));
   parts.push(part(new THREE.BoxGeometry(r * 0.6, 0.02, 0.05), 0xffb347, r * 0.25, 0.009, -0.2, 0, 2.1 + k, 0));
   parts.push(cyl(r * 1.01, r * 1.01, -0.5, -0.42, 6, 0xff7a3d, th));
   // 根部的短柱碎石（矮於地面 0.5）
   for (let i = 0; i < 3; i++) {
     const a = th + i * 2.1 + 0.4;
-    parts.push(part(new THREE.CylinderGeometry(0.32, 0.32, 0.9, 6), i % 2 ? 0x574c52 : 0x463d42, Math.sin(a) * (r + 0.3), gy, Math.cos(a) * (r + 0.3), 0, a, 0));
+    parts.push(part(new THREE.CylinderGeometry(0.32, 0.32, 0.9, 6), i % 2 ? 0x82757b : 0x6b5f66, Math.sin(a) * (r + 0.3), gy, Math.cos(a) * (r + 0.3), 0, a, 0));
   }
   return parts;
 }
@@ -958,6 +957,30 @@ function hollowTreeParts() {
   // 門前的松果堆
   for (let i = 0; i < 4; i++) parts.push(part(new THREE.ConeGeometry(0.1, 0.22, 6), 0x8a5a3c, -0.9 + (i % 2) * 0.18, 0.1 + (i > 1 ? 0.12 : 0), 1.45 + (i % 2) * 0.1, Math.PI, 0, 0));
   return parts;
+}
+
+/** 燈塔光束：兩道往外漸暗的光錐 + 燈光暈（加法混色，頂點色由亮到黑 = 漸隱） */
+function lighthouseBeamGeo() {
+  const parts = [];
+  for (const sgn of [1, -1]) {
+    const g = new THREE.ConeGeometry(1.3, 10, 12, 4, true).toNonIndexed();
+    g.deleteAttribute('uv'); g.deleteAttribute('normal');
+    const pos = g.attributes.position, col = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) {
+      const k = Math.pow(clamp((pos.getY(i) + 5) / 10, 0, 1), 1.6); // 1 = 燈端
+      col[i * 3] = k; col[i * 3 + 1] = k * 0.95; col[i * 3 + 2] = k * 0.75;
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.translate(0, -5, 0);
+    g.rotateZ(sgn * (Math.PI / 2 - 0.07));
+    parts.push(g);
+  }
+  const halo = new THREE.IcosahedronGeometry(0.75, 1);
+  halo.deleteAttribute('uv'); halo.deleteAttribute('normal');
+  const hc = new Float32Array(halo.attributes.position.count * 3).fill(0.55);
+  halo.setAttribute('color', new THREE.BufferAttribute(hc, 3));
+  parts.push(halo);
+  return merge(parts);
 }
 
 // 去飽和（恢復度）注入
@@ -1569,7 +1592,10 @@ void main() {
   }
   /** 本地平面座標 (x 沿 f, y 沿 l；單位 = 世界單位，於半徑 Rs 處) → 單位方向 */
   function frameDir(F, x, y, Rs = R, out = new THREE.Vector3()) {
-    return out.copy(F.up).addScaledVector(F.f, x / Rs).addScaledVector(F.l, y / Rs).normalize();
+    const d = Math.hypot(x, y);
+    if (d < 1e-9) return out.copy(F.up);
+    const a = d / Rs, s = Math.sin(a) / d; // 球面上的「指數映射」：弧長 = 平面距離
+    return out.copy(F.up).multiplyScalar(Math.cos(a)).addScaledVector(F.f, x * s).addScaledVector(F.l, y * s).normalize();
   }
   const pol = (d, aDeg) => [d * Math.cos((aDeg * Math.PI) / 180), d * Math.sin((aDeg * Math.PI) / 180)];
   const groundPos = (dir) => dir.clone().normalize().multiplyScalar(getGroundRadius(dir));
@@ -1665,7 +1691,7 @@ void main() {
   const CHAIN = (k, r, h, gap, turn, extra) => Object.assign({ k, r, h, gap, turn }, extra || {});
 
   // ---- 草原：乾草堆 → 彈跳蘑菇 → 木桶 → 瞭望台（繞著瞭望台螺旋上升） ----
-  const meadowC = buildCourse({
+  buildCourse({
     id: 'meadow-lookout', biome: 'meadow', name: '乾草堆瞭望台', flag: 0xff6f91,
     center: dirAt(START, 0.58, 50), face: START, start: [7.4, -26],
     steps: [
@@ -1680,7 +1706,7 @@ void main() {
     spots: [[1], [2], [4], [5]],
   });
   // ---- 森林：巨大樹樁螺旋梯 → 樹屋平台 ----
-  const forestC = buildCourse({
+  buildCourse({
     id: 'forest-stumps', biome: 'forest', name: '樹樁螺旋梯', flag: 0x6cbf58,
     center: dirAt(FOREST, 0.3, 290), face: FOREST, start: [7.6, 0],
     steps: [
@@ -1695,7 +1721,7 @@ void main() {
     spots: [[1], [3], [4], [5]],
   });
   // ---- 沙漠：砂岩方山柱，向內盤旋到大方山 ----
-  const desertC = buildCourse({
+  buildCourse({
     id: 'desert-mesas', biome: 'desert', name: '砂岩方山跳跳', flag: 0xf08a4b,
     center: dirAt(DESERT, 0.53, 88), face: DESERT, start: [9.2, -30],
     steps: [
@@ -1709,9 +1735,9 @@ void main() {
     spots: [[1], [2], [3], [4]],
   });
   // ---- 極地：之字形冰柱，頂端是大冰台（企鵝寶寶在上面） ----
-  const polarC = buildCourse({
+  buildCourse({
     id: 'polar-icicles', biome: 'polar', name: '冰柱之字路', flag: 0x6ec6ff,
-    center: dirAt(POLS, 0.3, 40), face: POLS, start: [9.4, 0], heading: 180,
+    center: dirAt(POLS, 0.37, 45), face: POLS, start: [9.2, -16], heading: 180,
     steps: [
       STEP('ice', 1.0, 1.0, [6.8, 0]),
       CHAIN('ice', 0.95, 2.2, 1.6, 40),
@@ -1741,15 +1767,15 @@ void main() {
   // ---- 海洋：從燈塔島出發的踏石 → 小海蝕柱 → 高高的海蝕柱 ----
   const oceanC = buildCourse({
     id: 'ocean-stacks', biome: 'ocean', name: '海蝕柱踏石路', flag: 0x3fa7d6,
-    center: LIGHT_ISLAND.dir, face: OCEAN1, base: SEA_LEVEL, start: [2.9, 200], heading: 200,
+    center: LIGHT_ISLAND.dir, face: OCEAN2, base: SEA_LEVEL, start: [3.6, 95], heading: 95,
     steps: [
-      STEP('stone', 0.85, 0.45, [5.1, 200]),
+      STEP('stone', 0.85, 0.45, [5.9, 95]),
       CHAIN('stone', 0.8, 0.6, 1.75, 0),
-      CHAIN('stone', 0.85, 0.8, 1.75, 25),
-      CHAIN('stack', 0.9, 2.1, 1.8, 25),
-      CHAIN('stack', 0.95, 3.4, 1.85, 30),
-      CHAIN('stack', 1.0, 4.7, 1.9, 30),
-      CHAIN('stack', 1.5, 5.9, 1.95, 25),
+      CHAIN('stone', 0.85, 0.8, 1.75, 12),
+      CHAIN('stack', 0.9, 2.1, 1.9, 15),
+      CHAIN('stack', 0.95, 3.4, 1.9, 15),
+      CHAIN('stack', 1.0, 4.7, 1.9, 15),
+      CHAIN('stack', 1.5, 5.9, 1.95, 12),
     ],
     spots: [[1], [2], [4], [6, 0.55, 90]],
   });
@@ -1813,7 +1839,7 @@ void main() {
   // 火山：入口旁的研究小屋 + 警告牌（岩岩博士）
   {
     const F = volcanoC.F;
-    const d = frameDir(F, ...pol(17.4, -14));
+    const d = frameDir(F, ...pol(17.2, -24));
     landmarks.researchHut = d.clone();
     _look.copy(volcanoC.sd).sub(d);
     const m = placeStatic(hutParts(), d, 0, 1.0, 0.08, _look);
@@ -1829,9 +1855,9 @@ void main() {
   let lampGroup, lampMat, beamMat, beamPivot;
   {
     const F = oceanC.F;
-    const d = frameDir(F, ...pol(1.4, 20));
+    const d = frameDir(F, ...pol(1.4, 275));
     landmarks.lighthouse = d.clone();
-    _look.copy(frameDir(F, ...pol(2.5, 200))).sub(d);
+    _look.copy(frameDir(F, ...pol(2.5, 95))).sub(d);
     const m = placeStatic(lighthouseParts(), d, 0, 1.0, 0.1, _look);
     addObstacle(d, 1.4);
     reserve(LIGHT_ISLAND.dir, LIGHT_ISLAND.r * R);
@@ -1851,22 +1877,10 @@ void main() {
     lamp.position.set(0, 5.88, 0);
     lampGroup.add(lamp);
     beamMat = patch(new THREE.MeshBasicMaterial({
-      color: 0xfff0a8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
+      color: 0xfff0a8, vertexColors: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
       depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
     }));
-    const cone = (sgn) => {
-      const g = new THREE.ConeGeometry(1.25, 9, 12, 1, true);
-      g.translate(0, -4.5, 0);
-      g.rotateZ((sgn * Math.PI) / 2 + sgn * -0.06);
-      return g;
-    };
-    const beamGeo = merge([cone(1), cone(-1), new THREE.IcosahedronGeometry(0.7, 1)].map((g) => {
-      const n = g.index ? g.toNonIndexed() : g;
-      if (n !== g) g.dispose();
-      n.deleteAttribute('uv');
-      n.deleteAttribute('normal');
-      return n;
-    }));
+    const beamGeo = lighthouseBeamGeo();
     beamPivot = new THREE.Mesh(beamGeo, beamMat);
     beamPivot.name = 'lighthouseBeam';
     beamPivot.position.set(0, 5.88, 0);
@@ -2206,7 +2220,7 @@ void main() {
     lightCur = damp(lightCur, lightTarget, 2.2, dt);
     if (Math.abs(lightCur - lightTarget) < 1e-3) lightCur = lightTarget;
     lampMat.emissiveIntensity = 0.1 + 1.7 * lightCur;
-    beamMat.opacity = 0.3 * lightCur;
+    beamMat.opacity = 0.32 * lightCur;
     beamPivot.visible = lightCur > 0.01;
     beamPivot.rotation.y = t * 0.55;
   }
