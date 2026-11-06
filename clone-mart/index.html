@@ -2064,7 +2064,9 @@ const LEVELS = [
 const MAX_FAILS_ENDLESS = 5;
 // stable level ids for saving: indices shift when chapters are added. Keep the endless level LAST in LEVELS.
 const LEVEL_IDS_V1 = ['c1-1','c1-2','c1-3','c1-4','c1-5','c1-6','endless'];   // order of the v1 save (best keyed by index)
-LEVELS.forEach((L, i) => { if (!L.id) L.id = LEVEL_IDS_V1[i] || ('lv' + i); if (L.ch === undefined) L.ch = L.endless ? 0 : 1; });
+// a level without an explicit id gets 'endless' or 'c<chapter>-<n>' (n = its place in the chapter), never its array index:
+// chapter levels inserted before the endless level must not inherit the v1 ids by position
+{ const n = {}; LEVELS.forEach(L => { if (L.ch === undefined) L.ch = L.endless ? 0 : 1; if (!L.endless) n[L.ch] = (n[L.ch] || 0) + 1; if (!L.id) L.id = L.endless ? 'endless' : 'c' + L.ch + '-' + n[L.ch]; }); }
 { const EL = LEVELS.find(L => L.endless); if (EL && !EL.req) EL.req = {lv:'c1-6', stars:1}; }
 // chapters: `need` = stars earned in the previous chapter to open it; `theme` = applyTheme() id for its levels
 const CHAPTERS = [
@@ -4129,6 +4131,7 @@ function lvLabel(i){
   const same = LEVELS.filter(x => x.ch === L.ch && !x.endless);
   return '第 ' + L.ch + '-' + (same.indexOf(L) + 1) + ' 關';
 }
+function chapterGate(i){ const L = LEVELS[i], C = L && !L.req && CHAPTER(L.ch); return C && C.need && LEVELS.findIndex(x => x.ch === L.ch && !x.endless) === i ? C.need : 0; }   // ★ the previous chapter needs, for a chapter's first level
 function levelUnlocked(i){
   const L = LEVELS[i]; if (!L) return false;
   if (L.req){ const j = lvIndex(L.req.lv); return j >= 0 && bestOf(j).stars >= (L.req.stars || 1); }
@@ -4161,7 +4164,7 @@ function applyCosmetics(s){
   if (!s || !s.ch) return;
   const want = (G.equip && G.equip[s.role]) || {}, ch = s.ch;
   ch.cos = ch.cos || {};
-  for (const slot of ['hat','face','back']){
+  for (const slot of new Set(['hat','face','back'].concat(COSMETICS.map(c => c.slot), Object.keys(ch.cos)))){   // also slots added by new cosmetics
     const id = want[slot] || null;
     if ((ch.cos[slot] && ch.cos[slot].id) === id) continue;
     if (ch.cos[slot]){ ch.g.remove(ch.cos[slot].obj); ch.cos[slot] = null; }
@@ -4207,7 +4210,7 @@ function levelCard(i){
   const b = document.createElement('button'); b.type = 'button'; b.className = 'lv';
   const best = bestOf(i), open = levelUnlocked(i);
   const st = '★'.repeat(best.stars) + '<i>' + '★'.repeat(3 - best.stars) + '</i>' + (best.crown ? ' 👑' : '');
-  const lock = L.req ? lvLabel(lvIndex(L.req.lv)) + ' 拿到 ★ 解鎖' : '前一關拿到 ★ 解鎖';
+  const lock = L.req ? lvLabel(lvIndex(L.req.lv)) + ' 拿到 ★ 解鎖' : chapterGate(i) ? '上一章拿到 ★' + chapterGate(i) + ' 解鎖' : '前一關拿到 ★ 解鎖';
   b.innerHTML = `<span class="no">${L.endless ? 'ENDLESS' : 'LEVEL ' + lvLabel(i).replace(/[^0-9-]/g,'')}</span><span class="nm">${open ? '' : '🔒 '}${L.n}</span>` +
     `<span class="rc">${L.rec.map(r => RECIPES[r].ic).join('')}</span>${L.tw ? `<span class="tw">${L.tw}</span>` : ''}<span class="st">${st}</span>` +
     `<span class="bs">${open ? (best.score ? '最高 ' + fmt(best.score) : '還沒玩過') : lock}</span>`;
@@ -4340,7 +4343,7 @@ function updateEventChip(){
 }
 function showLevelIntro(L, i){
   const el = dz.intro; if (!el) return;
-  el.innerHTML = `<div class="no">${L.endless ? 'ENDLESS' : 'LEVEL ' + (i+1)}</div><div class="nm"></div><div class="tw"></div>`;
+  el.innerHTML = `<div class="no">${L.endless ? 'ENDLESS' : 'LEVEL ' + lvLabel(i).replace(/[^0-9-]/g,'')}</div><div class="nm"></div><div class="tw"></div>`;
   el.querySelector('.nm').textContent = L.n;
   el.querySelector('.tw').textContent = L.twist || L.desc;
   el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
@@ -4437,7 +4440,7 @@ function showResults(){
   const nb = $('#btnNextLv');
   nb.hidden = nx >= LEVELS.length;
   nb.disabled = !(nx < LEVELS.length && levelUnlocked(nx));
-  nb.textContent = nb.disabled ? '拿到 ★ 才能進下一關' : '下一關 ›';
+  nb.textContent = !nb.disabled ? '下一關 ›' : chapterGate(nx) ? '上一章要 ★' + chapterGate(nx) + ' 才能進下一章' : '拿到 ★ 才能進下一關';
   showScreen('results');
   const starsAfter = totalStars(), newRoles = ROLES.filter(r => r.need > starsBefore && r.need <= starsAfter);
   if (newRoles.length) setTimeout(() => toast(newRoles.map(r => r.icon + ' ' + r.name).join('、') + ' 解鎖了！', 'good'), 400);
