@@ -1389,8 +1389,10 @@ const DESAT_CHUNK = `#include <dithering_fragment>
 export function createWorld({ scene, renderer, quality = 'high' } = {}) {
   const q = QUALITY[quality] ? quality : 'high';
   const decoScale = QUALITY[q].props;   // 只縮放「裝飾」密度；障礙物在各畫質下都一樣（玩法一致）
-  const N = q === 'low' ? 32 : 48;
+  const N = q === 'low' ? 36 : 48;
   const NW = q === 'low' ? 20 : 28;
+  const KF = 3;           // v4：地形區的粗三角形細分成 KF×KF
+  const NF = N * KF;
 
   const root = new THREE.Group();
   root.name = 'world';
@@ -1423,14 +1425,82 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
   const L = buildLattice(N);
   const HR = new Float32Array(L.total);           // 頂點半徑（海床）
   const WV = new Float32Array(L.total * NB);      // 頂點生態區權重
+  const hotC = new Uint8Array(L.total);           // v4：在地形細節區內的粗頂點
+  const NZ = DETAIL_ZONES.length;
   for (let k = 0; k < L.total; k++) {
     const x = L.dirs[k * 3], y = L.dirs[k * 3 + 1], z = L.dirs[k * 3 + 2];
-    HR[k] = R + terrainHeight(x, y, z);
+    HR[k] = R + heightAt(x, y, z);
     for (let b = 0; b < NB; b++) WV[k * NB + b] = W[b];
+    for (let zi = 0; zi < NZ; zi++) {
+      const Z = DETAIL_ZONES[zi];
+      if (x * Z[0] + y * Z[1] + z * Z[2] > Z[3]) { hotC[k] = 1; break; }
+    }
+  }
+  // v4：碰到熱頂點的粗三角形 → 細分（細格點 = NF 的二十面體格點，和粗格點完全巢狀）
+  // 細頂點若落在「兩端都不熱」的粗邊上，就放在那條粗邊的直線上 → 和旁邊沒細分的三角形沒有裂縫
+  const triTotal = 20 * N * N;
+  const refined = new Uint8Array(triTotal);
+  const refList = []; // [f, i, j, up(1)/down(0)]
+  {
+    const rs = L.rowStart;
+    for (let f = 0; f < 20; f++) {
+      const base = f * L.per;
+      for (let i = 0; i < N; i++) {
+        for (let j = 0; j < N - i; j++) {
+          const tid = f * N * N + i * (2 * N - i) + 2 * j;
+          if (hotC[base + rs[i] + j] || hotC[base + rs[i] + j + 1] || hotC[base + rs[i + 1] + j]) { refined[tid] = 1; refList.push(f, i, j, 1); }
+          if (j < N - 1 - i && (hotC[base + rs[i] + j + 1] || hotC[base + rs[i + 1] + j + 1] || hotC[base + rs[i + 1] + j])) { refined[tid + 1] = 1; refList.push(f, i, j, 0); }
+        }
+      }
+    }
+  }
+  const nRefined = refList.length / 4;
+  const LF = buildLattice(nRefined ? NF : 1);
+  const HRF = new Float32Array(LF.total).fill(NaN);
+  {
+    const D = L.dirs, DF2 = LF.dirs, rs = L.rowStart, rsF = LF.rowStart;
+    const fineVertex = (f, I, J) => {
+      const k = f * LF.per + rsF[I] + J;
+      if (HRF[k] === HRF[k]) return;
+      const x = DF2[k * 3], y = DF2[k * 3 + 1], z = DF2[k * 3 + 2];
+      const iI = I % KF, iJ = J % KF, ci = (I - iI) / KF, cj = (J - iJ) / KF, cb = f * L.per;
+      if (iI === 0 && iJ === 0) { HRF[k] = HR[cb + rs[ci] + cj]; return; }
+      let A = -1, B = -1;
+      if (iI === 0) { A = cb + rs[ci] + cj; B = A + 1; }
+      else if (iJ === 0) { A = cb + rs[ci] + cj; B = cb + rs[ci + 1] + cj; }
+      else if ((I + J) % KF === 0) { const sm = (I + J) / KF; A = cb + rs[ci] + (sm - ci); B = cb + rs[ci + 1] + (sm - ci - 1); }
+      if (A >= 0 && !hotC[A] && !hotC[B]) {
+        // 粗邊上的直線：s·d = P_A + τ(P_B − P_A)
+        const ax = D[A * 3] * HR[A], ay = D[A * 3 + 1] * HR[A], az = D[A * 3 + 2] * HR[A];
+        const ux = D[B * 3] * HR[B] - ax, uy = D[B * 3 + 1] * HR[B] - ay, uz = D[B * 3 + 2] * HR[B] - az;
+        const c1x = ay * uz - az * uy, c1y = az * ux - ax * uz, c1z = ax * uy - ay * ux;
+        const c2x = y * uz - z * uy, c2y = z * ux - x * uz, c2z = x * uy - y * ux;
+        HRF[k] = (c1x * c2x + c1y * c2y + c1z * c2z) / (c2x * c2x + c2y * c2y + c2z * c2z);
+        return;
+      }
+      HRF[k] = R + heightAt(x, y, z);
+    };
+    for (let n = 0; n < nRefined; n++) {
+      const f = refList[n * 4], i = refList[n * 4 + 1], j = refList[n * 4 + 2], up = refList[n * 4 + 3];
+      const I0 = i * KF, J0 = j * KF;
+      for (let a = 0; a <= KF; a++) {
+        for (let b = 0; b <= KF; b++) {
+          if (up ? a + b <= KF : a + b >= KF) fineVertex(f, I0 + a, J0 + b);
+        }
+      }
+    }
   }
 
-  /** 渲染網格在 dir 方向的半徑（未夾涉水） */
-  function seabed(x, y, z) { return latticeRadius(L, HR, x, y, z); }
+  /** 渲染網格在 dir 方向的半徑（未夾涉水）：精確對應到畫出來的三角形 */
+  const _sq = new Int32Array(4);
+  function seabed(x, y, z) {
+    locate(L, x, y, z, _sq);
+    if (refined[_sq[3]]) {
+      const r = latticeRadius(LF, HRF, x, y, z);
+      if (r === r) return r;
+    }
+    return triRadius(L, HR, _sq, x, y, z);
+  }
 
   // 顏色
   const CL = (h) => new THREE.Color(h);

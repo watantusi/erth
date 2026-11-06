@@ -242,6 +242,7 @@ function start() {
   let t = 0;
   let wasModal = false;
   let wasNight = null;
+  const IDLE_INPUT = { moveX: 0, moveY: 0, run: false, jumpPressed: false, jumpHeld: false, lookX: 0, lookY: 0, zoom: 0, interactPressed: false };
 
   renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 1 / 20);
@@ -253,6 +254,9 @@ function start() {
       wasModal = modal;
     }
 
+    if (!(playing && !modal) && (cameraRig.mode === 'select' || cameraRig.mode === 'closeup')) {
+      player.update(dt, IDLE_INPUT, camera); // 選角與衣櫥特寫時保持待機動畫
+    }
     if (playing && !modal) {
       player.update(dt, input.state, camera);
       if (input.state.interactPressed && gameplay.interact) gameplay.interact();

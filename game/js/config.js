@@ -99,7 +99,7 @@ export const TOTAL_QUESTS = 6;
 export const DAY_LENGTH = 480;          // 一整天（秒）：白天約 5 分、夜晚約 3 分
 export const START_TIME_OF_DAY = 0.3;   // 0 = 午夜、0.25 日出、0.5 正午、0.75 日落
 export const TRIAL_COUNT = 8;           // 計時挑戰的時光晶石數
-export const TRIAL_MEDALS = { gold: 130, silver: 200, bronze: 310 }; // 秒（v4 配合放慢的速度）
+export const TRIAL_MEDALS = { gold: 60, silver: 90, bronze: 180 }; // 秒（v4：依 50 組隨機路線模擬調整）
 
 // ---- v4：可選角色、移動速度設定、地形 ----
 export const SPEED_SCALES = { slow: 0.8, normal: 1, fast: 1.3 }; // 設定「移動速度」
