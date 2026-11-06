@@ -313,6 +313,17 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     }
     return true;
   }
+  function obstaclesFree(dir, clearance) {
+    const obs = world.obstacles || [];
+    _v.copy(dir).multiplyScalar(groundR(dir));
+    for (let i = 0; i < obs.length; i++) {
+      const ob = obs[i];
+      if (!ob || !ob.position) continue;
+      const rr = (ob.radius || 0) + clearance;
+      if (ob.position.distanceToSquared(_v) < rr * rr) return false;
+    }
+    return true;
+  }
   function flatEnough(dir, maxDiff) {
     const { right, forward } = tangentBasis(dir, _v2, _v3);
     const r0 = groundR(dir);
@@ -342,7 +353,9 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       let ok = true;
       try {
         if (o.water === 'ocean') {
-          if (!world.isFree(out, o.clearance)) ok = false;
+          // 海洋區整片都能涉水（getGroundRadius ≥ SEA_LEVEL - 0.35），所以晶石可以浮在水面上
+          if (phase < 5 && !world.isWater(out) && !world.isFree(out, o.clearance)) ok = false;
+          else if (!obstaclesFree(out, o.clearance)) ok = false;
           else if (phase < 3 && world.getBiome(out).id !== 'ocean') ok = false;
         } else {
           if (world.isWater(out)) ok = false;
@@ -458,8 +471,8 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     gem: new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9, toneMapped: false }),
     core: new THREE.MeshBasicMaterial({ color: 0xe6feff, toneMapped: false }),
     beam: new THREE.MeshBasicMaterial({
-      color: PALETTE.crystal, vertexColors: true, transparent: true, opacity: 0.32,
-      blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      color: PALETTE.crystal, vertexColors: true, transparent: true, opacity: 0.26,
+      blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
     }),
     ring: new THREE.MeshBasicMaterial({
       color: PALETTE.crystal, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending,
