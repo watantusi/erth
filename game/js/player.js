@@ -1,10 +1,12 @@
 // 分身 2：角色與物理 —— 小旅人角色模型、程序動畫、球面星球物理。
+// v2：平台（側面碰撞、撞頭、彈跳蘑菇、邊緣寬容）、可變跳躍高度、頭頂搬運物。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
-  GRAVITY, WALK_SPEED, RUN_SPEED, JUMP_SPEED, PLAYER_RADIUS, PLANET_RADIUS, PALETTE,
+  GRAVITY, WALK_SPEED, RUN_SPEED, JUMP_SPEED, PLAYER_RADIUS, PLANET_RADIUS, PALETTE, SEA_LEVEL,
 } from './config.js';
 import { clamp, damp, tangentBasis } from './utils.js';
+import { createItem } from './characters.js';
 
 // ---- 調整參數 ----
 const COYOTE_TIME = 0.1;
@@ -15,14 +17,23 @@ const FALL_GRAVITY_MULT = 1.18;  // 下落時重力稍大，跳躍更俐落
 const MAX_FALL_SPEED = 40;
 const ACCEL_GROUND = 11;         // 指數平滑速率（加速）
 const DECEL_GROUND = 15;         // 指數平滑速率（減速）
-const ACCEL_AIR = 2.6;
-const DECEL_AIR = 0.7;
+const ACCEL_AIR = 4.6;           // v2：空中控制比 v1 好一點，方便落在半徑 1 的平台上
+const DECEL_AIR = 2.4;
 const TURN_RATE_GROUND = 14;
 const TURN_RATE_AIR = 6;
 const LAND_SOUND_AIRTIME = 0.15;
 const SUBSTEP = 1 / 60;
 const OBSTACLE_SLACK = 3;        // 3D 距離超過 (半徑和 + 這個) 就跳過
 const HEAD_TOP = 1.8;            // 表情泡泡錨點高度
+// ---- v2 平台 ----
+const STEP_UP = 0.35;            // 自動跨上的最大高度；更高要跳
+const EDGE_MARGIN = 0.16;        // 站在平台邊緣的寬容（腳掌超出邊緣多少仍算站著）
+const BODY_HEIGHT = 1.45;        // 撞頭用的身高
+const HEAD_RADIUS = 0.3;         // 撞頭判定的水平半徑（比身體窄，邊緣擦過時改為側推）
+const JUMP_CUT = 0.45;           // 提早放開跳躍鍵：上升速度乘上這個值（只一次）
+const JUMP_CUT_MIN_TIME = 0.08;  // 最短上升時間（輕點也有小跳）
+const JUMP_CUT_MIN_VEL = 2.5;    // 上升速度已經很慢就不截了
+const IN_WATER_MAX_HEIGHT = 0.25;// 高於海面這麼多（例如站在海上踏石）就不算在水裡
 
 // ---- 每幀重複使用的暫存（不配置新物件） ----
 const _camFwd = new THREE.Vector3();
@@ -224,7 +235,12 @@ function buildCharacter() {
   sprout.add(new THREE.Mesh(sproutGeo, bodyMat));
   head.add(sprout);
 
-  return { root, rig, torso, head, eyes, sprout, legs, arms, shadow, shadowMat };
+  // v2：頭頂搬運物的掛點（底部中心貼著兜帽頂）
+  const carry = new THREE.Group();
+  carry.position.set(0, HC + 0.38, -0.04);
+  head.add(carry);
+
+  return { root, rig, torso, head, eyes, sprout, carry, legs, arms, shadow, shadowMat };
 }
 
 // ---------------------------------------------------------------------------
@@ -242,6 +258,12 @@ export function createPlayer({ scene, world }) {
   const lastGoodUp = new THREE.Vector3(0, 1, 0);
   let radius = PLANET_RADIUS;
   let vRad = 0;                          // 徑向速度
+  let prevR = PLANET_RADIUS;             // 這個子步之前的半徑（平台 CCD 用）
+  let supPlat = null;                    // supportAt() 最近一次選中的平台
+  let jumpCutArmed = false;              // 這次上升可以被「提早放開」截短
+  let jumpTime = 0;
+  let jumpHeldKnown = false, jumpHeld = true;
+  let carryKind = null, carryObj = null, carryScale = 1, carryTarget = 1, carryPop = 0;
   let coyote = 0;
   let jumpBuffer = 0;
   let airTime = 0;
@@ -275,6 +297,11 @@ export function createPlayer({ scene, world }) {
     getDirection,
     celebrate,
     getHeadPosition,
+    // v2
+    supportPlatform: null,
+    onBounce: noop,
+    setCarry,
+    setCarryScale,
   };
 
   const groundAt = (dir) => {
@@ -282,6 +309,86 @@ export function createPlayer({ scene, world }) {
     return Number.isFinite(g) ? g : PLANET_RADIUS;
   };
   const waterAt = (dir) => !!(world && world.isWater && world.isWater(dir));
+
+  /**
+   * 腳下可站立的最高表面（地面或平台頂面），q = 目前（或這一步之前較高的）腳底半徑。
+   * 優先用 world.getSupportRadius（v2），沒有就退回 getGroundRadius（v1 世界也能跑）。
+   * 另外加上邊緣寬容：腳掌還踩在平台邊上（EDGE_MARGIN 內）就算站著。結果的平台存到 supPlat。
+   */
+  function supportAt(dir, q) {
+    let s;
+    supPlat = null;
+    if (world && typeof world.getSupportRadius === 'function') {
+      s = world.getSupportRadius(dir, q);
+      if (Number.isFinite(s)) supPlat = world.lastSupport || null;
+      else s = groundAt(dir);
+    } else {
+      s = groundAt(dir);
+    }
+    const plats = world && world.platforms;
+    if (plats) {
+      for (let i = 0, n = plats.length; i < n; i++) {
+        const p = plats[i];
+        if (!p || !p.dir) continue;
+        const top = p.top;
+        if (!(top > s) || top > q + STEP_UP + 0.05) continue;
+        const c = dir.x * p.dir.x + dir.y * p.dir.y + dir.z * p.dir.z;
+        if (c <= 0) continue;
+        const reach = (p.radius || 0) + EDGE_MARGIN;
+        if ((1 - c * c) * top * top < reach * reach) { s = top; supPlat = p; }
+      }
+    }
+    return s;
+  }
+
+  /** 平台側面碰撞（推出去、沿著滑）與從下方撞到浮空平台底部（停止上升） */
+  function resolvePlatforms() {
+    const plats = world && world.platforms;
+    if (!plats || plats.length === 0) return;
+    const feetHigh = Math.max(radius, prevR);
+    for (let iter = 0; iter < 2; iter++) {
+      let moved = false;
+      for (let i = 0, n = plats.length; i < n; i++) {
+        const p = plats[i];
+        if (!p || !p.dir) continue;
+        const pd = p.dir;
+        const c = up.x * pd.x + up.y * pd.y + up.z * pd.z;
+        if (c <= 0) continue;
+        const reach = (p.radius || 0) + PLAYER_RADIUS;
+        const d2 = (1 - c * c) * radius * radius;
+        if (d2 >= reach * reach) continue;
+        if (feetHigh >= p.top - STEP_UP) continue;               // 夠高：可以站上去或自動跨上
+        const bottom = Number.isFinite(p.bottom) ? p.bottom : -Infinity;
+        if (radius + BODY_HEIGHT <= bottom) continue;            // 整個人在浮空平台下方
+        const d = Math.sqrt(d2);
+        // 從下方往上撞：頭在上一步還在平台底下
+        if (vRad > 0 && prevR + BODY_HEIGHT <= bottom + 0.02 && d < (p.radius || 0) + HEAD_RADIUS) {
+          radius = bottom - BODY_HEIGHT - 0.005;
+          vRad = Math.min(0, -0.5);
+          jumpCutArmed = false;
+          anim.sq = Math.min(anim.sq, -0.12);
+          anim.sqV = -1.5;
+          anim.sproutXV += 5;
+          moved = true;
+          continue;
+        }
+        // 側面：沿切平面推出
+        _pos.copy(up).multiplyScalar(radius);
+        _n.copy(pd).multiplyScalar(radius);
+        _n.subVectors(_pos, _n);
+        _n.addScaledVector(up, -_n.dot(up));
+        const h = _n.length();
+        if (h < 1e-5) _n.copy(forward).negate();
+        else _n.multiplyScalar(1 / h);
+        _pos.addScaledVector(_n, reach - d + 1e-4);
+        const vn = vel.dot(_n);
+        if (vn < 0) vel.addScaledVector(_n, -vn);
+        up.copy(_pos).normalize();
+        moved = true;
+      }
+      if (!moved) break;
+    }
+  }
 
   function fire(name) {
     const fn = api[name];
@@ -311,7 +418,27 @@ export function createPlayer({ scene, world }) {
     up.normalize();
     lastGoodUp.copy(up);
     fixForward();
-    groundR = radius = groundAt(up);
+    // 站到地表；若會卡在平台裡（柱子、或離地太近的浮空平台），就改站到那個平台頂上
+    groundR = radius = supportAt(up, groundAt(up) + STEP_UP);
+    let onPlat = supPlat;
+    const plats = world && world.platforms;
+    for (let iter = 0; plats && iter < 4; iter++) {
+      let moved = false;
+      for (let i = 0; i < plats.length; i++) {
+        const p = plats[i];
+        if (!p || !p.dir || !(p.top > radius)) continue;
+        const bottom = Number.isFinite(p.bottom) ? p.bottom : -Infinity;
+        if (bottom >= radius + BODY_HEIGHT) continue;
+        const c = up.dot(p.dir);
+        const reach = (p.radius || 0) + PLAYER_RADIUS * 0.5;
+        if (c > 0 && (1 - c * c) * p.top * p.top < reach * reach) { radius = p.top; onPlat = p; moved = true; }
+      }
+      if (!moved) break;
+    }
+    groundR = radius;
+    prevR = radius;
+    api.supportPlatform = onPlat;
+    jumpCutArmed = false;
     position.copy(up).multiplyScalar(radius);
     vel.set(0, 0, 0);
     vRad = 0;
@@ -333,7 +460,33 @@ export function createPlayer({ scene, world }) {
   }
 
   function getHeadPosition(out = new THREE.Vector3()) {
-    return out.copy(position).addScaledVector(up, HEAD_TOP + parts.rig.position.y);
+    const extra = carryObj ? 0.5 * carryScale : 0;
+    return out.copy(position).addScaledVector(up, HEAD_TOP + parts.rig.position.y + extra);
+  }
+
+  /** 頭上頂著東西（目前只有 'ice'）；null = 放下 */
+  function setCarry(kind) {
+    kind = kind || null;
+    if (kind === carryKind) return;
+    if (carryObj) { parts.carry.remove(carryObj); carryObj = null; }
+    carryKind = kind;
+    if (kind) {
+      const item = kind === 'ice' ? 'iceBlock' : kind;
+      try { carryObj = createItem(item); } catch (e) { console.error(e); carryObj = null; }
+      if (carryObj) {
+        carryObj.scale.setScalar(0.001);
+        parts.carry.add(carryObj);
+        carryPop = 0;
+        carryScale = carryTarget = 1;
+        anim.sq = -0.12; anim.sqV = -1.5; // 頂上去時壓一下
+      }
+    }
+    parts.sprout.visible = !carryObj;
+  }
+
+  /** 搬運物的大小（1 = 原尺寸，0 = 融化消失），平滑過渡 */
+  function setCarryScale(s) {
+    carryTarget = clamp(Number.isFinite(+s) ? +s : 1, 0, 1.5);
   }
 
   function celebrate() {
@@ -420,7 +573,8 @@ export function createPlayer({ scene, world }) {
 
   function physicsStep(h) {
     const wasGrounded = api.grounded;
-    api.inWater = waterAt(up);
+    // 站在海上踏石、或跳得比海面高時不算在水裡
+    api.inWater = radius < SEA_LEVEL + IN_WATER_MAX_HEIGHT && waterAt(up);
 
     // 目標速度
     _target.copy(_desired);
@@ -449,13 +603,26 @@ export function createPlayer({ scene, world }) {
     if (jumpBuffer > 0 && coyote > 0) {
       vRad = JUMP_SPEED * (api.inWater ? WATER_JUMP : 1);
       api.grounded = false;
+      api.supportPlatform = null;
       coyote = 0;
       jumpBuffer = 0;
       airTime = 0;
+      jumpCutArmed = true;
+      jumpTime = 0;
       anim.sq = 0.26;
       anim.sqV = 0;
       anim.sproutXV -= 6;
       fire('onJump');
+    }
+
+    // 可變跳躍高度：上升初段放開跳躍鍵 → 截短一次（舊版 input 沒有 jumpHeld 時永遠是完整跳）
+    if (jumpCutArmed) {
+      jumpTime += h;
+      if (vRad <= JUMP_CUT_MIN_VEL || api.grounded) jumpCutArmed = false;
+      else if (jumpHeldKnown && !jumpHeld && jumpTime >= JUMP_CUT_MIN_TIME) {
+        vRad *= JUMP_CUT;
+        jumpCutArmed = false;
+      }
     }
 
     // 重力
@@ -465,6 +632,7 @@ export function createPlayer({ scene, world }) {
     }
 
     // 位移：水平沿切平面、徑向沿法線
+    prevR = radius;
     const stepLen = vel.length() * h;
     _tmp.copy(up).multiplyScalar(radius).addScaledVector(vel, h);
     radius += vRad * h;
@@ -474,17 +642,26 @@ export function createPlayer({ scene, world }) {
     fixForward();
 
     resolveObstacles();
+    resolvePlatforms();
 
-    // 地面
-    const g = groundAt(up);
+    // 支撐面（地面或平台頂面）；用這一步前後較高的半徑查詢，快速落下也不會穿過平台
+    const g = supportAt(up, Math.max(prevR, radius));
+    const plat = supPlat;
     groundR = g;
     if (radius <= g) {
       const rise = g - radius;
-      if (api.grounded && rise > 0.12) anim.visY -= rise - 0.12; // 小台階：視覺平滑跨上
-      radius = g;
-      if (!api.grounded) land();
-      if (vRad < 0) vRad = 0;
-      api.grounded = true;
+      if (!api.grounded && vRad > 0.5) {
+        radius = g; // 上升中擦到平台邊（< STEP_UP）：墊上去，繼續往上
+      } else if (plat && plat.bounce > 0 && vRad <= 0.5) {
+        radius = g;
+        bounce(plat);
+      } else {
+        if (api.grounded && rise > 0.12) anim.visY -= rise - 0.12; // 小台階：視覺平滑跨上
+        radius = g;
+        if (!api.grounded) land(plat);
+        if (vRad < 0) vRad = 0;
+        api.grounded = true;
+      }
     } else if (api.grounded && vRad <= 0 && radius - g < 0.06 + stepLen * 1.15) {
       const drop = radius - g;
       if (drop > 0.12) anim.visY += drop - 0.12;
@@ -493,12 +670,13 @@ export function createPlayer({ scene, world }) {
     } else {
       api.grounded = false;
     }
+    api.supportPlatform = api.grounded ? plat : null;
     if (!api.grounded) airTime += h;
 
     position.copy(up).multiplyScalar(radius);
   }
 
-  function land() {
+  function land(plat) {
     const impact = -vRad;
     if (airTime > LAND_SOUND_AIRTIME) {
       anim.sq = Math.min(anim.sq, 0);
@@ -506,7 +684,23 @@ export function createPlayer({ scene, world }) {
       anim.sproutXV += clamp(impact * 0.5, 1, 7);
       fire('onLand');
     }
+    // 落在平台上：再加一點俐落的小壓扁
+    if (plat) anim.sqV = Math.min(anim.sqV, -2.4);
     airTime = 0;
+    jumpCutArmed = false;
+  }
+
+  function bounce(plat) {
+    vRad = plat.bounce;
+    api.grounded = false;
+    coyote = 0;
+    jumpBuffer = 0;
+    jumpCutArmed = false; // 彈跳不受放開跳躍鍵影響
+    airTime = 0;
+    anim.sq = 0.36;
+    anim.sqV = 2;
+    anim.sproutXV -= 9;
+    fire('onBounce');
   }
 
   function update(dt, input, camera) {
@@ -523,6 +717,8 @@ export function createPlayer({ scene, world }) {
     wantMag = mag;
     wantRun = !!input.run;
     if (input.jumpPressed) jumpBuffer = JUMP_BUFFER;
+    jumpHeldKnown = input.jumpHeld !== undefined;
+    jumpHeld = jumpHeldKnown ? !!input.jumpHeld : true;
 
     const steps = Math.max(1, Math.ceil(dt / SUBSTEP - 1e-6));
     const h = dt / steps;
@@ -689,12 +885,36 @@ export function createPlayer({ scene, world }) {
     a.sproutZ = clamp(a.sproutZ + a.sproutZV * dt, -1, 1);
     sprout.rotation.x = a.sproutX + Math.sin(t * 2.4) * 0.03;
     sprout.rotation.z = a.sproutZ;
+
+    // 頭頂搬運物：彈出、融化縮小、跟著走路晃動（用小芽的彈簧值，有一點慣性）
+    if (carryObj) {
+      carryPop = Math.min(1, carryPop + dt * 3.2);
+      const pop = carryPop < 1 ? 1 + Math.sin(carryPop * Math.PI) * 0.35 * (1 - carryPop) : 1;
+      carryScale = damp(carryScale, carryTarget, 6, dt);
+      const sc = 0.82 * carryScale * Math.min(1, carryPop * 2.5) * pop;
+      carryObj.scale.setScalar(Math.max(sc, 0.001));
+      carryObj.visible = sc > 0.01;
+      const { carry } = parts;
+      carry.rotation.x = a.sproutX * 0.22 + Math.sin(a.phase * 2) * 0.05 * a.walk;
+      carry.rotation.z = a.sproutZ * 0.3;
+      carry.position.y = 0.23 + 0.38 + bobWave * 0.04 * a.walk;
+    }
   }
 
   function updateShadow() {
     const { shadow, shadowMat } = parts;
-    const g0 = groundAt(up);
+    // 影子落在腳下的支撐面（平台頂面或地面）
+    const g0 = supportAt(up, radius);
+    const onPlat = supPlat !== null;
     const hgt = Math.max(0, radius - g0);
+    if (onPlat) {
+      shadow.quaternion.identity();
+      shadow.position.set(0, g0 - radius + 0.03, 0);
+      const sc = clamp(1 - hgt * 0.13, 0.45, 1);
+      shadow.scale.set(sc, 1, sc);
+      shadowMat.opacity = 0.36 * clamp(1 - hgt * 0.16, 0.2, 1);
+      return;
+    }
     // 依地形斜率傾斜陰影
     _right.crossVectors(up, forward).normalize();
     const eps = 0.35 / Math.max(radius, 1);

@@ -44,8 +44,11 @@ const ISLANDS = [
   { dir: dirAt(OCEAN1, 0.34, 40), r: 0.115, h: 3.35 },
   { dir: dirAt(OCEAN1, 0.37, 215), r: 0.08, h: 3.8 },
   { dir: dirAt(OCEAN2, 0.15, 120), r: 0.095, h: 3.25 },
+  // v2：燈塔島（平頂較寬，放燈塔、海龜與海上踏石的起點）
+  { dir: dirAt(OCEAN1, 0.42, 300), r: 0.17, h: 3.3, top: 0.55, lighthouse: true },
 ];
-ISLANDS.forEach((I) => { I.cosR = Math.cos(I.r); I.cosTop = Math.cos(I.r * 0.3); });
+ISLANDS.forEach((I) => { I.cosR = Math.cos(I.r); I.cosTop = Math.cos(I.r * (I.top || 0.3)); });
+const LIGHT_ISLAND = ISLANDS[ISLANDS.length - 1];
 
 // 沙丘方向
 const DUNE_AXIS = new THREE.Vector3().crossVectors(DESERT, new THREE.Vector3(0, 1, 0)).normalize();
@@ -488,23 +491,6 @@ function iglooParts() {
     part(new THREE.IcosahedronGeometry(0.16, 0), 0xa8d8f0, 0.5, 1.15, 0.6),
   ];
 }
-function penguinParts(s, x, z, yaw) {
-  const parts = [
-    part(new THREE.IcosahedronGeometry(0.34, 1), 0x2c3440, 0, 0.45, 0, 0, 0, 0, 1, 1.35, 0.92),
-    part(new THREE.IcosahedronGeometry(0.27, 1), SNOW, 0, 0.4, 0.13, 0, 0, 0, 0.92, 1.2, 0.62),
-    part(new THREE.ConeGeometry(0.07, 0.2, 4), 0xff9a3d, 0, 0.78, 0.33, Math.PI / 2, 0, 0),
-    part(new THREE.IcosahedronGeometry(0.045, 0), 0xffffff, 0.11, 0.86, 0.26),
-    part(new THREE.IcosahedronGeometry(0.045, 0), 0xffffff, -0.11, 0.86, 0.26),
-    part(new THREE.BoxGeometry(0.14, 0.04, 0.2), 0xff9a3d, 0.1, 0.02, 0.1),
-    part(new THREE.BoxGeometry(0.14, 0.04, 0.2), 0xff9a3d, -0.1, 0.02, 0.1),
-    part(new THREE.IcosahedronGeometry(0.16, 0), 0x2c3440, 0.32, 0.45, 0, 0, 0, 0.3, 0.35, 1.3, 0.8),
-    part(new THREE.IcosahedronGeometry(0.16, 0), 0x2c3440, -0.32, 0.45, 0, 0, 0, -0.3, 0.35, 1.3, 0.8),
-  ];
-  _ge.set(0, yaw, 0); _gq.setFromEuler(_ge);
-  _gm.compose(_gp.set(x, 0, z), _gq, _gs.set(s, s, s));
-  parts.forEach((p) => p.applyMatrix4(_gm));
-  return parts;
-}
 function cloudGeo(rng) {
   const parts = [];
   const n = 3 + Math.floor(rng() * 3);
@@ -539,6 +525,439 @@ function spoutGeo() {
   }
   parts.push(part(new THREE.IcosahedronGeometry(0.26, 0), 0xffffff, 0, 1.75, 0));
   return merge(parts);
+}
+
+// ---------------------------------------------------------------------------
+// v2：平台挑戰的柱子/平台模型（本地座標：原點 = 頂面中心，+Y 向上，+Z = 面向入口；頂面恰好在 y=0、半徑 = r）
+// h = 柱高（top - bottom），gy = 柱中心處地面的本地高度（負值）
+// ---------------------------------------------------------------------------
+function cyl(rt, rb, y0, y1, seg, color, th0 = 0, thL = Math.PI * 2, open = false) {
+  return part(new THREE.CylinderGeometry(rt, rb, Math.max(0.01, y1 - y0), seg, 1, open, th0, thL), color, 0, (y0 + y1) / 2, 0);
+}
+/** 頂面圓片（略高於頂面 0.004，避免 z-fighting） */
+function cap(r, seg, color, y = 0.004, th0 = 0) {
+  return part(new THREE.CircleGeometry(r, seg, th0), color, 0, y, 0, -Math.PI / 2, 0, 0);
+}
+function ringTop(r0, r1, seg, color, y = 0.006) {
+  return part(new THREE.RingGeometry(r0, r1, seg), color, 0, y, 0, -Math.PI / 2, 0, 0);
+}
+/** 兩色條紋柱（木板、冰面） */
+function stripes(r, rb, y0, y1, n, colA, colB, seg = 2) {
+  const out = [];
+  const step = (Math.PI * 2) / n;
+  for (let i = 0; i < n; i++) out.push(cyl(r, rb, y0, y1, seg, i % 2 ? colB : colA, i * step, step, true));
+  return out;
+}
+function platHay(r, h, gy, k) {
+  const parts = [], bh = 1.05;
+  const golds = [0xf2c45a, 0xeab54c, 0xf5cf6c];
+  const n = Math.max(1, Math.ceil(h / bh));
+  for (let i = 0; i < n; i++) {
+    const y1 = -i * bh, y0 = i === n - 1 ? -h : y1 - bh;
+    const rr = i === 0 ? r : r * 0.985;
+    parts.push(cyl(rr, rr, y0 + 0.03, y1, 14, golds[(i + k) % 3], i * 0.4));
+    parts.push(cyl(rr * 1.02, rr * 1.02, y1 - 0.32, y1 - 0.24, 14, 0xc98d34));
+    if (y1 - 0.8 > y0) parts.push(cyl(rr * 1.02, rr * 1.02, y1 - 0.84, y1 - 0.76, 14, 0xc98d34));
+  }
+  parts.push(ringTop(r * 0.22, r * 0.3, 14, 0xd9a440), ringTop(r * 0.52, r * 0.6, 14, 0xd9a440), ringTop(r * 0.8, r * 0.86, 14, 0xd9a440));
+  // 散落的稻草
+  for (let i = 0; i < 4; i++) {
+    const a = i * 1.7 + k;
+    parts.push(part(new THREE.BoxGeometry(0.05, 0.03, 0.5), 0xf5d77a, Math.cos(a) * (r + 0.35), gy + 0.03, Math.sin(a) * (r + 0.35), 0, a, 0));
+  }
+  return parts;
+}
+function platBarrel(r, h, gy) {
+  const parts = [], bh = 1.4;
+  const n = Math.max(1, Math.ceil(h / bh));
+  for (let i = 0; i < n; i++) {
+    const y1 = -i * bh, y0 = i === n - 1 ? -h : y1 - bh;
+    parts.push(...stripes(r, r, y0 + 0.02, y1, 12, 0xc98a52, 0xb57744));
+    parts.push(cyl(r * 1.025, r * 1.025, y1 - 0.25, y1 - 0.13, 12, 0x6f7f8f));
+    if (y1 - 1.1 > y0) parts.push(cyl(r * 1.025, r * 1.025, y1 - 1.2, y1 - 1.08, 12, 0x6f7f8f));
+  }
+  parts.push(cap(r, 12, 0xdcae74));
+  parts.push(part(new THREE.BoxGeometry(r * 1.7, 0.02, 0.16), 0xb57744, 0, 0.012, 0.25));
+  parts.push(part(new THREE.BoxGeometry(r * 1.7, 0.02, 0.16), 0xb57744, 0, 0.012, -0.25));
+  return parts;
+}
+function platTower(r, h, gy) {
+  const parts = [];
+  parts.push(...stripes(r, r, -h, -0.32, 16, 0xd29a5e, 0xbf8650));
+  parts.push(cyl(r * 1.03, r * 1.06, -h, gy + 0.75, 12, 0xb8b2a6));       // 石頭底座
+  parts.push(cyl(r, r, -0.32, 0, 16, 0xe2574c));                          // 紅色頂緣
+  parts.push(cyl(r * 1.02, r * 1.02, -0.4, -0.3, 16, 0xfff1dc));
+  parts.push(cap(r, 16, 0xe6b77c));
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI;
+    parts.push(part(new THREE.BoxGeometry(r * 1.9, 0.02, 0.05), 0xc4935d, 0, 0.012, 0, 0, a, 0));
+  }
+  // 門、窗（朝 +Z）
+  parts.push(part(new THREE.BoxGeometry(0.7, 1.15, 0.12), 0x7a4a2c, 0, gy + 0.58, r));
+  parts.push(part(new THREE.BoxGeometry(0.1, 0.1, 0.08), 0xffd35a, 0.2, gy + 0.6, r + 0.06));
+  for (const [y, a] of [[gy + 2.6, 0.6], [gy + 4.2, -0.9], [gy + 3.4, 2.4]]) {
+    parts.push(part(new THREE.BoxGeometry(0.42, 0.42, 0.1), 0x7cc6ff, Math.sin(a) * r, y, Math.cos(a) * r, 0, a, 0));
+    parts.push(part(new THREE.BoxGeometry(0.52, 0.08, 0.14), 0xfff1dc, Math.sin(a) * r, y - 0.25, Math.cos(a) * r, 0, a, 0));
+  }
+  // 旗桿 + 三角旗
+  const fx = -r * 0.8, fz = -r * 0.3;
+  parts.push(part(new THREE.CylinderGeometry(0.04, 0.05, 2.3, 5), 0xfff1dc, fx, 1.15, fz));
+  parts.push(part(new THREE.IcosahedronGeometry(0.08, 0), 0xffd35a, fx, 2.33, fz));
+  parts.push(part(new THREE.ConeGeometry(0.28, 0.85, 3), 0xff6f91, fx + 0.42, 2.0, fz, 0, 0, -Math.PI / 2, 1, 1, 0.2));
+  return parts;
+}
+function platStump(r, h, gy, k) {
+  const parts = [];
+  parts.push(cyl(r, r * 1.04, -h, 0, 10, 0x8a5a3c, k));
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2 + k;
+    parts.push(part(new THREE.BoxGeometry(0.13, h - 0.15, 0.08), 0x6e4630, Math.sin(a) * r * 1.01, -h / 2 - 0.08, Math.cos(a) * r * 1.01, 0, a, 0));
+  }
+  parts.push(cap(r * 0.97, 10, 0xf0d9a8, 0.004, k));
+  parts.push(ringTop(r * 0.3, r * 0.37, 10, 0xd8b47a), ringTop(r * 0.62, r * 0.68, 10, 0xd8b47a));
+  parts.push(cap(r * 0.08, 6, 0xc49a63, 0.008));
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + 0.5 + k;
+    parts.push(prep(new THREE.ConeGeometry(0.24, 1.0, 5), 0x7a4e33).rotateX(Math.PI / 2 + 0.45).rotateY(a)
+      .translate(Math.sin(a) * (r + 0.3), gy + 0.05, Math.cos(a) * (r + 0.3)));
+  }
+  // 苔蘚與小香菇
+  const ma = 1.1 + k;
+  parts.push(part(new THREE.IcosahedronGeometry(0.3, 0), 0x6cb565, Math.sin(ma) * r, -0.45, Math.cos(ma) * r, 0, 0, 0, 1, 0.55, 1));
+  parts.push(part(new THREE.SphereGeometry(0.17, 6, 3, 0, Math.PI * 2, 0, Math.PI / 2), 0xff9a5c, Math.sin(ma + 1.6) * (r + 0.05), -0.9, Math.cos(ma + 1.6) * (r + 0.05), 0, 0, 0, 1, 0.6, 1));
+  return parts;
+}
+function platTreehouse(r, h, gy) {
+  const parts = [];
+  parts.push(cyl(r, r * 1.05, -h, -0.35, 12, 0x8a5a3c));
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2;
+    parts.push(part(new THREE.BoxGeometry(0.16, h - 0.5, 0.1), 0x6e4630, Math.sin(a) * r * 1.01, -h / 2 - 0.2, Math.cos(a) * r * 1.01, 0, a, 0));
+  }
+  parts.push(...stripes(r, r, -0.35, 0, 12, 0xd9a066, 0xc98d55));   // 木平台
+  parts.push(cap(r, 12, 0xe2b077));
+  for (let i = -2; i <= 2; i++) parts.push(part(new THREE.BoxGeometry(r * 1.9 * Math.sqrt(1 - (i / 2.6) ** 2), 0.02, 0.06), 0xc48f58, 0, 0.012, i * r * 0.36));
+  // 平台下的樹葉裙
+  const leaf = [0x5fae4e, 0x6cbf58, 0x4f9e48];
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2 + 0.3;
+    parts.push(part(new THREE.IcosahedronGeometry(0.55, 0), leaf[i % 3], Math.sin(a) * r * 0.98, -0.75 - (i % 2) * 0.25, Math.cos(a) * r * 0.98, 0, a, 0, 1, 0.8, 1));
+  }
+  // 樹幹上的小門窗（樹屋）
+  parts.push(part(new THREE.CylinderGeometry(0.42, 0.42, 0.12, 10), 0x4a2f20, 0, gy + 0.85, r + 0.02, Math.PI / 2, 0, 0, 1, 1, 1.4));
+  parts.push(part(new THREE.BoxGeometry(0.5, 0.5, 0.1), 0xffe08a, -r * 0.55, gy + 2.8, r * 0.85, 0, -0.6, 0));
+  parts.push(part(new THREE.BoxGeometry(0.5, 0.5, 0.1), 0xffe08a, r * 0.6, gy + 4.4, r * 0.8, 0, 0.65, 0));
+  // 繩梯裝飾 + 燈籠
+  for (let i = 0; i < 3; i++) {
+    const a = 2.2 + i * 1.6;
+    parts.push(part(new THREE.CylinderGeometry(0.01, 0.01, 0.5, 3), 0x5a4030, Math.sin(a) * (r + 0.15), -0.75, Math.cos(a) * (r + 0.15)));
+    parts.push(part(new THREE.IcosahedronGeometry(0.13, 0), i % 2 ? 0xff9ec4 : 0xffd35a, Math.sin(a) * (r + 0.15), -1.05, Math.cos(a) * (r + 0.15)));
+  }
+  // 樹根
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + 0.2;
+    parts.push(part(new THREE.IcosahedronGeometry(0.42, 0), 0x7a4e33, Math.sin(a) * (r + 0.1), gy + 0.05, Math.cos(a) * (r + 0.1), 0, a, 0, 1, 0.5, 1.6));
+  }
+  return parts;
+}
+function platMushroom(r, h, gy) {
+  const parts = [];
+  parts.push(cyl(r * 0.42, r * 0.52, -h, -0.42, 9, 0xfff3dc));
+  parts.push(cyl(r * 0.99, r * 0.86, -0.62, -0.18, 14, 0xe8574c));
+  parts.push(cyl(r * 0.94, r * 0.99, -0.18, 0, 14, 0xf0645a));
+  parts.push(cap(r * 0.94, 14, 0xf0645a));
+  parts.push(ringTop(r * 0.3, r * 0.82, 14, 0xfff3dc, -0.625));
+  // 白色斑點（頂面 + 側面）
+  for (const [x, z, s] of [[0, 0, 0.22], [0.5, 0.2, 0.15], [-0.35, 0.45, 0.17], [-0.4, -0.38, 0.14], [0.25, -0.55, 0.16]]) {
+    parts.push(cap(s * r, 7, 0xffffff, 0.008).translate(x * r, 0, z * r));
+  }
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + 0.3;
+    parts.push(part(new THREE.IcosahedronGeometry(0.12, 0), 0xffffff, Math.sin(a) * r * 0.95, -0.38, Math.cos(a) * r * 0.95, 0, 0, 0, 1, 1, 0.4));
+  }
+  // 小臉（朝 +Z）
+  const fy = Math.max(gy + 0.35, -h + 0.2), fz = r * 0.5;
+  parts.push(part(new THREE.IcosahedronGeometry(0.055, 0), 0x2c3440, 0.12, fy, fz));
+  parts.push(part(new THREE.IcosahedronGeometry(0.055, 0), 0x2c3440, -0.12, fy, fz));
+  parts.push(part(new THREE.IcosahedronGeometry(0.06, 0), 0xff9ec4, 0.22, fy - 0.08, fz - 0.03, 0, 0, 0, 1, 0.6, 0.6));
+  parts.push(part(new THREE.IcosahedronGeometry(0.06, 0), 0xff9ec4, -0.22, fy - 0.08, fz - 0.03, 0, 0, 0, 1, 0.6, 0.6));
+  // 彈簧感：根部的草
+  for (let i = 0; i < 3; i++) {
+    const a = i * 2.1;
+    parts.push(part(new THREE.ConeGeometry(0.08, 0.4, 3), 0x6bbd4f, Math.sin(a) * r * 0.6, gy + 0.15, Math.cos(a) * r * 0.6));
+  }
+  return parts;
+}
+function platMesa(r, h, gy, k) {
+  const parts = [], bh = 0.55;
+  const cols = [0xe9a965, 0xd9894f, 0xf2c27f, 0xc8774a];
+  const n = Math.max(1, Math.ceil(h / bh));
+  for (let i = 0; i < n; i++) {
+    const y1 = -i * bh, y0 = i === n - 1 ? -h : y1 - bh;
+    const rr = i === 0 ? r : r * (1 - 0.035 * ((i + k) % 3)) ;
+    parts.push(cyl(i === 0 ? r : rr, rr, y0, y1 + (i === 0 ? 0 : 0.001), 8, cols[(i + k) % 4], (i * 0.37 + k) % 1));
+  }
+  parts.push(cap(r * 0.985, 8, 0xf4d595, 0.004, k % 1));
+  parts.push(part(new THREE.IcosahedronGeometry(0.12, 0), 0xd9894f, r * 0.4, 0.02, -r * 0.3, 0, 0, 0, 1, 0.5, 1));
+  for (let i = 0; i < 4; i++) {
+    const a = i * 1.6 + k;
+    parts.push(part(new THREE.IcosahedronGeometry(0.22 + (i % 2) * 0.12, 0), 0xd98c4e, Math.sin(a) * (r + 0.2), gy + 0.05, Math.cos(a) * (r + 0.2), 0, a, 0, 1, 0.6, 1));
+  }
+  return parts;
+}
+function platIce(r, h, gy, k) {
+  const parts = [];
+  const th = (k * 0.7) % 1;
+  for (let i = 0; i < 6; i++) parts.push(cyl(r, r * 1.03, -h, -0.22, 1, i % 2 ? 0x9ad8f4 : 0xbdeafc, th + (i * Math.PI) / 3, Math.PI / 3, true));
+  parts.push(cyl(r * 1.04, r * 1.04, -0.24, 0, 6, [0xf6fbff, 1.2], th));
+  parts.push(cap(r * 1.0, 6, [0xffffff, 1.2], 0.004, th));
+  for (let i = 0; i < 6; i++) {
+    const a = th + (i / 6) * Math.PI * 2 + 0.5;
+    parts.push(part(new THREE.ConeGeometry(0.07, 0.35 + (i % 3) * 0.12, 4), 0xdff6ff, Math.sin(a) * r * 0.97, -0.4 - (i % 3) * 0.06, Math.cos(a) * r * 0.97, Math.PI, 0, 0));
+  }
+  for (let i = 0; i < 3; i++) {
+    const a = th + i * 2.2 + 0.2;
+    parts.push(part(new THREE.OctahedronGeometry(0.13, 0), 0xffffff, Math.sin(a) * r * 0.9, -h * (0.3 + i * 0.15), Math.cos(a) * r * 0.9));
+  }
+  parts.push(part(new THREE.SphereGeometry(r * 1.25, 8, 3, 0, Math.PI * 2, 0, Math.PI / 2), [0xf4f9fc, 1.2], 0, gy - 0.1, 0, 0, 0, 0, 1, 0.3, 1));
+  return parts;
+}
+function platBasalt(r, h, gy, k) {
+  const parts = [];
+  const th = (k * 0.9) % 1;
+  for (let i = 0; i < 6; i++) parts.push(cyl(r, r, -h, 0, 1, i % 2 ? 0x463d42 : 0x574c52, th + (i * Math.PI) / 3, Math.PI / 3, true));
+  parts.push(cap(r, 6, 0x6e6266, 0.004, th));
+  parts.push(part(new THREE.BoxGeometry(r * 1.1, 0.02, 0.06), 0xff8a3d, 0, 0.008, 0.1, 0, 0.5 + k, 0));
+  parts.push(part(new THREE.BoxGeometry(r * 0.6, 0.02, 0.05), 0xffb347, r * 0.25, 0.009, -0.2, 0, 2.1 + k, 0));
+  parts.push(cyl(r * 1.01, r * 1.01, -0.5, -0.42, 6, 0xff7a3d, th));
+  // 根部的短柱碎石（矮於地面 0.5）
+  for (let i = 0; i < 3; i++) {
+    const a = th + i * 2.1 + 0.4;
+    parts.push(part(new THREE.CylinderGeometry(0.32, 0.32, 0.9, 6), i % 2 ? 0x574c52 : 0x463d42, Math.sin(a) * (r + 0.3), gy, Math.cos(a) * (r + 0.3), 0, a, 0));
+  }
+  return parts;
+}
+function platStone(r, h, gy, wl) {
+  const parts = [];
+  parts.push(cyl(r, r * 1.1, -h, 0, 9, 0x9aa3a8));
+  parts.push(cyl(r * 1.02, r * 1.02, -0.18, -0.05, 9, 0x8c969c));
+  parts.push(cap(r * 0.86, 9, 0x9cc08a));
+  parts.push(cyl(r * 1.16, r * 1.16, wl - 0.05, wl + 0.06, 12, [0xffffff, 1.1]));
+  return parts;
+}
+function platStack(r, h, gy, wl, k) {
+  const parts = [], bh = 0.8;
+  const cols = [0xb7a58c, 0xa08f7a, 0xc8b89a, 0x9a8b78];
+  const n = Math.max(1, Math.ceil(h / bh));
+  for (let i = 0; i < n; i++) {
+    const y1 = -i * bh, y0 = i === n - 1 ? -h : y1 - bh;
+    const rr = i === 0 ? r : r * (1 + 0.04 * ((i + k) % 3) - 0.02);
+    parts.push(cyl(i === 0 ? r : rr, rr, y0, y1, 9, cols[(i + k) % 4], i * 0.5));
+  }
+  parts.push(cap(r * 0.97, 9, 0x8fd16a));
+  for (let i = 0; i < 5; i++) {
+    const a = i * 1.3 + k;
+    parts.push(part(new THREE.ConeGeometry(0.09, 0.32, 3), 0x6bbd4f, Math.sin(a) * r * 0.8, 0.12, Math.cos(a) * r * 0.8));
+  }
+  parts.push(cyl(r * 1.18, r * 1.25, wl - 0.05, wl + 0.06, 12, [0xffffff, 1.1]));
+  // 白色鳥糞痕跡（海蝕柱特色，可愛版）
+  parts.push(part(new THREE.BoxGeometry(0.3, 0.5, 0.06), 0xf4f1e8, 0, -0.45, r * 1.0));
+  return parts;
+}
+function platParts(p, gy, wl) {
+  const h = p.top - p.bottom, r = p.radius, k = p.index * 0.37;
+  switch (p.kind) {
+    case 'hay': return platHay(r, h, gy, p.index);
+    case 'barrel': return platBarrel(r, h, gy);
+    case 'tower': return platTower(r, h, gy);
+    case 'stump': return platStump(r, h, gy, k);
+    case 'treehouse': return platTreehouse(r, h, gy);
+    case 'mushroom': return platMushroom(r, h, gy);
+    case 'mesa': return platMesa(r, h, gy, p.index);
+    case 'ice': return platIce(r, h, gy, p.index);
+    case 'basalt': return platBasalt(r, h, gy, p.index);
+    case 'stone': return platStone(r, h, gy, wl);
+    default: return platStack(r, h, gy, wl, p.index);
+  }
+}
+/** 挑戰入口的小木牌（本地：原點在地面） */
+function signParts(flag) {
+  return [
+    part(new THREE.CylinderGeometry(0.06, 0.07, 1.3, 5), 0x9a6a44, 0, 0.65, 0),
+    part(new THREE.BoxGeometry(0.9, 0.42, 0.08), 0xe6b77c, 0, 1.12, 0.05),
+    part(new THREE.BoxGeometry(0.96, 0.06, 0.1), 0x9a6a44, 0, 1.35, 0.05),
+    part(new THREE.ConeGeometry(0.16, 0.3, 3), flag, 0.18, 1.12, 0.1, Math.PI / 2, 0, -Math.PI / 2, 1, 1, 0.3),
+    part(new THREE.IcosahedronGeometry(0.09, 0), 0xffd35a, -0.22, 1.12, 0.11),
+  ];
+}
+
+// ---- v2 地標（本地：原點在地面，+Z = 門口朝向） ----
+function coopParts() {
+  const red = 0xd9574a, white = 0xfff4e0, wood = 0x9a6a44;
+  const parts = [];
+  for (const [x, z] of [[-0.6, -0.45], [0.6, -0.45], [-0.6, 0.45], [0.6, 0.45]]) parts.push(part(new THREE.BoxGeometry(0.1, 0.55, 0.1), wood, x, 0.27, z));
+  parts.push(part(new THREE.BoxGeometry(1.45, 0.95, 1.15), red, 0, 0.98, 0));
+  for (const [x, z] of [[-0.72, -0.57], [0.72, -0.57], [-0.72, 0.57], [0.72, 0.57]]) parts.push(part(new THREE.BoxGeometry(0.08, 0.97, 0.08), white, x, 0.98, z));
+  parts.push(part(new THREE.CylinderGeometry(0.95, 0.95, 1.45, 3), 0xfff4e0, 0, 1.45 + 0.95 * 0.5 * 0.82, 0, -Math.PI / 2, 0, 0, 1, 1, 0.82));
+  parts.push(part(new THREE.CylinderGeometry(0.98, 0.98, 1.38, 3), 0x8a5a3c, 0, 1.48 + 0.95 * 0.5 * 0.82, 0, -Math.PI / 2, 0, 0, 1.0, 1, 0.84));
+  // 門洞 + 斜坡
+  parts.push(part(new THREE.BoxGeometry(0.4, 0.5, 0.06), 0x4a2f20, 0, 0.82, 0.58));
+  parts.push(part(new THREE.CylinderGeometry(0.2, 0.2, 0.06, 8), 0x4a2f20, 0, 1.07, 0.58, Math.PI / 2, 0, 0));
+  parts.push(part(new THREE.BoxGeometry(0.42, 0.05, 1.05), wood, 0, 0.3, 1.02, -0.52, 0, 0));
+  for (let i = 0; i < 4; i++) parts.push(part(new THREE.BoxGeometry(0.42, 0.04, 0.04), 0x7a4e33, 0, 0.18 + i * 0.13, 1.38 - i * 0.24, -0.52, 0, 0));
+  // 圓窗、巢箱
+  parts.push(part(new THREE.CylinderGeometry(0.16, 0.16, 0.06, 8), 0xffe08a, 0.74, 1.12, 0, 0, 0, Math.PI / 2));
+  parts.push(part(new THREE.BoxGeometry(0.45, 0.4, 0.6), wood, -0.95, 0.85, 0));
+  parts.push(part(new THREE.BoxGeometry(0.36, 0.08, 0.5), 0xf2c45a, -0.97, 1.06, 0));
+  parts.push(part(new THREE.IcosahedronGeometry(0.1, 0), 0xfff8ee, -0.95, 1.1, 0.12));
+  // 屋頂上的小雞風向標
+  parts.push(part(new THREE.CylinderGeometry(0.025, 0.025, 0.5, 4), 0x555555, 0, 2.15, 0));
+  parts.push(part(new THREE.IcosahedronGeometry(0.16, 0), 0xfff8ee, 0, 2.45, 0, 0, 0, 0, 1.2, 1, 1));
+  parts.push(part(new THREE.IcosahedronGeometry(0.1, 0), 0xfff8ee, 0, 2.6, 0.12));
+  parts.push(part(new THREE.BoxGeometry(0.04, 0.09, 0.1), 0xe8574c, 0, 2.72, 0.12));
+  parts.push(part(new THREE.ConeGeometry(0.04, 0.1, 4), 0xffb347, 0, 2.6, 0.24, Math.PI / 2, 0, 0));
+  // 小圍籬（兩側）
+  for (const s of [-1, 1]) {
+    for (let i = 0; i < 3; i++) parts.push(part(new THREE.BoxGeometry(0.08, 0.5, 0.08), white, s * (1.2 + i * 0.45), 0.25, 0.9));
+    parts.push(part(new THREE.BoxGeometry(1.0, 0.07, 0.05), white, s * 1.65, 0.38, 0.9));
+    parts.push(part(new THREE.BoxGeometry(1.0, 0.07, 0.05), white, s * 1.65, 0.18, 0.9));
+  }
+  // 地上的玉米粒
+  for (let i = 0; i < 6; i++) parts.push(part(new THREE.IcosahedronGeometry(0.05, 0), 0xffd84a, Math.sin(i * 2.3) * 0.5, 0.03, 1.9 + Math.cos(i * 1.7) * 0.3));
+  return parts;
+}
+function tentParts() {
+  const parts = [];
+  for (let i = 0; i < 8; i++) {
+    parts.push(part(new THREE.ConeGeometry(1.45, 1.9, 2, 1, true, (i * Math.PI) / 4, Math.PI / 4), i % 2 ? 0xf08a4b : 0xfff1dc, 0, 0.95, 0));
+  }
+  parts.push(part(new THREE.CylinderGeometry(0.04, 0.04, 0.5, 4), 0x8a5a3c, 0, 2.05, 0));
+  parts.push(part(new THREE.ConeGeometry(0.16, 0.36, 3), 0xe8574c, 0.18, 2.15, 0, 0, 0, -Math.PI / 2, 1, 1, 0.25));
+  parts.push(part(new THREE.ConeGeometry(0.5, 1.05, 3), 0x5a3a2a, 0, 0.5, 1.02, -0.62, Math.PI, 0, 1, 1, 0.2));
+  // 遮陽篷
+  parts.push(part(new THREE.BoxGeometry(2.2, 0.06, 1.5), 0xf2b45a, 0, 1.75, 1.75, 0.18, 0, 0));
+  for (let i = 0; i < 4; i++) parts.push(part(new THREE.BoxGeometry(0.55, 0.07, 1.52), i % 2 ? 0xfff1dc : 0xf08a4b, -0.825 + i * 0.55, 1.78, 1.75, 0.18, 0, 0));
+  for (const x of [-1.0, 1.0]) parts.push(part(new THREE.CylinderGeometry(0.05, 0.05, 1.7, 5), 0x8a5a3c, x, 0.82, 2.42));
+  // 地毯與水壺
+  parts.push(part(new THREE.BoxGeometry(1.3, 0.03, 0.9), 0xc94f6d, 0, 0.02, 1.7));
+  parts.push(part(new THREE.CylinderGeometry(0.12, 0.16, 0.3, 7), 0x6ec6ff, 0.75, 0.15, 1.3));
+  return parts;
+}
+function oasisParts() {
+  const parts = [part(new THREE.CylinderGeometry(1.15, 1.15, 0.06, 12), 0x5cc8ee, 0, 0.05, 0)];
+  parts.push(part(new THREE.CylinderGeometry(0.8, 0.8, 0.07, 12), 0x8fe3ef, 0, 0.06, 0));
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2;
+    parts.push(part(new THREE.IcosahedronGeometry(0.2 + (i % 3) * 0.05, 0), 0xd9c3a0, Math.cos(a) * 1.22, 0.07, Math.sin(a) * 1.22, 0, a, 0, 1, 0.6, 1));
+  }
+  for (let i = 0; i < 3; i++) parts.push(part(new THREE.CylinderGeometry(0.02, 0.02, 0.5, 3), 0x6bbd4f, Math.cos(i * 2.1 + 0.4) * 0.95, 0.25, Math.sin(i * 2.1 + 0.4) * 0.95));
+  parts.push(part(new THREE.CylinderGeometry(0.16, 0.16, 0.02, 7), 0x7cc95a, 0.3, 0.1, -0.2));
+  parts.push(part(new THREE.IcosahedronGeometry(0.07, 0), 0xff9ec4, 0.3, 0.13, -0.2));
+  return parts;
+}
+function icePileParts() {
+  const parts = [];
+  const blocks = [[-0.6, 0.3, 0, 0.1], [0.05, 0.3, 0.1, -0.2], [0.68, 0.3, -0.05, 0.15], [-0.28, 0.9, 0.05, 0.3], [0.38, 0.9, 0, -0.1], [0.05, 1.5, 0.02, 0.4], [0.2, 0.3, -0.68, 0.5], [-0.4, 0.3, 0.62, -0.3]];
+  blocks.forEach(([x, y, z, yaw], i) => {
+    parts.push(part(new THREE.BoxGeometry(0.6, 0.6, 0.6), i % 2 ? 0xa6e6ff : 0xc6f0ff, x, y, z, 0, yaw, 0));
+    parts.push(part(new THREE.BoxGeometry(0.62, 0.08, 0.62), [0xffffff, 1.2], x, y + 0.31, z, 0, yaw, 0));
+  });
+  // 木牌 + 冰鏟
+  parts.push(part(new THREE.CylinderGeometry(0.05, 0.05, 1.1, 5), 0x9a6a44, 1.15, 0.55, 0.45));
+  parts.push(part(new THREE.BoxGeometry(0.6, 0.34, 0.06), 0xe6b77c, 1.15, 0.98, 0.5));
+  parts.push(part(new THREE.BoxGeometry(0.22, 0.18, 0.04), 0xa6e6ff, 1.15, 0.98, 0.54));
+  parts.push(part(new THREE.CylinderGeometry(0.03, 0.03, 1.0, 4), 0x8a5a3c, -1.05, 0.5, -0.2, 0.25, 0, 0.2));
+  parts.push(part(new THREE.BoxGeometry(0.3, 0.3, 0.04), 0x8fa3b8, -1.15, 0.08, -0.33, 0.25, 0, 0.2));
+  return parts;
+}
+function lighthouseParts() {
+  const parts = [];
+  parts.push(part(new THREE.CylinderGeometry(1.25, 1.4, 0.6, 10), 0xb8b2a6, 0, 0.15, 0));
+  const bands = 5, y0 = 0.45, y1 = 5.1;
+  for (let i = 0; i < bands; i++) {
+    const a = y0 + ((y1 - y0) * i) / bands, b = y0 + ((y1 - y0) * (i + 1)) / bands;
+    const ra = lerp(1.0, 0.68, (a - y0) / (y1 - y0)), rb = lerp(1.0, 0.68, (b - y0) / (y1 - y0));
+    parts.push(cyl(rb, ra, a, b, 12, i % 2 ? 0xfafafa : 0xe8574c));
+  }
+  parts.push(cyl(1.0, 0.9, 5.1, 5.28, 12, 0x3b4a5c));           // 走道
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    parts.push(part(new THREE.BoxGeometry(0.05, 0.4, 0.05), 0x3b4a5c, Math.cos(a) * 0.95, 5.47, Math.sin(a) * 0.95));
+  }
+  parts.push(cyl(0.98, 0.98, 5.63, 5.69, 12, 0x3b4a5c, 0, Math.PI * 2, true));
+  parts.push(cyl(0.6, 0.6, 5.28, 5.42, 10, 0xfafafa));
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + 0.26;
+    parts.push(part(new THREE.BoxGeometry(0.07, 0.95, 0.07), 0x3b4a5c, Math.cos(a) * 0.56, 5.9, Math.sin(a) * 0.56));
+  }
+  parts.push(part(new THREE.ConeGeometry(0.78, 0.75, 12), 0xe8574c, 0, 6.72, 0));
+  parts.push(part(new THREE.IcosahedronGeometry(0.13, 0), 0xffd35a, 0, 7.15, 0));
+  // 門與窗（+Z）
+  parts.push(part(new THREE.BoxGeometry(0.62, 1.0, 0.1), 0x3b5a7a, 0, 0.95, 1.08, -0.06, 0, 0));
+  parts.push(part(new THREE.CylinderGeometry(0.31, 0.31, 0.1, 10, 1, false, -Math.PI / 2, Math.PI), 0x3b5a7a, 0, 1.45, 1.06, -Math.PI / 2, 0, 0));
+  parts.push(part(new THREE.BoxGeometry(0.12, 0.12, 0.06), 0xffd35a, 0.18, 0.95, 1.15));
+  for (const [y, a] of [[2.4, 0], [3.6, Math.PI * 0.8], [4.5, 0.2]]) {
+    const rr = lerp(1.0, 0.68, (y - y0) / (y1 - y0));
+    parts.push(part(new THREE.BoxGeometry(0.28, 0.36, 0.08), 0x7cc6ff, Math.sin(a) * rr, y, Math.cos(a) * rr, 0, a, 0));
+  }
+  // 門口的救生圈與小船錨
+  parts.push(part(new THREE.TorusGeometry(0.24, 0.07, 5, 10), 0xe8574c, -0.62, 1.2, 0.88, 0, -0.5, 0));
+  parts.push(part(new THREE.BoxGeometry(0.4, 0.3, 0.6), 0x9a6a44, 1.1, 0.15, 0.8, 0, 0.4, 0));
+  return parts;
+}
+function hutParts() {
+  const parts = [];
+  parts.push(part(new THREE.BoxGeometry(1.5, 1.15, 1.25), 0xdfe6ea, 0, 0.58, 0));
+  parts.push(part(new THREE.BoxGeometry(1.75, 0.12, 1.55), 0x4fbfa8, 0, 1.25, 0, 0.18, 0, 0));
+  parts.push(part(new THREE.BoxGeometry(0.5, 0.82, 0.08), 0x3b5a7a, -0.3, 0.42, 0.64));
+  parts.push(part(new THREE.BoxGeometry(0.42, 0.32, 0.08), 0x7cc6ff, 0.38, 0.72, 0.64));
+  parts.push(part(new THREE.BoxGeometry(0.5, 0.07, 0.12), 0xffd35a, 0.38, 0.52, 0.66));
+  // 天線 + 碟形天線
+  parts.push(part(new THREE.CylinderGeometry(0.03, 0.03, 1.2, 4), 0x777788, 0.55, 1.85, -0.35));
+  parts.push(part(new THREE.IcosahedronGeometry(0.09, 0), 0xe8574c, 0.55, 2.47, -0.35));
+  parts.push(part(new THREE.SphereGeometry(0.38, 8, 3, 0, Math.PI * 2, 0, Math.PI / 2.4), 0xfafafa, -0.4, 1.55, -0.2, -0.9, 0.6, 0));
+  // 地震儀小桌（紙捲上的鋸齒線）
+  parts.push(part(new THREE.BoxGeometry(0.7, 0.06, 0.45), 0x9a6a44, 1.25, 0.6, 0.35));
+  for (const x of [0.95, 1.55]) parts.push(part(new THREE.BoxGeometry(0.06, 0.6, 0.06), 0x7a4e33, x, 0.3, 0.35));
+  parts.push(part(new THREE.CylinderGeometry(0.07, 0.07, 0.5, 6), 0xfaf6ea, 1.25, 0.7, 0.35, 0, 0, Math.PI / 2));
+  for (let i = 0; i < 4; i++) parts.push(part(new THREE.BoxGeometry(0.08, 0.02, 0.02), 0xe8574c, 1.07 + i * 0.12, 0.775, 0.36, 0, 0, i % 2 ? 0.8 : -0.8));
+  return parts;
+}
+function warnSignParts() {
+  return [
+    part(new THREE.CylinderGeometry(0.05, 0.06, 1.3, 5), 0x777788, 0, 0.65, 0),
+    part(new THREE.CylinderGeometry(0.42, 0.42, 0.06, 3), 0xffd35a, 0, 1.35, 0.06, Math.PI / 2, 0, 0),
+    part(new THREE.CylinderGeometry(0.3, 0.3, 0.07, 3), 0x2c3440, 0, 1.33, 0.07, Math.PI / 2, 0, 0, 1, 1, 0.02),
+    part(new THREE.BoxGeometry(0.06, 0.16, 0.04), 0xff6a3d, 0, 1.36, 0.1),
+  ];
+}
+function hollowTreeParts() {
+  const parts = [];
+  parts.push(cyl(1.05, 1.3, 0, 2.8, 10, 0x8a5a3c));
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + 0.2;
+    parts.push(part(new THREE.BoxGeometry(0.16, 2.6, 0.1), 0x6e4630, Math.sin(a) * 1.15, 1.3, Math.cos(a) * 1.15, -Math.cos(a) * 0.08, a, 0));
+  }
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + 0.6;
+    parts.push(part(new THREE.IcosahedronGeometry(0.45, 0), 0x7a4e33, Math.sin(a) * 1.3, 0.1, Math.cos(a) * 1.3, 0, a, 0, 1, 0.55, 1.5));
+  }
+  // 樹冠
+  parts.push(part(lumpy(new THREE.IcosahedronGeometry(1.7, 1), 0.12, 1.4, 7), 0x5fae4e, 0, 3.7, 0, 0, 0, 0, 1, 0.8, 1));
+  parts.push(part(new THREE.IcosahedronGeometry(1.0, 1), 0x6cbf58, 1.05, 3.4, 0.45));
+  parts.push(part(new THREE.IcosahedronGeometry(0.9, 1), 0x4f9e48, -1.0, 3.5, -0.4));
+  parts.push(part(new THREE.IcosahedronGeometry(0.85, 1), 0x6cbf58, -0.2, 4.4, 0.6));
+  // 圓門洞（+Z）、門框、窗、門牌、信箱
+  parts.push(part(new THREE.CylinderGeometry(0.5, 0.5, 0.1, 12), 0x3a2418, 0, 0.75, 1.17, Math.PI / 2 - 0.12, 0, 0, 1, 1, 1.35));
+  parts.push(part(new THREE.TorusGeometry(0.52, 0.07, 4, 12), 0xc49a63, 0, 0.75, 1.2, -0.12, 0, 0, 1, 1.35, 1));
+  parts.push(part(new THREE.CylinderGeometry(0.2, 0.2, 0.08, 8), 0xffe08a, 0.45, 1.95, 1.0, Math.PI / 2 - 0.1, 0.4, 0));
+  parts.push(part(new THREE.IcosahedronGeometry(0.16, 0), 0xb5793e, -0.55, 1.55, 1.08, 0, 0, 0, 1, 1.2, 1));
+  parts.push(part(new THREE.ConeGeometry(0.12, 0.12, 6), 0x6e4630, -0.55, 1.73, 1.08));
+  parts.push(part(new THREE.CylinderGeometry(0.04, 0.04, 0.8, 4), 0x9a6a44, 1.2, 0.4, 1.4));
+  parts.push(part(new THREE.BoxGeometry(0.3, 0.24, 0.4), 0xe8574c, 1.2, 0.9, 1.4));
+  // 門前的松果堆
+  for (let i = 0; i < 4; i++) parts.push(part(new THREE.ConeGeometry(0.1, 0.22, 6), 0x8a5a3c, -0.9 + (i % 2) * 0.18, 0.1 + (i > 1 ? 0.12 : 0), 1.45 + (i % 2) * 0.1, Math.PI, 0, 0));
+  return parts;
 }
 
 // 去飽和（恢復度）注入
@@ -756,10 +1175,26 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
     }
     return true;
   }
+  // v2：平台與任務居民站位（isFree 也要避開）
+  const platforms = [];
+  const npcReserve = []; // Vector3（單位方向）
   function isFree(dir, clearance = 0) {
     const sb = seabed(dir.x, dir.y, dir.z);
     if (sb < WADE) return false; // 深水
-    return freeAt(dir, sb, clearance);
+    if (!freeAt(dir, sb, clearance)) return false;
+    const l = Math.hypot(dir.x, dir.y, dir.z) || 1;
+    const x = dir.x / l, y = dir.y / l, z = dir.z / l;
+    for (let i = 0; i < platforms.length; i++) {
+      const p = platforms[i];
+      const lim = (p.radius + clearance + 0.3) / sb;
+      const d = x * p._x + y * p._y + z * p._z;
+      if (d > Math.cos(Math.min(lim, 3))) return false;
+    }
+    for (let i = 0; i < npcReserve.length; i++) {
+      const n = npcReserve[i];
+      if (x * n.x + y * n.y + z * n.z > Math.cos((1.0 + clearance) / sb)) return false;
+    }
+    return true;
   }
   function addObstacle(dir, radius) {
     const p = new THREE.Vector3().copy(dir).normalize();
@@ -957,6 +1392,15 @@ void main() {
     { dir: dirAt(START, 0.5, 105), cos: Math.cos(0.13) },   // 花朵愛心
     { dir: dirAt(FOREST, 0.22, 65), cos: Math.cos(0.11) },  // 精靈蘑菇圈
   ];
+  // v2：平台挑戰與任務地標周圍不撒隨機道具（{ x, y, z, ang }）
+  const reserved = [];
+  function inReserved(d, extra = 0) {
+    for (let i = 0; i < reserved.length; i++) {
+      const z = reserved[i];
+      if (d.x * z.x + d.y * z.y + d.z * z.z > Math.cos(z.ang + extra / R)) return true;
+    }
+    return false;
+  }
   function inKeepOut(d) {
     for (let i = 0; i < keepOut.length; i++) if (d.dot(keepOut[i].dir) > keepOut[i].cos) return true;
     return false;
@@ -990,6 +1434,7 @@ void main() {
       if (opt.exclude && opt.exclude(_d)) continue;
       if (opt.radius && nearBiomeCenter(_d)) continue;
       if (inKeepOut(_d)) continue;
+      if (inReserved(_d, (opt.radius || 0) * scale)) continue;
       if (opt.maxSlope && slopeAt(_d) > opt.maxSlope) continue;
       if (!freeAt(_d, g, (opt.radius || 0) * scale + (opt.clearance ?? 0.35))) continue;
       cb(_d, g, scale, rng);
@@ -1083,7 +1528,8 @@ void main() {
       addObstacle(p, x > 4 ? 1.0 : 0.95);
     }
   }
-  // ---- 北極：雪人；南極：冰屋 + 企鵝一家 ----
+  // ---- 北極：雪人；南極：冰屋 ----
+  let iglooM = null;
   {
     const d = dirAt(POLN, 0.22, 30);
     landmarks.snowman = d.clone();
@@ -1091,16 +1537,9 @@ void main() {
     addObstacle(d, 0.85);
     const ig = dirAt(POLS, 0.18, 200);
     landmarks.igloo = ig.clone();
-    const igParts = iglooParts()
-      .concat(penguinParts(1.0, -1.1, 2.6, 0.2))
-      .concat(penguinParts(0.85, -0.25, 2.9, -0.1))
-      .concat(penguinParts(0.55, 0.45, 3.0, -0.4));
-    const m = placeStatic(igParts, ig, 0.3, 1.1, 0.12);
+    // v2：企鵝一家改由任務居民（企鵝媽媽）登場，這裡只留冰屋
+    iglooM = placeStatic(iglooParts(), ig, 0.3, 1.1, 0.12);
     addObstacle(ig, 1.6);
-    for (const [x, z] of [[-1.1, 2.6], [-0.25, 2.9], [0.45, 3.0]]) {
-      const p = new THREE.Vector3(x, 0, z).applyMatrix4(m).normalize();
-      addObstacle(p, 0.35);
-    }
   }
   // ---- 海洋：島上的瓶中信 ----
   {
@@ -1111,6 +1550,335 @@ void main() {
     placeStatic(bottleParts(), d, 0.4, 1.35, 0.05);
     placeStatic(xMarkParts(), dirAt(I.dir, I.r * 0.15, 60), 0.2, 1.0, 0.04);
   }
+
+  // =========================================================================
+  // v2：平台挑戰（每個生態區一座）＋ 任務地標與居民站位
+  // =========================================================================
+  const challenges = [];
+  const courseZones = []; // getSupportRadius 的粗略空間篩選：{ x, y, z, cos, list }
+  const platParts3 = [];
+  const _cv = new THREE.Vector3(), _cr = new THREE.Vector3(), _cf = new THREE.Vector3();
+
+  /** 課程本地座標：up = center、f = 指向 face 的切線、l = up × f（從上往下看逆時針 +90°） */
+  function courseFrame(center, face) {
+    const up = center.clone().normalize();
+    const f = face.clone().addScaledVector(up, -face.dot(up));
+    if (f.lengthSq() < 1e-8) tangentBasis(up, new THREE.Vector3(), f);
+    f.normalize();
+    return { up, f, l: new THREE.Vector3().crossVectors(up, f).normalize() };
+  }
+  /** 本地平面座標 (x 沿 f, y 沿 l；單位 = 世界單位，於半徑 Rs 處) → 單位方向 */
+  function frameDir(F, x, y, Rs = R, out = new THREE.Vector3()) {
+    return out.copy(F.up).addScaledVector(F.f, x / Rs).addScaledVector(F.l, y / Rs).normalize();
+  }
+  const pol = (d, aDeg) => [d * Math.cos((aDeg * Math.PI) / 180), d * Math.sin((aDeg * Math.PI) / 180)];
+  const groundPos = (dir) => dir.clone().normalize().multiplyScalar(getGroundRadius(dir));
+
+  /**
+   * def: { id, biome, name, center, face, base?, heading?, flag, start: [d, a], spots: [[i, off, a]...],
+   *        steps: [{ k, r, h, at?: [d, a] | gap, turn, bounce? }] }
+   * h = 頂面高出 base（預設 = 第一階中心的地面半徑）多少
+   */
+  function buildCourse(def) {
+    const F = courseFrame(def.center, def.face);
+    const steps = def.steps;
+    const maxH = Math.max(...steps.map((s) => s.h));
+    const pts = [];
+    let x = 0, y = 0, hd = ((def.heading || 0) * Math.PI) / 180;
+    steps.forEach((s, i) => {
+      if (s.at) [x, y] = pol(s.at[0], s.at[1]);
+      else if (i > 0) {
+        hd += ((s.turn || 0) * Math.PI) / 180;
+        const dist = steps[i - 1].r + s.gap + s.r;
+        x += Math.cos(hd) * dist; y += Math.sin(hd) * dist;
+      }
+      pts.push([x, y]);
+    });
+    const base = def.base != null ? def.base : getGroundRadius(frameDir(F, pts[0][0], pts[0][1]));
+    const Rs = base + maxH * 0.5;
+    const list = [];
+    steps.forEach((s, i) => {
+      const dir = frameDir(F, pts[i][0], pts[i][1], Rs);
+      const top = base + s.h;
+      const { right, forward } = tangentBasis(dir, _cr, _cf);
+      let gmin = Infinity, gmax = -Infinity;
+      for (let k = 0; k < 17; k++) {
+        const rr = k === 0 ? 0 : k <= 8 ? s.r * 0.55 : s.r * 1.02;
+        const a = k * 0.785 + (k > 8 ? 0.39 : 0);
+        _cv.copy(dir).addScaledVector(right, (rr * Math.cos(a)) / top).addScaledVector(forward, (rr * Math.sin(a)) / top).normalize();
+        const sb = seabed(_cv.x, _cv.y, _cv.z);
+        gmin = Math.min(gmin, sb); gmax = Math.max(gmax, Math.max(sb, WADE));
+      }
+      const p = { id: `${def.id}-${i}`, kind: s.k, dir, radius: s.r, top, bottom: gmin - 0.45, course: def.id, index: i };
+      if (s.bounce) p.bounce = s.bounce;
+      // 內部快取（getSupportRadius 用；sinθ < r/top ⇔ cosθ > √(1-(r/top)²)）
+      Object.defineProperties(p, {
+        _x: { value: dir.x }, _y: { value: dir.y }, _z: { value: dir.z },
+        _cos: { value: Math.sqrt(1 - (s.r / top) ** 2) },
+        _gc: { value: getGroundRadius(dir) }, _gmax: { value: gmax },
+      });
+      list.push(p);
+      platforms.push(p);
+    });
+    // 空間篩選範圍
+    const c = new THREE.Vector3();
+    list.forEach((p) => c.add(p.dir));
+    c.normalize();
+    let maxA = 0;
+    list.forEach((p) => { maxA = Math.max(maxA, Math.acos(clamp(c.dot(p.dir), -1, 1)) + p.radius / p.top); });
+    courseZones.push({ x: c.x, y: c.y, z: c.z, cos: Math.cos(maxA + 0.01), list });
+    reserved.push({ x: c.x, y: c.y, z: c.z, ang: maxA + 1.0 / R });
+
+    // 入口、終點、任務點
+    const sd = frameDir(F, ...pol(def.start[0], def.start[1]));
+    const start = groundPos(sd);
+    reserved.push({ x: sd.x, y: sd.y, z: sd.z, ang: 1.6 / R });
+    let topP = list[0];
+    list.forEach((p) => { if (p.top > topP.top) topP = p; });
+    const goal = topP.dir.clone().multiplyScalar(topP.top + 1.1);
+    const spots = def.spots.map(([i, off = 0, a = 0]) => {
+      const p = list[i];
+      const [ox, oy] = pol(off * p.radius, a);
+      const d = p.dir.clone().addScaledVector(F.f, ox / p.top).addScaledVector(F.l, oy / p.top).normalize();
+      return d.multiplyScalar(p.top + 0.5);
+    });
+    challenges.push({ id: def.id, biome: def.biome, name: def.name, start, goal, spots, platforms: list, center: c.clone() });
+
+    // 模型（全部合併成一個網格；裝飾正面朝向入口）
+    for (const p of list) {
+      _look.copy(start).sub(p.dir.clone().multiplyScalar(p.top));
+      const m = surfaceMatrix(p.dir, 0, 1, 1, 1, 0, new THREE.Matrix4(), _look, p.top);
+      for (const g of platParts(p, p._gc - p.top, SEA_LEVEL - p.top)) { g.applyMatrix4(m); platParts3.push(g); }
+    }
+    // 入口小木牌（站在入口旁邊，面向來的人）
+    const p0 = list[0].dir;
+    _look.copy(sd).sub(p0);
+    const side = new THREE.Vector3().crossVectors(sd, _look).normalize();
+    const sgn = def.signSide || 1;
+    const sgd = sd.clone().addScaledVector(side, (sgn * 1.25) / R).normalize();
+    placeStatic(signParts(def.flag), sgd, 0, 1, 0.05, _look);
+    addObstacle(sgd, 0.22);
+    return { F, list, start, sd };
+  }
+
+  const STEP = (k, r, h, at, extra) => Object.assign({ k, r, h, at }, extra || {});
+  const CHAIN = (k, r, h, gap, turn, extra) => Object.assign({ k, r, h, gap, turn }, extra || {});
+
+  // ---- 草原：乾草堆 → 彈跳蘑菇 → 木桶 → 瞭望台（繞著瞭望台螺旋上升） ----
+  const meadowC = buildCourse({
+    id: 'meadow-lookout', biome: 'meadow', name: '乾草堆瞭望台', flag: 0xff6f91,
+    center: dirAt(START, 0.6, 58), face: START, start: [7.4, -26],
+    steps: [
+      STEP('hay', 1.0, 1.0, [4.7, -26]),
+      STEP('hay', 1.0, 2.1, [4.7, 22]),
+      STEP('hay', 1.05, 3.2, [4.7, 70]),
+      STEP('mushroom', 0.95, 2.4, [4.7, 118], { bounce: 17 }),
+      STEP('barrel', 1.0, 4.1, [4.7, 166]),
+      STEP('barrel', 1.0, 5.4, [4.7, 214]),
+      STEP('tower', 1.6, 6.8, [0, 0]),
+    ],
+    spots: [[1], [2], [4], [5]],
+  });
+  // ---- 森林：巨大樹樁螺旋梯 → 樹屋平台 ----
+  const forestC = buildCourse({
+    id: 'forest-stumps', biome: 'forest', name: '樹樁螺旋梯', flag: 0x6cbf58,
+    center: dirAt(FOREST, 0.3, 290), face: FOREST, start: [7.6, 0],
+    steps: [
+      STEP('stump', 1.0, 1.0, [4.9, 0]),
+      STEP('stump', 0.95, 2.2, [4.9, -47]),
+      STEP('mushroom', 0.95, 1.6, [4.9, -94], { bounce: 18 }),
+      STEP('stump', 1.0, 3.3, [4.9, -141]),
+      STEP('stump', 0.95, 4.4, [4.9, -188]),
+      STEP('stump', 1.0, 5.5, [4.9, -235]),
+      STEP('treehouse', 1.8, 6.9, [0, 0]),
+    ],
+    spots: [[1], [3], [4], [5]],
+  });
+  // ---- 沙漠：砂岩方山柱，向內盤旋到大方山 ----
+  const desertC = buildCourse({
+    id: 'desert-mesas', biome: 'desert', name: '砂岩方山跳跳', flag: 0xf08a4b,
+    center: dirAt(DESERT, 0.45, 90), face: DESERT, start: [9.2, -30],
+    steps: [
+      STEP('mesa', 1.05, 1.1, [6.5, -30]),
+      STEP('mesa', 1.0, 2.4, [6.1, 12]),
+      STEP('mesa', 1.0, 3.6, [5.7, 52]),
+      STEP('mesa', 0.95, 4.8, [5.3, 92]),
+      STEP('mesa', 0.95, 6.0, [5.0, 132]),
+      STEP('mesa', 2.0, 7.2, [0, 0]),
+    ],
+    spots: [[1], [2], [3], [4]],
+  });
+  // ---- 極地：之字形冰柱，頂端是大冰台（企鵝寶寶在上面） ----
+  const polarC = buildCourse({
+    id: 'polar-icicles', biome: 'polar', name: '冰柱之字路', flag: 0x6ec6ff,
+    center: dirAt(POLS, 0.3, 40), face: POLS, start: [9.4, 0], heading: 180,
+    steps: [
+      STEP('ice', 1.0, 1.0, [6.8, 0]),
+      CHAIN('ice', 0.95, 2.2, 1.6, 40),
+      CHAIN('ice', 0.95, 3.4, 1.7, -75),
+      CHAIN('ice', 0.95, 4.5, 1.7, 75),
+      CHAIN('ice', 1.0, 5.6, 1.7, -75),
+      CHAIN('ice', 1.7, 6.6, 1.8, 60),
+    ],
+    spots: [[1], [2], [4], [5, 0.55, 200]],
+  });
+  // ---- 火山：山腳的六角玄武岩柱，繞著火山口排成弧 ----
+  const volcFace = dirAt(VOLC, 0.3, 50);
+  const volcanoC = buildCourse({
+    id: 'volcano-basalt', biome: 'volcano', name: '玄武岩六角柱', flag: 0xff6a3d,
+    center: VOLC, face: volcFace, start: [16.2, -2],
+    steps: [
+      STEP('basalt', 1.0, 1.0, [13.6, 0]),
+      STEP('basalt', 1.0, 2.1, [13.6, 16]),
+      STEP('basalt', 1.0, 3.2, [13.6, 32]),
+      STEP('basalt', 1.0, 4.3, [13.6, 48]),
+      STEP('basalt', 1.0, 5.4, [13.6, 64]),
+      STEP('basalt', 1.0, 6.5, [13.6, 80]),
+      STEP('basalt', 1.45, 7.4, [13.6, 97]),
+    ],
+    spots: [[1], [3], [5]],
+  });
+  // ---- 海洋：從燈塔島出發的踏石 → 小海蝕柱 → 高高的海蝕柱 ----
+  const oceanC = buildCourse({
+    id: 'ocean-stacks', biome: 'ocean', name: '海蝕柱踏石路', flag: 0x3fa7d6,
+    center: LIGHT_ISLAND.dir, face: OCEAN1, base: SEA_LEVEL, start: [2.6, 120], heading: 120,
+    steps: [
+      STEP('stone', 0.85, 0.45, [4.6, 120]),
+      CHAIN('stone', 0.8, 0.6, 1.5, 0),
+      CHAIN('stone', 0.85, 0.8, 1.5, -25),
+      CHAIN('stack', 0.9, 2.1, 1.6, -25),
+      CHAIN('stack', 0.95, 3.4, 1.7, -30),
+      CHAIN('stack', 1.0, 4.7, 1.7, -30),
+      CHAIN('stack', 1.5, 5.9, 1.8, -25),
+    ],
+    spots: [[1], [2], [4], [6, 0.55, 90]],
+  });
+
+  // ---- 任務地標 ----
+  const questSpots = {};
+  const lp = (m, x, z) => new THREE.Vector3(x, 0, z).applyMatrix4(m).normalize();
+  function spot(dir) { npcReserve.push(dir.clone()); return groundPos(dir); }
+  function reserve(dir, radius) { reserved.push({ x: dir.x, y: dir.y, z: dir.z, ang: radius / R }); }
+  // 草原：雞舍（咩咩村長在旁邊）
+  {
+    const d = dirAt(START, 0.37, 169);
+    landmarks.coop = d.clone();
+    _look.copy(START).sub(d);
+    const m = placeStatic(coopParts(), d, 0, 1.15, 0.08, _look);
+    addObstacle(d, 1.3);
+    addObstacle(lp(m, 1.75, 0.9), 0.5);
+    addObstacle(lp(m, -1.75, 0.9), 0.5);
+    reserve(d, 4.5);
+    questSpots.meadow = { npc: spot(lp(m, 2.4, 2.9)), home: spot(lp(m, 0, 2.5)) };
+  }
+  // 森林：松鼠的大樹洞
+  {
+    const d = dirAt(FOREST, 0.15, 160);
+    landmarks.squirrelTree = d.clone();
+    _look.copy(FOREST).sub(d);
+    const m = placeStatic(hollowTreeParts(), d, 0, 1.0, 0.1, _look);
+    addObstacle(d, 1.45);
+    reserve(d, 4.2);
+    questSpots.forest = { npc: spot(lp(m, 0.3, 2.9)) };
+  }
+  // 沙漠：遮陽帳篷 + 小綠洲（駱駝阿沙）
+  {
+    const d = dirAt(DESERT, 0.2, 120);
+    landmarks.tent = d.clone();
+    _look.copy(DESERT).sub(d);
+    const m = placeStatic(tentParts(), d, 0, 1.0, 0.08, _look);
+    addObstacle(d, 1.5);
+    const pool = lp(m, 3.0, 0.3);
+    placeStatic(oasisParts(), pool, 0, 1.0, 0.04);
+    addObstacle(pool, 1.3);
+    for (const [x, z, s] of [[3.6, -1.4, 1.05], [4.5, 1.5, 0.9], [-2.0, -1.2, 1.0]]) {
+      const pd = lp(m, x, z);
+      placeStatic([geoPalm()], pd, x * 1.7, s, 0.08);
+      addObstacle(pd, 0.3 * s);
+    }
+    reserve(d, 6.0);
+    questSpots.desert = { npc: spot(lp(m, 0, 3.2)) };
+  }
+  // 極地：冰屋旁的冰塊堆（企鵝媽媽站在門口）
+  {
+    const m = iglooM;
+    const pile = lp(m, 2.9, 1.0);
+    landmarks.icePile = pile.clone();
+    _look.copy(lp(m, 0, 4)).sub(pile);
+    placeStatic(icePileParts(), pile, 0, 1.0, 0.05, _look);
+    addObstacle(pile, 1.0);
+    reserve(landmarks.igloo, 6.0);
+    questSpots.polar = { npc: spot(lp(m, -0.3, 3.5)), ice: spot(lp(m, 3.0, 2.75)) };
+  }
+  // 火山：入口旁的研究小屋 + 警告牌（岩岩博士）
+  {
+    const F = volcanoC.F;
+    const d = frameDir(F, ...pol(17.4, -14));
+    landmarks.researchHut = d.clone();
+    _look.copy(volcanoC.sd).sub(d);
+    const m = placeStatic(hutParts(), d, 0, 1.0, 0.08, _look);
+    addObstacle(d, 1.25);
+    addObstacle(lp(m, 1.25, 0.35), 0.45);
+    const sg = lp(m, -1.7, 1.4);
+    placeStatic(warnSignParts(), sg, 0, 1.0, 0.05, _look);
+    addObstacle(sg, 0.25);
+    reserve(d, 4.0);
+    questSpots.volcano = { npc: spot(lp(m, 0, 2.6)) };
+  }
+  // 海洋：燈塔島（燈塔海龜）
+  let lampGroup, lampMat, beamMat, beamPivot;
+  {
+    const F = oceanC.F;
+    const d = frameDir(F, ...pol(1.1, 285));
+    landmarks.lighthouse = d.clone();
+    _look.copy(frameDir(F, ...pol(2.5, 110))).sub(d);
+    const m = placeStatic(lighthouseParts(), d, 0, 1.0, 0.1, _look);
+    addObstacle(d, 1.4);
+    reserve(LIGHT_ISLAND.dir, LIGHT_ISLAND.r * R);
+    // 島上一棵棕櫚、幾顆石頭
+    for (const [x, z, s] of [[-2.2, -0.6, 1.0]]) {
+      const pd = lp(m, x, z);
+      placeStatic([geoPalm()], pd, 1.2, s, 0.08);
+      addObstacle(pd, 0.3);
+    }
+    questSpots.ocean = { npc: spot(lp(m, 1.7, 2.6)), lighthouse: spot(lp(m, 0, 2.05)) };
+    // 燈：獨立材質（可發光）＋ 旋轉光束
+    lampGroup = new THREE.Group();
+    lampGroup.name = 'lighthouseLamp';
+    m.decompose(lampGroup.position, lampGroup.quaternion, lampGroup.scale);
+    lampMat = patch(new THREE.MeshLambertMaterial({ color: 0xfff6d8, emissive: 0xffc94a, emissiveIntensity: 0.1, flatShading: true }));
+    const lamp = new THREE.Mesh(new THREE.IcosahedronGeometry(0.34, 1), lampMat);
+    lamp.position.set(0, 5.88, 0);
+    lampGroup.add(lamp);
+    beamMat = patch(new THREE.MeshBasicMaterial({
+      color: 0xfff0a8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
+      depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
+    }));
+    const cone = (sgn) => {
+      const g = new THREE.ConeGeometry(1.25, 9, 12, 1, true);
+      g.translate(0, -4.5, 0);
+      g.rotateZ((sgn * Math.PI) / 2 + sgn * -0.06);
+      return g;
+    };
+    const halo = new THREE.IcosahedronGeometry(0.7, 1);
+    halo.deleteAttribute('uv');
+    const c1 = cone(1), c2 = cone(-1);
+    c1.deleteAttribute('uv'); c2.deleteAttribute('uv');
+    const beamGeo = BufferGeometryUtils.mergeGeometries([c1.toNonIndexed(), c2.toNonIndexed(), halo.toNonIndexed()], false);
+    [c1, c2, halo].forEach((g) => g.dispose());
+    beamPivot = new THREE.Mesh(beamGeo, beamMat);
+    beamPivot.name = 'lighthouseBeam';
+    beamPivot.position.set(0, 5.88, 0);
+    beamPivot.visible = false;
+    beamPivot.renderOrder = 3;
+    lampGroup.add(beamPivot);
+    root.add(lampGroup);
+  }
+
+  // 平台網格（全部一個 draw call）
+  const platformMesh = new THREE.Mesh(merge(platParts3), propMat);
+  platformMesh.name = 'platforms';
+  root.add(platformMesh);
 
   // =========================================================================
   // 隨機撒道具（障礙物類：各畫質相同；裝飾類：依畫質縮放）
@@ -1167,6 +1935,7 @@ void main() {
   // 海洋島嶼：棕櫚樹 + 岩石
   for (let ii = 0; ii < ISLANDS.length; ii++) {
     const I = ISLANDS[ii];
+    if (I.lighthouse) continue; // 燈塔島另外佈置
     scatter(rngObs, ii === 1 ? 1 : 3, null, { center: I.dir, maxAngle: I.r * 0.55, minAbove: 0.25, radius: 0.3, avoidStart: false, scale: (r) => 0.9 + r() * 0.35 }, (d, g, s, r) => {
       addInst('palm', surfaceMatrix(d, r() * 6.28, s, s, s, 0.08, _im));
       addObstacle(d, 0.3 * s);
@@ -1403,16 +2172,48 @@ void main() {
         spout.scale.set(0.6 + k * 0.6, Math.max(0.01, k * 1.3), 0.6 + k * 0.6);
       } else spout.visible = false;
     }
+    updateLighthouse(dt, t);
   }
 
   function setRestoration(f) {
     restoreTarget = clamp(Number(f) || 0, 0, 1);
   }
 
+  // ---- v2：腳下最高的可站立表面（每幀會被呼叫多次：不配置物件） ----
+  function getSupportRadius(dir, currentRadius) {
+    let best = getGroundRadius(dir), sel = null;
+    const lim = (Number.isFinite(currentRadius) ? currentRadius : Infinity) + 0.4;
+    const l = Math.hypot(dir.x, dir.y, dir.z) || 1;
+    const x = dir.x / l, y = dir.y / l, z = dir.z / l;
+    for (let c = 0; c < courseZones.length; c++) {
+      const Z = courseZones[c];
+      if (x * Z.x + y * Z.y + z * Z.z < Z.cos) continue;
+      const list = Z.list;
+      for (let i = 0; i < list.length; i++) {
+        const p = list[i];
+        if (p.top > lim || p.top <= best) continue;
+        if (x * p._x + y * p._y + z * p._z > p._cos) { best = p.top; sel = p; }
+      }
+    }
+    api.lastSupport = sel;
+    return best;
+  }
+
+  let lightTarget = 0, lightCur = 0;
+  function setLighthouseLit(on) { lightTarget = on ? 1 : 0; }
+  function updateLighthouse(dt, t) {
+    lightCur = damp(lightCur, lightTarget, 2.2, dt);
+    if (Math.abs(lightCur - lightTarget) < 1e-3) lightCur = lightTarget;
+    lampMat.emissiveIntensity = 0.1 + 1.7 * lightCur;
+    beamMat.opacity = 0.3 * lightCur;
+    beamPivot.visible = lightCur > 0.01;
+    beamPivot.rotation.y = t * 0.55;
+  }
+
   // 初始一次（沒有鏡頭時也有合理的燈光）
   update(0, 0, null);
 
-  return {
+  const api = {
     root,
     getGroundRadius,
     getSurfacePoint,
@@ -1422,6 +2223,15 @@ void main() {
     isFree,
     setRestoration,
     update,
-    landmarks, // 額外：{ start, crater, houses[], windmill, rocket, fossil, snowman, igloo, bottle, islands[], heart, fairyRing }（單位方向）
+    landmarks, // 額外：{ start, crater, houses[], windmill, rocket, fossil, snowman, igloo, bottle, islands[], heart, fairyRing,
+    //          coop, squirrelTree, tent, icePile, researchHut, lighthouse }（單位方向）
+    // ---- v2 ----
+    platforms,          // [{ id, kind, dir, radius, top, bottom, bounce?, course, index }]
+    getSupportRadius,
+    lastSupport: null,
+    challenges,         // [{ id, biome, name, start, goal, spots[], platforms[], center }]（每個生態區一個，順序同 BIOMES）
+    questSpots,
+    setLighthouseLit,
   };
+  return api;
 }

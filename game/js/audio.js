@@ -28,6 +28,9 @@ export function createAudio() {
   let beatIndex = 0;
   let lastStep = 0;
   let lastSplash = 0;
+  let lastTalk = 0;
+  let lastTick = 0;
+  let lastBounce = 0;
   let userSuspended = false;
 
   // ---------- 建立音訊圖 ----------
@@ -153,6 +156,33 @@ export function createAudio() {
     p.linearRampToValueAtTime(1, t + 0.08 + hold + release);
   }
 
+  /** 頻率帶顫音的振盪器（彈簧「啵嚶」用） */
+  function wobble(f0, f1, t0, dur, o = {}) {
+    const osc = ctx.createOscillator();
+    osc.type = o.type || 'sine';
+    osc.frequency.setValueAtTime(f0, t0);
+    osc.frequency.exponentialRampToValueAtTime(f1, t0 + (o.glide || dur * 0.5));
+    const lfo = ctx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.setValueAtTime(o.rate || 16, t0);
+    lfo.frequency.linearRampToValueAtTime((o.rate || 16) * 0.6, t0 + dur);
+    const depth = ctx.createGain();
+    depth.gain.setValueAtTime(f1 * (o.depth || 0.12), t0);
+    depth.gain.exponentialRampToValueAtTime(Math.max(0.5, f1 * 0.01), t0 + dur);
+    lfo.connect(depth);
+    depth.connect(osc.frequency);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(o.gain ?? 0.18, t0 + (o.attack ?? 0.008));
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g);
+    g.connect(o.dest || sfxBus);
+    osc.start(t0);
+    lfo.start(t0);
+    osc.stop(t0 + dur + 0.05);
+    lfo.stop(t0 + dur + 0.05);
+  }
+
   // ---------- 音效 ----------
   const sounds = {
     collect() {
@@ -247,7 +277,105 @@ export function createAudio() {
       }
       duck(0.15, 2.0, 2.0);
     },
+
+    // ---- v2 ----
+    bounce() {
+      // 彈跳蘑菇：比跳躍更大、更有彈性的「啵嚶～」
+      const now = ctx.currentTime;
+      if (now - lastBounce < 0.08) return;
+      lastBounce = now;
+      const t = now + 0.005;
+      const f = rand(150, 175);
+      tone(f * 0.55, t, 0.12, { type: 'sine', gain: 0.2, freqEnd: f * 0.35, glide: 0.1, attack: 0.003 }); // 踩下去的悶聲
+      wobble(f, f * 3.6, t + 0.02, 0.5, { type: 'sine', gain: 0.2, glide: 0.2, rate: 17, depth: 0.1 });
+      wobble(f * 2, f * 7.2, t + 0.02, 0.32, { type: 'triangle', gain: 0.04, glide: 0.2, rate: 17, depth: 0.08 });
+      noise(t, 0.05, { filterType: 'lowpass', freq: 900, gain: 0.06, attack: 0.002 });
+    },
+    talk() {
+      // 對話：輕柔可愛的「噗」，音高隨機，限速
+      const now = ctx.currentTime;
+      if (now - lastTalk < 0.07) return;
+      lastTalk = now;
+      const t = now + 0.003;
+      const f = mtof(76 + pick(PENTA)) * rand(0.97, 1.03);
+      tone(f, t, 0.09, { type: 'sine', gain: 0.075, freqEnd: f * rand(1.08, 1.25), glide: 0.05, attack: 0.004 });
+      tone(f * 2, t, 0.05, { type: 'triangle', gain: 0.012, attack: 0.003 });
+    },
+    quest() {
+      // 接下任務：「噠～叮！」上行小號角 + 亮晶晶
+      const t = ctx.currentTime + 0.01;
+      const seq = [[67, 0, 0.16], [72, 0.11, 0.16], [79, 0.22, 0.42]];
+      seq.forEach(([m, dt, d]) => {
+        tone(mtof(m), t + dt, d, { type: 'square', gain: 0.03, filter: 2600, attack: 0.006 });
+        tone(mtof(m), t + dt, d + 0.1, { type: 'triangle', gain: 0.1, attack: 0.006 });
+      });
+      tone(mtof(91), t + 0.26, 0.6, { type: 'sine', gain: 0.05, attack: 0.004 });
+      noise(t + 0.22, 0.4, { filterType: 'highpass', freq: 6000, gain: 0.02, attack: 0.05 });
+      duck(0.6, 0.3, 0.6);
+    },
+    questDone() {
+      // 任務完成：溫暖的大和弦琶音 + 低音
+      const t = ctx.currentTime + 0.02;
+      const arp = [60, 64, 67, 72, 76];
+      arp.forEach((m, i) => {
+        tone(mtof(m) * rand(0.998, 1.002), t + i * 0.08, 0.9 - i * 0.05, { type: 'triangle', gain: 0.1, attack: 0.008 });
+        tone(mtof(m + 12), t + i * 0.08, 0.3, { type: 'sine', gain: 0.025, attack: 0.006 });
+      });
+      tone(mtof(48), t, 1.1, { type: 'sine', gain: 0.12, attack: 0.02 });
+      [72, 76, 79].forEach((m) => {
+        tone(mtof(m) * 1.002, t + 0.45, 1.3, { type: 'sine', gain: 0.05, attack: 0.08 });
+        tone(mtof(m) * 0.998, t + 0.45, 1.3, { type: 'triangle', gain: 0.02, attack: 0.08 });
+      });
+      tone(mtof(84), t + 0.55, 0.9, { type: 'sine', gain: 0.04, attack: 0.01 });
+      duck(0.25, 1.2, 1.4);
+    },
+    fragment() {
+      // 地圖碎片：神秘的上行琶音 + 閃爍 + 終止和弦
+      const t = ctx.currentTime + 0.02;
+      const scale = [0, 2, 4, 7, 9];
+      for (let i = 0; i < 12; i++) {
+        const m = 62 + 12 * Math.floor(i / 5) + scale[i % 5];
+        const tt = t + i * 0.06;
+        tone(mtof(m), tt, 0.5, { type: 'sine', gain: 0.07, attack: 0.004 });
+        tone(mtof(m) * 2.005, tt, 0.25, { type: 'triangle', gain: 0.015, attack: 0.004 });
+      }
+      noise(t, 1.2, { filterType: 'bandpass', freq: 3000, freqEnd: 11000, Q: 2, gain: 0.035, attack: 0.4 });
+      const tc = t + 0.8;
+      [62, 69, 74, 78, 81].forEach((m, i) => {
+        tone(mtof(m) * rand(0.998, 1.002), tc + i * 0.015, 2.0, { type: 'sine', gain: 0.055, attack: 0.03 });
+      });
+      tone(mtof(50), tc, 2.0, { type: 'triangle', gain: 0.06, attack: 0.05, filter: 800 });
+      for (let i = 0; i < 8; i++) {
+        tone(mtof(93 + pick(PENTA)), tc + 0.1 + i * 0.11 + rand(0, 0.04), 0.35, { type: 'sine', gain: 0.025, attack: 0.003 });
+      }
+      duck(0.15, 2.0, 1.8);
+    },
+    tick() {
+      // 計時：細小的時鐘「滴答」（交替高低）
+      const now = ctx.currentTime;
+      if (now - lastTick < 0.15) return;
+      lastTick = now;
+      const t = now + 0.003;
+      const hi = (beatTick = !beatTick);
+      noise(t, 0.025, { filterType: 'highpass', freq: hi ? 5200 : 3800, gain: 0.05, attack: 0.001 });
+      tone(hi ? 1900 : 1500, t, 0.03, { type: 'sine', gain: 0.03, attack: 0.001 });
+    },
+    ping() {
+      // 機器人訊號：無線電掃頻「咻嗚～」兩次 + 嗶
+      const t = ctx.currentTime + 0.01;
+      for (let k = 0; k < 2; k++) {
+        const tt = t + k * 0.28;
+        const g = k === 0 ? 0.08 : 0.045;
+        tone(520, tt, 0.3, { type: 'sine', gain: g, freqEnd: 1700, glide: 0.24, attack: 0.02 });
+        tone(780, tt, 0.26, { type: 'triangle', gain: g * 0.25, freqEnd: 2500, glide: 0.22, attack: 0.02 });
+      }
+      tone(1760, t + 0.62, 0.1, { type: 'square', gain: 0.025, filter: 3000, attack: 0.003 });
+      tone(1760, t + 0.62, 0.14, { type: 'sine', gain: 0.06, attack: 0.003 });
+      tone(2350, t + 0.76, 0.18, { type: 'sine', gain: 0.05, attack: 0.003 });
+      noise(t, 0.6, { filterType: 'bandpass', freq: 2000, Q: 4, gain: 0.012, attack: 0.1 });
+    },
   };
+  let beatTick = false;
 
   // ---------- 生成式環境音樂 ----------
   const BEAT = 60 / 66;            // 每拍秒數

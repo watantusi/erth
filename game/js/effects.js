@@ -17,6 +17,7 @@ export function createEffects(scene) {
   const life = new Float32Array(MAX_PARTICLES);    // 剩餘壽命
   const maxLife = new Float32Array(MAX_PARTICLES);
   const baseSize = new Float32Array(MAX_PARTICLES);
+  const grav = new Float32Array(MAX_PARTICLES);    // 重力倍率（拖尾粒子會輕輕往上飄）
   let cursor = 0;
   let alive = 0;
 
@@ -195,6 +196,40 @@ export function createEffects(scene) {
       baseSize[i] = 0.4 + Math.random() * 0.35;
       size[i] = baseSize[i];
       alpha[i] = 1;
+      grav[i] = 1;
+    }
+    colAttr.needsUpdate = true;
+  }
+
+  /** 輕量的閃光拖尾：每次呼叫只放幾顆小粒子（可每幀呼叫，例如彈跳或跟隨物品） */
+  function sparkleTrail(position, color = 0xffffff, count = 2) {
+    if (!position) return;
+    setColor(_base, color);
+    _up.copy(position);
+    if (_up.lengthSq() < 1e-8) _up.set(0, 1, 0);
+    _up.normalize();
+    const n = Math.max(1, Math.min(8, count | 0));
+    for (let k = 0; k < n; k++) {
+      const i = cursor;
+      cursor = (cursor + 1) % MAX_PARTICLES;
+      if (life[i] <= 0) alive++;
+      const i3 = i * 3;
+      const sp = 0.6;
+      vel[i3] = (Math.random() - 0.5) * sp + _up.x * 0.8;
+      vel[i3 + 1] = (Math.random() - 0.5) * sp + _up.y * 0.8;
+      vel[i3 + 2] = (Math.random() - 0.5) * sp + _up.z * 0.8;
+      pos[i3] = position.x + (Math.random() - 0.5) * 0.3;
+      pos[i3 + 1] = position.y + (Math.random() - 0.5) * 0.3;
+      pos[i3 + 2] = position.z + (Math.random() - 0.5) * 0.3;
+      if (Math.random() < 0.35) _c.setRGB(1, 1, 1); else _c.copy(_base);
+      col[i3] = _c.r; col[i3 + 1] = _c.g; col[i3 + 2] = _c.b;
+      const L = 0.45 + Math.random() * 0.35;
+      life[i] = L;
+      maxLife[i] = L;
+      baseSize[i] = 0.16 + Math.random() * 0.16;
+      size[i] = baseSize[i];
+      alpha[i] = 1;
+      grav[i] = -0.15;
     }
     colAttr.needsUpdate = true;
   }
@@ -231,7 +266,7 @@ export function createEffects(scene) {
         }
         const px = pos[i3], py = pos[i3 + 1], pz = pos[i3 + 2];
         const len = Math.sqrt(px * px + py * py + pz * pz) || 1;
-        const g = GRAVITY * dt / len;
+        const g = GRAVITY * grav[i] * dt / len;
         const drag = Math.exp(-DRAG * dt);
         vel[i3] = (vel[i3] - px * g) * drag;
         vel[i3 + 1] = (vel[i3 + 1] - py * g) * drag;
@@ -276,5 +311,5 @@ export function createEffects(scene) {
     }
   }
 
-  return { burst, ring, update };
+  return { burst, ring, sparkleTrail, update };
 }

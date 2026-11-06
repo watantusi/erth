@@ -1,9 +1,11 @@
 // 分身 4：玩法（知識晶石、幼苗種子、荒地種樹、NPC「嗶嗶」、教學、勝利、存檔）
+// v2：平台挑戰頂端的晶石、指南針等級（地圖碎片）、嗶嗶訊號、任務居民（quests.js）
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   BIOMES, WORLD_SEED, PICKUP_RADIUS, PALETTE, START_BIOME, SEA_LEVEL,
   CRYSTALS_PER_BIOME, SEEDLING_PLOTS,
+  PING_DURATION, PING_COOLDOWN, COMPASS_LEVELS, RADAR_RANGE, TOTAL_QUESTS,
 } from './config.js';
 import {
   mulberry32, randomDirNear, angleBetweenDirs, getBiomeById, biomeCenters,
@@ -11,8 +13,9 @@ import {
 } from './utils.js';
 import {
   FACTS, factsForBiome, NPC_LINES, NPC_EMOTE_REPLIES, NPC_DEFAULT_REPLIES,
-  NPC_IDLE_EMOTES, TUTORIAL, MESSAGES, VICTORY,
+  NPC_IDLE_EMOTES, TUTORIAL, MESSAGES, VICTORY, FRAGMENT_TEXTS, fragmentTitle,
 } from './content.js';
+import { createQuests } from './quests.js';
 
 const TOTAL_CRYSTALS = BIOMES.length * CRYSTALS_PER_BIOME;
 const TOTAL_TREES = SEEDLING_PLOTS;
@@ -324,6 +327,41 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     }
     return true;
   }
+  // v2：避開平台與任務地點（不要把種子、荒地、晶石壓在平台或居民身上）
+  const toPoint = (v) => {
+    if (!v || typeof v.x !== 'number') return null;
+    const p = new THREE.Vector3(v.x, v.y, v.z);
+    const len = p.length();
+    if (!(len > 1e-6)) return null;
+    if (len < 5) p.normalize().multiplyScalar(groundR(p));
+    return p;
+  };
+  const keepOut = []; // { dir, dist }
+  for (const pl of Array.isArray(world.platforms) ? world.platforms : []) {
+    if (pl && pl.dir) keepOut.push({ dir: pl.dir.clone().normalize(), dist: (pl.radius || 1) + 0.6 });
+  }
+  for (const ch of Array.isArray(world.challenges) ? world.challenges : []) {
+    if (!ch) continue;
+    for (const v of [ch.start, ch.goal, ...(Array.isArray(ch.spots) ? ch.spots : [])]) {
+      const p = toPoint(v);
+      if (p) keepOut.push({ dir: p.normalize(), dist: 1.6 });
+    }
+  }
+  for (const spot of Object.values(world.questSpots || {})) {
+    if (!spot) continue;
+    for (const v of Object.values(spot)) {
+      const p = toPoint(v);
+      if (p) keepOut.push({ dir: p.normalize(), dist: 2.6 });
+    }
+  }
+  function keptOut(dir, extra) {
+    for (let i = 0; i < keepOut.length; i++) {
+      if (angleBetweenDirs(dir, keepOut[i].dir) * 30 < keepOut[i].dist + extra) return true;
+    }
+    return false;
+  }
+  const challengeFor = (biomeId) => (Array.isArray(world.challenges) ? world.challenges.find((c) => c && c.biome === biomeId) : null) || null;
+
   function flatEnough(dir, maxDiff) {
     const { right, forward } = tangentBasis(dir, _v2, _v3);
     const r0 = groundR(dir);
@@ -350,6 +388,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       const ang = angleBetweenDirs(out, center);
       if (ang < o.minA && phase < 4) continue;
       if (angleBetweenDirs(out, startDir) < o.startMin) continue;
+      if (phase < 5 && keepOut.length && keptOut(out, o.clearance * 0.5)) continue;
       let ok = true;
       try {
         if (o.water === 'ocean') {
@@ -388,10 +427,19 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
         water: isOcean ? 'ocean' : 'no', biome: biome.id,
         minAny: 2.6, minSame: 4.2, startMin: 0.21,
       });
+      // v2：每區第 1 顆放在平台挑戰的頂端（goal）；仍先跑一次 v1 擺放，讓亂數序列（種子、荒地位置）保持穩定
+      let goal = null;
+      const ch = i === 0 ? challengeFor(biome.id) : null;
+      if (ch && ch.goal) goal = toPoint(ch.goal);
+      let finalDir = dir;
+      if (goal) {
+        finalDir = goal.clone().normalize();
+        placed[placed.length - 1].dir = finalDir;
+      }
       const fact = facts[i] || FACTS[(crystals.length) % FACTS.length];
       crystals.push({
-        id: 'crystal-' + fact.id, index: crystals.length, kind: 'crystal', biome, fact, dir,
-        gr: groundR(dir),
+        id: 'crystal-' + fact.id, index: crystals.length, kind: 'crystal', biome, fact, dir: finalDir,
+        gr: goal ? goal.length() - CRYSTAL_HOVER : groundR(finalDir), elevated: !!goal,
         baseQuat: new THREE.Quaternion().setFromUnitVectors(Y_AXIS, dir),
         pos: new THREE.Vector3(), check: new THREE.Vector3(), ground: new THREE.Vector3(),
         phase: rng() * Math.PI * 2,
@@ -402,11 +450,12 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
   for (const c of crystals) {
     // 海上的晶石：光環放在水面上
     let wet = false;
-    try { wet = world.isWater(c.dir); } catch { /* 忽略 */ }
+    try { wet = !c.elevated && world.isWater(c.dir); } catch { /* 忽略 */ }
     c.ground.copy(c.dir).multiplyScalar((wet ? Math.max(c.gr, SEA_LEVEL) : c.gr) + 0.08);
     c.check.copy(c.dir).multiplyScalar(c.gr + CRYSTAL_CHECK);
     c.pos.copy(c.dir).multiplyScalar(c.gr + CRYSTAL_HOVER);
     c.target = { position: c.pos, label: '知識晶石' };
+    c.radar = { position: c.pos, kind: 'crystal' };
   }
 
   // ---- 荒地 ----
@@ -427,6 +476,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       yaw: rng() * Math.PI * 2, variant: i % 2,
     };
     p.target = { position: p.pos, label: '荒地（可種植）' };
+    p.radar = { position: p.pos, kind: 'plot' };
     return p;
   });
   // 補足數量（若 SEEDLING_PLOTS 比規格多）
@@ -437,6 +487,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     const gr = groundR(dir);
     const p = { id: 'plot-' + i, index: i, kind: 'plot', biome, dir, gr, baseQuat: new THREE.Quaternion().setFromUnitVectors(Y_AXIS, dir), pos: dir.clone().multiplyScalar(gr), planted: false, grow: 1, target: null, vStart: 0, vCount: 0, yaw: rng() * Math.PI * 2, variant: i % 2 };
     p.target = { position: p.pos, label: '荒地（可種植）' };
+    p.radar = { position: p.pos, kind: 'plot' };
     plots.push(p);
   }
 
@@ -460,6 +511,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       phase: rng() * Math.PI * 2, picked: false, target: null,
     };
     s.target = { position: s.pos, label: '幼苗種子' };
+    s.radar = { position: s.pos, kind: 'seed' };
     seeds.push(s);
   }
 
@@ -651,7 +703,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       replyTimer: -1, replyEmoji: '', hopT: 0, hops: 0, blinkTimer: 1 + npcRng() * 3, blinkT: 0,
       idleTimer: 15 + npcRng() * 20, hintCooldown: 0, hintCount: 0, wasNear: false,
       near: [], nearTimer: npcRng() * 0.5, avoidSign: npcRng() < 0.5 ? -1 : 1, avoidTimer: 0,
-      phase: npcRng() * Math.PI * 2, flash: 0, getHead: null, gr: 30,
+      phase: npcRng() * Math.PI * 2, flash: 0, getHead: null, gr: 30, pingCd: 0,
     };
     // 表情泡泡用的位置 getter：寫進快取向量（可傳入 out）
     npc.getHead = (out) => (out ? out.copy(npc.head) : npc.head);
@@ -720,6 +772,21 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       }
       const dp = npc.pos.distanceTo(ppos);
       const near = dp < 3;
+
+      // v2：指南針 Lv0/Lv1 時，靠近嗶嗶會得到一段「訊號」
+      npc.pingCd = Math.max(0, npc.pingCd - dt);
+      if (near && npc.pingCd <= 0 && navLevel() < 2 && countCrystals() < crystals.length) {
+        npc.pingCd = PING_COOLDOWN;
+        state.ping = PING_DURATION;
+        toast(MESSAGES.ping, 3000);
+        play('ping');
+        npc.flash = 1;
+        npc.faceTimer = Math.max(npc.faceTimer, 2.5);
+        npc.hopT = 0.35; npc.hops = 1;
+        npc.hintCooldown = Math.max(npc.hintCooldown, 20);
+        npcHintGate = Math.max(npcHintGate, 5);
+        npc.wasNear = true;
+      }
 
       // 提示
       npc.hintCooldown -= dt;
@@ -890,7 +957,21 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     seedsCarried: 0,
     timeSec: 0,
     victoryShown: false,
+    fragments: 0,   // v2：地圖碎片（決定指南針等級）
+    ping: 0,        // v2：嗶嗶訊號剩餘秒數
   };
+  const navLevel = () => COMPASS_LEVELS[Math.min(state.fragments, COMPASS_LEVELS.length - 1)] || 0;
+
+  // ==================================================================
+  // v2：任務居民
+  // ==================================================================
+  const quests = createQuests({
+    scene: root, world, player, ui, audio, effects,
+    onFragment: (def) => onFragment(def),
+    avoid: placed.map((p) => p.dir),
+  });
+  const TOTAL_Q = TOTAL_QUESTS || 6;
+  const countQuests = () => quests.doneCount();
   let tutorialPending = true;
   let tutorialUntil = 0; // 教學訊息播放期間（timeSec），嗶嗶先不插話
   let winStarted = false;
@@ -903,14 +984,17 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
   const countCrystals = () => { let n = 0; for (const c of crystals) if (c.collected) n++; return n; };
   const countTrees = () => { let n = 0; for (const p of plots) if (p.planted) n++; return n; };
   function getProgress() {
-    const c = countCrystals(), tr = countTrees();
+    const c = countCrystals(), tr = countTrees(), q = countQuests();
     return {
       crystals: c, totalCrystals: crystals.length,
       trees: tr, totalTrees: plots.length,
-      done: c >= crystals.length && tr >= plots.length,
+      quests: q, totalQuests: TOTAL_Q,
+      fragments: state.fragments,
+      done: c >= crystals.length && tr >= plots.length && q >= TOTAL_Q,
     };
   }
-  const fraction = () => (countCrystals() + countTrees()) / (crystals.length + plots.length);
+  // 恢復度 = (晶石 + 樹 + 任務) / 26
+  const fraction = () => (countCrystals() + countTrees() + countQuests()) / (crystals.length + plots.length + TOTAL_Q);
   function pushProgress() {
     const p = getProgress();
     safe(() => ui.updateProgress(p));
@@ -964,6 +1048,24 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     toast(MESSAGES.planted(prog.trees, prog.totalTrees));
     afterProgress(prog, 'tree');
   }
+  // 任務完成 → 地圖碎片（quests.js 在完成對話結束後呼叫）
+  function onFragment() {
+    state.fragments++;
+    const n = state.fragments;
+    const level = navLevel();
+    const prog = pushProgress();
+    schedule(1.0, () => {
+      play('fragment');
+      const ft = FRAGMENT_TEXTS[n <= 3 ? n : FRAGMENT_TEXTS.length - 1] || FRAGMENT_TEXTS[0];
+      if (ui && typeof ui.showFragment === 'function') {
+        safe(() => ui.showFragment({ fragments: n, level, title: ft.title, text: ft.text }));
+      } else {
+        toast(`${fragmentTitle(n, TOTAL_Q)} ${ft.text}`, 4200);
+      }
+      afterProgress(getProgress(), 'quest');
+    });
+    return prog;
+  }
   function afterProgress(p, kind) {
     const f = fraction();
     if (!halfwayShown && f >= 0.5 && !p.done) {
@@ -972,6 +1074,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     }
     if (kind === 'crystal' && p.crystals === p.totalCrystals && !p.done) schedule(0.6, () => toast(MESSAGES.allCrystals, 2600));
     if (kind === 'tree' && p.trees === p.totalTrees && !p.done) schedule(2.4, () => toast(MESSAGES.allTrees, 2600));
+    if (kind === 'quest' && p.quests === p.totalQuests && !p.done) schedule(0.8, () => toast(MESSAGES.allQuests, 2600));
     if (p.done) startVictory();
   }
   function startVictory() {
@@ -997,7 +1100,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       schedule(1.5, () => {
         state.victoryShown = true;
         const p = getProgress();
-        safe(() => ui.showVictory({ timeSec: Math.round(state.timeSec), crystals: p.crystals, trees: p.trees }));
+        safe(() => ui.showVictory({ timeSec: Math.round(state.timeSec), crystals: p.crystals, trees: p.trees, quests: p.quests }));
       });
     });
   }
@@ -1005,7 +1108,8 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
   // ---- 教學 ----
   function runTutorial() {
     const prog = getProgress();
-    const fresh = prog.crystals === 0 && prog.trees === 0 && state.seedsCarried === 0 && countPickedSeeds() === 0;
+    const fresh = prog.crystals === 0 && prog.trees === 0 && prog.quests === 0 && state.fragments === 0
+      && state.seedsCarried === 0 && countPickedSeeds() === 0;
     if (!fresh) {
       schedule(0.8, () => toast(TUTORIAL.welcomeBack, 2600));
       tutorialUntil = state.timeSec + 3.4;
@@ -1040,6 +1144,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
 
     const ppos = player.position;
     needSeedCooldown = Math.max(0, needSeedCooldown - dt);
+    if (state.ping > 0) state.ping = Math.max(0, state.ping - dt);
 
     // ---- 晶石 ----
     for (const c of crystals) {
@@ -1132,11 +1237,12 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     if (treesDirty) { treeMeshA.instanceMatrix.needsUpdate = true; treeMeshB.instanceMatrix.needsUpdate = true; }
 
     updateNpcs(dt, t);
+    safe(() => quests.update(dt, t));
 
     // 讀檔後若已全部完成但勝利畫面還沒出現過
     if (!winStarted && !state.victoryShown && getProgressDoneFast()) startVictory();
   }
-  const getProgressDoneFast = () => countCrystals() >= crystals.length && countTrees() >= plots.length;
+  const getProgressDoneFast = () => countCrystals() >= crystals.length && countTrees() >= plots.length && countQuests() >= TOTAL_Q;
 
   // ==================================================================
   // 目標（指南針）
@@ -1148,19 +1254,106 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       const item = list[i];
       if (item[flag]) continue;
       const d = item.dir.dot(_pdir);
-      if (d > _bestDot) { _bestDot = d; _best = item; }
+      if (d > _bestDot) { _bestDot = d; _best = item.target; }
     }
   }
-  function getNearestTarget() {
-    player.getDirection(_pdir);
+  /** 最近的未收集晶石（target 物件）或 null */
+  function nearestCrystalTarget() {
+    _best = null; _bestDot = -2;
+    consider(crystals, 'collected');
+    const b = _best; _best = null;
+    return b;
+  }
+  /** Lv2+：晶石、種子／荒地、進行中任務的目標，取最近的；有計時的任務目標優先 */
+  function nearestAnyTarget() {
     _best = null; _bestDot = -2;
     const unplanted = plots.length - countTrees();
     consider(crystals, 'collected');
     if (state.seedsCarried > 0 && unplanted > 0) consider(plots, 'planted');
     else if (unplanted > state.seedsCarried) consider(seeds, 'picked');
-    const best = _best;
-    _best = null;
-    return best ? best.target : null;
+    const obj = quests.getNearestObjective(player.position);
+    if (obj) {
+      if (obj.urgent) { _best = null; return obj; }
+      const len = obj.position.length();
+      const d = len > 1e-6 ? obj.position.dot(_pdir) / len : -2;
+      if (d > _bestDot) { _bestDot = d; _best = obj; }
+    }
+    const b = _best; _best = null;
+    return b;
+  }
+
+  // 導航資訊：同一個物件，每次就地更新（main 每幀呼叫，modal 時也會呼叫）
+  const radarList = [];
+  const nav = {
+    level: 0, fragments: 0, ping: 0, showArrow: false, showDistance: false,
+    target: null, distance: 0,
+    biome: getBiomeById(START_BIOME),
+    biomeLeft: { crystals: 0, total: CRYSTALS_PER_BIOME },
+    radar: null,
+  };
+  const RADAR_R = RADAR_RANGE * 1.2;
+  const RADAR_R2 = RADAR_R * RADAR_R;
+  function getNavInfo() {
+    player.getDirection(_pdir);
+    const level = navLevel();
+    nav.level = level;
+    nav.fragments = state.fragments;
+    nav.ping = state.ping > 0 ? state.ping : 0;
+    // 所在生態區與剩餘晶石
+    try { const b = world.getBiome(_pdir); if (b) nav.biome = b; } catch { /* 忽略 */ }
+    let left = 0, total = 0;
+    const bid = nav.biome && nav.biome.id;
+    for (let i = 0; i < crystals.length; i++) {
+      const c = crystals[i];
+      if (c.biome.id !== bid) continue;
+      total++;
+      if (!c.collected) left++;
+    }
+    nav.biomeLeft.crystals = left;
+    nav.biomeLeft.total = total || CRYSTALS_PER_BIOME;
+    // 箭頭目標
+    const pinging = nav.ping > 0;
+    let target = null;
+    if (level >= 2) target = nearestAnyTarget();
+    else if (level === 1) target = nearestCrystalTarget() || nearestAnyTarget();
+    else if (pinging) target = nearestCrystalTarget();
+    nav.target = target;
+    nav.showArrow = !!target;
+    nav.showDistance = !!target && (level >= 2 || pinging);
+    nav.distance = target ? target.position.distanceTo(player.position) : 0;
+    // 雷達（Lv3）
+    if (level >= 3) {
+      radarList.length = 0;
+      const pp = player.position;
+      for (let i = 0; i < crystals.length; i++) {
+        const c = crystals[i];
+        if (!c.collected && c.pos.distanceToSquared(pp) <= RADAR_R2) radarList.push(c.radar);
+      }
+      for (let i = 0; i < seeds.length; i++) {
+        const sd = seeds[i];
+        if (!sd.picked && sd.pos.distanceToSquared(pp) <= RADAR_R2) radarList.push(sd.radar);
+      }
+      if (state.seedsCarried > 0) {
+        for (let i = 0; i < plots.length; i++) {
+          const p = plots[i];
+          if (!p.planted && p.pos.distanceToSquared(pp) <= RADAR_R2) radarList.push(p.radar);
+        }
+      }
+      quests.getRadarPoints(radarList, pp, RADAR_R);
+      nav.radar = radarList;
+    } else nav.radar = null;
+    return nav;
+  }
+  function getNearestTarget() {
+    return getNavInfo().target;
+  }
+
+  // ---- 互動（任務居民） ----
+  function getInteractHint() {
+    return quests.getInteractHint();
+  }
+  function interact() {
+    return quests.interact();
   }
 
   // ==================================================================
@@ -1176,6 +1369,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       npc.replyEmoji = pick(replies);
       npc.idleTimer = Math.max(npc.idleTimer, 10);
     }
+    safe(() => quests.onPlayerEmote(emoji, replies));
   }
 
   // ==================================================================
@@ -1183,24 +1377,30 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
   // ==================================================================
   function getSaveData() {
     return {
-      v: 1,
+      v: 2,
       crystals: crystals.filter((c) => c.collected).map((c) => c.id),
       seeds: seeds.filter((s) => s.picked).map((s) => s.id),
       plots: plots.filter((p) => p.planted).map((p) => p.id),
       seedsCarried: state.seedsCarried,
       timeSec: Math.round(state.timeSec * 10) / 10,
       victoryShown: state.victoryShown,
+      fragments: state.fragments,
+      quests: quests.getSaveData(),
     };
   }
 
-  function applyState({ crystalIds, seedIds, plotIds, seedsCarried, timeSec, victoryShown }) {
+  function applyState({ crystalIds, seedIds, plotIds, seedsCarried, timeSec, victoryShown, fragments = 0, questData = null }) {
     timers.length = 0;
     winStarted = false;
+    safe(() => quests.loadSaveData(questData));
+    const qDone = countQuests();
+    state.fragments = clamp(Math.max(Math.floor(fragments) || 0, qDone), 0, 99);
+    state.ping = 0;
     for (const c of crystals) { c.collected = crystalIds.has(c.id); c.anim = -1; }
     for (const s of seeds) s.picked = seedIds.has(s.id);
     for (const p of plots) { p.planted = plotIds.has(p.id); p.grow = 1; tintPlot(p, p.planted ? 1 : 0); }
     state.timeSec = timeSec;
-    state.victoryShown = victoryShown;
+    state.victoryShown = victoryShown && getProgressDoneFast();
     // 一致性：剩下的種子（身上 + 地上）至少要夠種完剩下的荒地
     const unplanted = plots.length - countTrees();
     const onGround = seeds.length - countPickedSeeds();
@@ -1211,7 +1411,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     halfwayShown = fraction() >= 0.5;
     needSeedCooldown = 0;
     tutorialPending = true;
-    for (const npc of npcs) { npc.replyTimer = -1; npc.faceTimer = 0; npc.hintCooldown = 0; }
+    for (const npc of npcs) { npc.replyTimer = -1; npc.faceTimer = 0; npc.hintCooldown = 0; npc.pingCd = 0; }
     setStatic();
     pushProgress();
   }
@@ -1227,7 +1427,10 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
         plotIds: ids(data.plots),
         seedsCarried: Number(data.seedsCarried),
         timeSec: Number.isFinite(timeSec) && timeSec >= 0 ? timeSec : 0,
-        victoryShown: data.victoryShown === true,
+        // v1 存檔沒有任務：v1 的勝利不算 v2 的勝利（完成任務後會再慶祝一次）
+        victoryShown: data.victoryShown === true && data.v >= 2,
+        fragments: Number(data.fragments) || 0,
+        questData: data.quests && typeof data.quests === 'object' ? data.quests : null,
       });
     } catch (e) {
       console.warn('[gameplay] 讀檔失敗，忽略', e);
@@ -1235,7 +1438,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
   }
 
   function reset() {
-    applyState({ crystalIds: new Set(), seedIds: new Set(), plotIds: new Set(), seedsCarried: 0, timeSec: 0, victoryShown: false });
+    applyState({ crystalIds: new Set(), seedIds: new Set(), plotIds: new Set(), seedsCarried: 0, timeSec: 0, victoryShown: false, fragments: 0, questData: null });
   }
 
   // 初始狀態
@@ -1245,12 +1448,15 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
   return {
     update,
     getNearestTarget,
+    getNavInfo,
+    getInteractHint,
+    interact,
     onPlayerEmote,
     getProgress,
     getSaveData,
     loadSaveData,
     reset,
     // 測試/除錯用（非合約）
-    _debug: { crystals, seeds, plots, npcs, root },
+    _debug: { crystals, seeds, plots, npcs, root, quests, state, nav },
   };
 }

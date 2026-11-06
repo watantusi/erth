@@ -72,11 +72,21 @@
 .tw-hud.is-dimmed .tw-emote *,
 .tw-hud.is-dimmed .tw-topright * { pointer-events: none; }
 
-/* ---- 進度（左上） ---- */
-.tw-progress {
+/* ---- 左欄（進度 →〔窄螢幕〕指南針 → 任務） ---- */
+.tw-left {
   position: absolute;
   top: calc(var(--edge) + var(--st));
   left: calc(var(--edge) + var(--sl));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none;
+}
+
+/* ---- 進度（左上） ---- */
+.tw-progress {
+  position: relative;
   padding: 6px 8px 8px;
   border-radius: 18px;
   display: flex;
@@ -135,16 +145,32 @@
   top: calc(var(--edge) + var(--st));
   left: 50%;
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 14px 5px 5px;
-  border-radius: 999px;
-  max-width: min(46vw, 260px);
+  flex-direction: column;
+  padding: 5px 12px 5px 5px;
+  border-radius: 26px;
+  max-width: min(46vw, 280px);
   transform: translate(-50%, -12px) scale(0.9);
   opacity: 0;
   transition: opacity 0.3s ease, transform 0.4s var(--pop);
 }
 .tw-compass.is-visible { opacity: 1; transform: translate(-50%, 0) scale(1); }
+.tw-compass-row { display: flex; align-items: center; gap: 9px; min-width: 0; }
+/* 窄螢幕：指南針放在左欄（進度卡下方），避開右上的雷達區 */
+.tw-left .tw-compass {
+  position: relative;
+  top: auto;
+  left: auto;
+  max-width: calc(100vw - var(--edge) - var(--sl) - var(--sr) - 140px);
+  transform: translateY(-8px) scale(0.92);
+  transform-origin: 0 0;
+}
+.tw-left .tw-compass.is-visible { transform: none; }
+.tw-left .tw-compass:not(.is-visible) { display: none; }
+.tw-compass.is-levelup { animation: tw-levelup 0.9s var(--pop); }
+@keyframes tw-levelup {
+  30% { box-shadow: var(--shadow), 0 0 0 6px rgba(255, 207, 77, 0.55); }
+  100% { box-shadow: var(--shadow), 0 0 0 0 rgba(255, 207, 77, 0); }
+}
 .tw-compass-dial {
   position: relative;
   flex: none;
@@ -153,6 +179,12 @@
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #ffffff 0%, #eaf5ff 70%, #d7ebfb 100%);
   box-shadow: inset 0 0 0 2px rgba(59, 154, 225, 0.25);
+}
+.tw-compass.is-pingstart .tw-compass-dial { animation: tw-ping-start 0.8s var(--pop); }
+@keyframes tw-ping-start {
+  0% { box-shadow: inset 0 0 0 2px rgba(59, 154, 225, 0.25), 0 0 0 0 rgba(59, 154, 225, 0.6); }
+  60% { box-shadow: inset 0 0 0 2px rgba(59, 154, 225, 0.25), 0 0 0 14px rgba(59, 154, 225, 0); }
+  30% { transform: scale(1.15); }
 }
 .tw-compass-arrow {
   position: absolute;
@@ -172,6 +204,93 @@
 }
 .tw-compass.is-seen .tw-compass-arrow { opacity: 0; }
 .tw-compass.is-seen .tw-compass-seen { opacity: 1; transform: scale(1); }
+/* 沒有箭頭（Lv0 或沒有目標）：轉盤中間顯示生態區圖示 */
+.tw-compass-biome {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 21px;
+  line-height: 1;
+  opacity: 0;
+  transform: scale(0.4) rotate(-30deg);
+  transition: opacity 0.25s ease, transform 0.4s var(--pop);
+}
+.tw-compass.is-badge .tw-compass-arrow,
+.tw-compass.is-badge .tw-compass-seen { opacity: 0; transform: scale(0.4); }
+.tw-compass.is-badge .tw-compass-biome { opacity: 1; transform: none; }
+.tw-compass.is-badge .tw-compass-dial { background: radial-gradient(circle at 35% 30%, #ffffff 0%, #f3f7ec 70%, #e3edd6 100%); box-shadow: inset 0 0 0 2px rgba(79, 194, 135, 0.28); }
+.tw-compass.is-badge.is-lv0 .tw-compass-dial::after {
+  content: '🔒';
+  position: absolute;
+  right: -5px;
+  bottom: -4px;
+  font-size: 12px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 1px rgba(36, 58, 96, 0.3));
+}
+/* 訊號倒數圈 */
+.tw-compass-ring {
+  position: absolute;
+  inset: -5px;
+  width: calc(100% + 10px);
+  height: calc(100% + 10px);
+  transform: rotate(-90deg);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  overflow: visible;
+  pointer-events: none;
+}
+.tw-compass-ring circle { fill: none; stroke-width: 3.2; }
+.tw-ring-bg { stroke: rgba(59, 154, 225, 0.16); }
+.tw-ring-fg { stroke: var(--sky); stroke-linecap: round; transition: stroke-dashoffset 0.25s linear, stroke 0.3s; }
+.tw-compass.is-ping .tw-compass-ring { opacity: 1; }
+.tw-compass.is-urgent .tw-ring-fg { stroke: var(--coral); animation: tw-blink 0.5s steps(2, jump-none) infinite; }
+@keyframes tw-blink { 50% { opacity: 0.35; } }
+/* 指南針等級點 */
+.tw-pips { flex: none; display: flex; flex-direction: column-reverse; gap: 3px; margin-left: 2px; }
+.tw-pip {
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(47, 59, 82, 0.14);
+  box-shadow: inset 0 1px 1px rgba(47, 59, 82, 0.12);
+  transition: background 0.3s ease, transform 0.4s var(--pop);
+}
+.tw-pip.on { background: linear-gradient(135deg, #ffe07a, #ffb703); box-shadow: 0 0 0 1px rgba(229, 150, 20, 0.35), 0 0 6px rgba(255, 183, 3, 0.55); }
+.tw-compass.is-levelup .tw-pip.on { animation: tw-pop 0.6s var(--pop); }
+/* Lv0 偶爾出現的提示 */
+.tw-compass-hint {
+  display: grid;
+  grid-template-rows: 0fr;
+  width: 0;          /* 收起時不撐寬指南針 */
+  min-width: 100%;
+  opacity: 0;
+  transition: grid-template-rows 0.35s ease, opacity 0.3s ease, margin 0.35s ease;
+}
+.tw-compass-hint-in {
+  overflow: hidden;
+  min-height: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.45;
+  color: #8a5a12;
+  text-wrap: balance;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.tw-compass.has-hint .tw-compass-hint {
+  width: auto;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  margin: 5px 0 2px 5px;
+}
+.tw-compass.has-hint .tw-compass-hint-in {
+  padding: 5px 9px;
+  border-radius: 12px;
+  background: rgba(255, 207, 77, 0.22);
+}
 .tw-compass-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .tw-compass-label {
   font-size: 14px;
@@ -193,7 +312,7 @@
 /* ---- 提示訊息 ---- */
 .tw-toasts {
   position: absolute;
-  top: calc(var(--edge) + var(--st) + 60px);
+  top: calc(var(--edge) + var(--st) + 60px); /* JS 會依版面重新計算 top 與 width */
   left: 50%;
   transform: translateX(-50%);
   width: min(86vw, 420px);
@@ -740,14 +859,362 @@
   100% { transform: translate3d(var(--x), 110vh, 0) rotate(var(--r)); opacity: 0; }
 }
 
+/* ===================== v2：任務追蹤 ===================== */
+.tw-quests {
+  display: grid; /* 每張卡同寬（以最寬的為準） */
+  justify-items: stretch;
+  gap: 6px;
+  max-width: min(240px, calc(100vw - var(--edge) - var(--sl) - var(--sr) - 140px));
+}
+.tw-quest {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 150px;
+  padding: 5px 12px 5px 5px;
+  border-radius: 16px;
+  animation: tw-quest-in 0.5s var(--pop) both;
+  transition: opacity 0.4s ease, transform 0.4s ease, background 0.3s ease;
+}
+@keyframes tw-quest-in { from { opacity: 0; transform: translateX(-24px) scale(0.9); } }
+.tw-quest.is-overflow { display: none; }
+.tw-quest.is-leaving { opacity: 0; transform: translateX(-20px) scale(0.92); }
+.tw-quest-ic {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: inset 0 -2px 0 rgba(47, 59, 82, 0.06);
+}
+.tw-quest-body { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.tw-quest-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tw-quest-prog {
+  align-self: flex-start;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--sky-d);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.tw-quest-prog.is-bump { animation: tw-pop 0.5s var(--pop); color: var(--coral-d); }
+.tw-quest-new {
+  position: absolute;
+  right: -6px;
+  top: -9px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffb18f, var(--coral));
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  box-shadow: 0 3px 8px rgba(229, 104, 60, 0.35);
+  opacity: 0;
+  transform: scale(0.4);
+  pointer-events: none;
+}
+.tw-quest.is-new { box-shadow: var(--shadow), 0 0 0 3px rgba(255, 138, 92, 0.45); }
+.tw-quest.is-new .tw-quest-new { animation: tw-new-badge 2.6s var(--pop) both; }
+@keyframes tw-new-badge {
+  0% { opacity: 0; transform: scale(0.4) rotate(-10deg); }
+  14% { opacity: 1; transform: scale(1.1) rotate(4deg); }
+  22%, 85% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: scale(0.8); }
+}
+.tw-quest.is-new .tw-quest-ic { animation: tw-pop 0.7s var(--pop) 0.2s; }
+.tw-quest.is-done { background: rgba(225, 248, 233, 0.9); animation: tw-quest-done 0.6s var(--pop); }
+.tw-quest.is-done .tw-quest-ic { background: var(--mint); color: #fff; font-weight: 900; font-size: 17px; }
+.tw-quest.is-done .tw-quest-prog { color: #23794d; }
+@keyframes tw-quest-done { 35% { transform: scale(1.08); } }
+.tw-quest-more {
+  justify-self: start;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink-soft);
+}
+
+/* 手機（窄或矮）：任務卡改成單行，省下垂直空間、避開搖桿 */
+@media (max-width: 719px), (max-height: 520px) {
+  .tw-quests { gap: 5px; }
+  .tw-quest { min-width: 0; gap: 7px; padding: 4px 11px 4px 4px; border-radius: 14px; }
+  .tw-quest-ic { width: 26px; height: 26px; border-radius: 9px; font-size: 16px; }
+  .tw-quest.is-done .tw-quest-ic { font-size: 15px; }
+  .tw-quest-body { flex-direction: row; align-items: baseline; gap: 7px; min-width: 0; }
+  .tw-quest-title { font-size: 13px; flex: 0 1 auto; min-width: 0; }
+  .tw-quest-prog { flex: none; font-size: 12px; }
+  .tw-quest-new { top: -8px; right: -4px; font-size: 10.5px; padding: 1px 7px; }
+}
+
+/* ===================== v2：互動提示（下方中央） ===================== */
+.tw-prompt {
+  position: absolute;
+  left: 50%;
+  bottom: calc(28px + var(--sb));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(70vw, 360px);
+  padding: 7px 16px 7px 8px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 800;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate(-50%, 10px) scale(0.92);
+  transition: opacity 0.25s ease, transform 0.3s var(--pop);
+  pointer-events: none;
+}
+.tw-prompt.is-visible { opacity: 1; transform: translate(-50%, 0); }
+.tw-prompt.is-visible.is-pop { animation: tw-prompt-pop 0.45s var(--pop); }
+@keyframes tw-prompt-pop { 40% { transform: translate(-50%, -3px) scale(1.06); } }
+.tw-prompt .tw-kbd { min-width: 28px; font-size: 14px; padding: 3px 8px; color: var(--coral-d); }
+.tw-prompt-t { overflow: hidden; text-overflow: ellipsis; }
+.tw-prompt:has(.tw-kbd) { padding-left: 7px; }
+/* 觸控裝置下方中央是操控區，萬一有提示就放在表情鈕上方的高度 */
+@media (pointer: coarse) and (orientation: portrait) { .tw-prompt { bottom: calc(212px + var(--sb)); } }
+.tw-hud.is-dimmed .tw-prompt { opacity: 0; }
+.tw-hud.is-talking .tw-emote { opacity: 0; visibility: hidden; }
+
+/* 讀取 safe-area 用的探針 */
+.tw-safe-probe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  visibility: hidden;
+  pointer-events: none;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* ===================== v2：居民對話 ===================== */
+.tw-modal-dlg {
+  align-items: flex-end;
+  padding-bottom: calc(14px + var(--sb));
+  background: linear-gradient(to top, rgba(30, 50, 85, 0.38) 0%, rgba(30, 50, 85, 0.12) 45%, rgba(30, 50, 85, 0) 70%);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.tw-dlg-card {
+  max-width: 680px;
+  overflow: visible;
+  margin-top: 56px;
+  padding: 30px 22px 14px;
+  text-align: left;
+  border-radius: 26px;
+}
+.tw-modal-dlg.is-open .tw-dlg-card { animation: tw-dlg-in 0.42s var(--pop) both; }
+@keyframes tw-dlg-in { from { transform: translateY(40px); opacity: 0; } }
+.tw-dlg-portrait {
+  position: absolute;
+  left: 18px;
+  top: -48px;
+  width: 78px;
+  height: 78px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 35% 30%, #ffffff 0%, #fff4e0 60%, #ffe2b8 100%);
+  border: 4px solid #fff;
+  box-shadow: 0 8px 20px rgba(36, 58, 96, 0.22), 0 0 0 3px rgba(255, 183, 3, 0.35);
+}
+.tw-dlg-icon { font-size: 44px; line-height: 1; display: block; transform-origin: 50% 90%; }
+.tw-dlg-portrait.is-talk .tw-dlg-icon { animation: tw-talk 0.5s ease-in-out 2; }
+@keyframes tw-talk {
+  0%, 100% { transform: none; }
+  25% { transform: translateY(-4px) rotate(-5deg) scale(1.04); }
+  60% { transform: translateY(0) rotate(4deg) scale(0.98); }
+}
+.tw-modal-dlg.is-open .tw-dlg-portrait { animation: tw-spin-in 0.55s var(--pop) 0.05s both; }
+.tw-dlg-name {
+  position: absolute;
+  left: 104px;
+  top: -15px;
+  max-width: calc(100% - 120px);
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffa37c, var(--coral));
+  color: #fff;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 4px 10px rgba(229, 104, 60, 0.3);
+  text-shadow: 0 1px 1px rgba(160, 60, 20, 0.3);
+}
+.tw-dlg-text {
+  margin: 6px 0 0;
+  min-height: calc(2 * 1.65em);
+  max-height: 38vh;
+  overflow-y: auto;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.65;
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+.tw-dlg-rest { color: transparent; }
+.tw-dlg-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 26px;
+  margin-top: 4px;
+}
+.tw-dlg-dots { display: flex; gap: 5px; flex: none; }
+.tw-dlg-dots i {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(47, 59, 82, 0.15);
+  transition: background 0.25s ease, transform 0.3s var(--pop);
+}
+.tw-dlg-dots i.on { background: var(--coral); }
+.tw-dlg-choices {
+  flex: 1;
+  display: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 4px 0 6px;
+}
+.tw-dlg-card.is-choosing .tw-dlg-choices { display: flex; }
+.tw-dlg-choice { min-height: 46px; padding: 0 22px; font-size: 16px; cursor: pointer; animation: tw-item-in 0.4s var(--pop) both; animation-delay: calc(var(--i) * 60ms); }
+.tw-dlg-next {
+  margin-left: auto;
+  font-size: 14px;
+  color: var(--coral);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.tw-dlg-card.is-ready .tw-dlg-next { opacity: 1; animation: tw-next 0.9s ease-in-out infinite; }
+.tw-dlg-card.is-choosing .tw-dlg-next { display: none; }
+@keyframes tw-next { 50% { transform: translateY(4px); } }
+
+/* ===================== v2：地圖碎片 ===================== */
+.tw-modal-frag { background: radial-gradient(circle at 50% 40%, rgba(255, 233, 170, 0.3), rgba(40, 70, 110, 0.32)); }
+.tw-frag-card { max-width: 430px; overflow-x: hidden; }
+.tw-frag-map {
+  --w: 210px;
+  --h: 140px;
+  position: relative;
+  margin: 4px auto 14px;
+  width: var(--w);
+  height: var(--h);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 3px;
+  padding: 6px;
+  border-radius: 14px;
+  background: rgba(139, 101, 52, 0.12);
+  box-shadow: inset 0 0 0 2px rgba(139, 101, 52, 0.18);
+  transform: rotate(-2deg);
+}
+.tw-frag-piece {
+  --map: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'><rect width='300' height='200' fill='%23f7e9c6'/><path d='M0 150 Q50 128 95 152 T185 168 T300 146 V200 H0Z' fill='%2399d3ee'/><path d='M205 0 Q222 34 262 28 T300 48 V0Z' fill='%2399d3ee'/><path d='M0 0 H40 Q30 22 0 30Z' fill='%2399d3ee'/><ellipse cx='72' cy='68' rx='50' ry='30' fill='%23a6d77a'/><path d='M52 66 l7 -15 l7 15z M70 60 l7 -15 l7 15z M86 72 l7 -15 l7 15z' fill='%234f9e5a'/><path d='M128 108 l22 -38 l22 38z' fill='%23907060'/><path d='M143 82 l7 -12 l7 12z' fill='%23ff6a3d'/><ellipse cx='238' cy='104' rx='42' ry='24' fill='%23ecc677'/><path d='M226 104 q6 -14 12 0 q6 -14 12 0' stroke='%23c99a4a' stroke-width='3' fill='none'/><ellipse cx='230' cy='176' rx='22' ry='9' fill='%23eef6fb'/><path d='M58 92 C 95 140, 120 40, 170 120 S 225 150, 246 128' stroke='%23c94747' stroke-width='3.5' stroke-dasharray='7 7' fill='none' stroke-linecap='round'/><path d='M240 120 l14 14 M254 120 l-14 14' stroke='%23c94747' stroke-width='5' stroke-linecap='round'/><g transform='translate(36 170)'><circle r='16' fill='%23fff8e6' stroke='%23b8935a' stroke-width='2'/><path d='M0 -13 L4 0 L0 13 L-4 0Z' fill='%23c94747'/><path d='M-13 0 L0 4 L13 0 L0 -4Z' fill='%23b8935a'/></g></svg>");
+  display: block;
+  border-radius: 6px;
+  border: 2px dashed rgba(139, 101, 52, 0.35);
+  background: rgba(255, 255, 255, 0.35);
+}
+.tw-frag-piece { position: relative; }
+.tw-frag-piece::after {
+  content: '?';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  font-weight: 900;
+  color: rgba(139, 101, 52, 0.3);
+}
+.tw-frag-piece.is-have::after,
+.tw-frag-piece.is-new::after { content: none; }
+.tw-frag-piece.is-have,
+.tw-frag-piece.is-new {
+  border: 0;
+  background: var(--map);
+  background-size: calc(var(--w) - 12px) calc(var(--h) - 12px);
+  background-position: calc(var(--c) * (var(--w) - 12px) / -3) calc(var(--r) * (var(--h) - 12px) / -2);
+  box-shadow: 0 2px 4px rgba(110, 76, 30, 0.25), inset 0 0 0 1px rgba(139, 101, 52, 0.25);
+}
+.tw-modal-frag.is-open .tw-frag-piece.is-new { animation: tw-piece-in 0.9s var(--pop) 0.25s both, tw-piece-glow 1.8s ease-in-out 1.2s infinite; position: relative; z-index: 2; }
+@keyframes tw-piece-in {
+  from { transform: translate(30px, -60px) rotate(40deg) scale(1.9); opacity: 0; }
+  60% { opacity: 1; }
+}
+@keyframes tw-piece-glow {
+  50% { box-shadow: 0 0 0 3px rgba(255, 207, 77, 0.8), 0 0 16px rgba(255, 207, 77, 0.9); }
+}
+.tw-frag-title { margin: 8px 0 6px; font-size: 21px; font-weight: 900; line-height: 1.35; }
+.tw-frag-text { margin: 0 0 12px; font-size: 15.5px; line-height: 1.7; font-weight: 600; text-wrap: pretty; overflow-wrap: anywhere; }
+.tw-frag-level {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(255, 207, 77, 0.18);
+  font-size: 14px;
+  font-weight: 800;
+  color: #8a5a12;
+}
+.tw-frag-pips { display: inline-flex; gap: 6px; }
+.tw-frag-pips .tw-pip { width: 13px; height: 13px; }
+.tw-frag-pips .tw-pip.fill { animation: tw-pip-fill 0.6s var(--pop) var(--d, 0.8s) both; }
+@keyframes tw-pip-fill {
+  from { background: rgba(47, 59, 82, 0.14); transform: scale(1); }
+  50% { transform: scale(1.6); }
+  to { background: linear-gradient(135deg, #ffe07a, #ffb703); box-shadow: 0 0 0 1px rgba(229, 150, 20, 0.35), 0 0 8px rgba(255, 183, 3, 0.7); transform: scale(1); }
+}
+.tw-frag-lv-n { font-variant-numeric: tabular-nums; color: #b06d00; }
+.tw-frag-lv-n.is-up { animation: tw-pop 0.6s var(--pop) 1s both; }
+
+/* 勝利畫面 5 項統計 */
+.tw-stats.is-five { grid-template-columns: repeat(6, 1fr); }
+.tw-stats.is-five .tw-stat { grid-column: span 2; }
+.tw-stats.is-five .tw-stat:nth-child(4) { grid-column: 2 / span 2; }
+
 /* ===================== 響應式 ===================== */
 
 /* 窄螢幕（直立手機）：指南針移到第二排，避開左上進度與右上按鈕 */
 @media (max-width: 599px) {
   .tw-root { --edge: 10px; }
-  .tw-compass { top: calc(var(--edge) + var(--st) + 60px); max-width: calc(100vw - 40px); }
-  .tw-toasts { top: calc(var(--edge) + var(--st) + 118px); }
+  .tw-dlg-text { min-height: calc(3 * 1.65em); }
   .tw-chip { padding: 4px 9px 4px 6px; }
+  .tw-chips.is-three { gap: 4px; }
+  .tw-chips.is-three .tw-chip { padding: 4px 7px 4px 5px; min-height: 28px; }
+  .tw-chips.is-three .tw-chip-ic { font-size: 14px; margin-right: 2px; }
+  .tw-chips.is-three .tw-chip-v { font-size: 16px; }
+  .tw-chips.is-three .tw-chip-tot { font-size: 12px; }
 }
 
 /* 矮螢幕（橫向手機）：卡片並排、間距更緊 */
@@ -799,6 +1266,24 @@
   .tw-stats, .tw-victory-card .tw-btnrow { grid-column: 1 / -1; }
   .tw-stats { margin: 12px 0 14px; }
   .tw-stat { flex-direction: row; justify-content: center; gap: 6px; padding: 8px 4px; }
+  .tw-stats.is-five { grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .tw-stats.is-five .tw-stat, .tw-stats.is-five .tw-stat:nth-child(4) { grid-column: auto; flex-direction: column; gap: 0; padding: 6px 2px; }
+  .tw-stats.is-five .tw-stat-ic { font-size: 16px; }
+  .tw-stats.is-five .tw-stat-v { font-size: 17px; }
+
+  .tw-modal-dlg { padding-bottom: calc(8px + var(--sb)); }
+  .tw-dlg-card { padding: 22px 20px 8px 112px; border-radius: 22px; max-width: 700px; }
+  .tw-dlg-portrait { left: 16px; top: -26px; width: 80px; height: 80px; }
+  .tw-dlg-name { left: 112px; }
+  .tw-dlg-text { min-height: calc(2 * 1.6em); font-size: 16px; line-height: 1.6; max-height: 34vh; }
+  .tw-dlg-choice { min-height: 42px; }
+
+  .tw-frag-card { max-width: 600px; display: flex; align-items: center; gap: 20px; text-align: left; }
+  .tw-frag-map { flex: none; margin: 0 0 0 4px; }
+  .tw-frag-body { flex: 1; min-width: 0; }
+  .tw-frag-title { margin: 4px 0 4px; font-size: 19px; }
+  .tw-frag-text { font-size: 14.5px; line-height: 1.55; margin-bottom: 10px; }
+  .tw-frag-level { margin-bottom: 12px; }
 }
 
 /* 大螢幕：HUD 稍微放大 */
@@ -815,6 +1300,13 @@
   .tw-iconbtn { width: 50px; height: 50px; font-size: 23px; }
   .tw-toasts { top: calc(var(--edge) + var(--st) + 70px); }
   .tw-toast { font-size: 16px; }
+  .tw-quest-title { font-size: 14.5px; }
+  .tw-quest-prog { font-size: 13px; }
+  .tw-quest-ic { width: 34px; height: 34px; font-size: 20px; }
+  .tw-compass-hint-in { font-size: 13.5px; }
+  .tw-prompt { font-size: 16px; bottom: calc(36px + var(--sb)); }
+  .tw-dlg-text { font-size: 18px; }
+  .tw-frag-map { --w: 228px; --h: 152px; }
 }
 
 /* 很小的直立螢幕 */
@@ -835,4 +1327,5 @@
   }
   .tw-confetti { display: none; }
   .tw-marker-pin { animation: none !important; }
+  .tw-dlg-card.is-ready .tw-dlg-next { animation: none !important; }
 }
