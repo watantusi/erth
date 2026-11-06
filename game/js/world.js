@@ -42,7 +42,7 @@ function dirAt(center, ang, azDeg, out = new THREE.Vector3()) {
 // 島嶼（只在海洋區作用）
 const ISLANDS = [
   { dir: dirAt(OCEAN1, 0.34, 40), r: 0.115, h: 3.35 },
-  { dir: dirAt(OCEAN1, 0.37, 215), r: 0.075, h: 3.0 },
+  { dir: dirAt(OCEAN1, 0.37, 215), r: 0.08, h: 3.8 },
   { dir: dirAt(OCEAN2, 0.15, 120), r: 0.095, h: 3.25 },
 ];
 ISLANDS.forEach((I) => { I.cosR = Math.cos(I.r); I.cosTop = Math.cos(I.r * 0.3); });
@@ -814,7 +814,7 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
     wg.computeBoundingSphere();
     const waterMat = new THREE.MeshPhongMaterial({
       vertexColors: true, flatShading: true, transparent: true, opacity: 1,
-      shininess: 90, specular: 0x34444e, depthWrite: false,
+      shininess: 140, specular: 0x0f171d, depthWrite: false,
     });
     waterMat.onBeforeCompile = (shader) => {
       shader.uniforms.uSat = uSat;
@@ -951,7 +951,7 @@ void main() {
     return m;
   }
 
-  const COS_START_CLEAR = Math.cos(0.27);
+  const COS_START_CLEAR = Math.cos(0.3);
   // 彩蛋區域不撒隨機道具
   const keepOut = [
     { dir: dirAt(START, 0.5, 105), cos: Math.cos(0.13) },   // 花朵愛心
