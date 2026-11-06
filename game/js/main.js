@@ -10,6 +10,7 @@ import { createGameplay } from './gameplay.js';
 import { createUI } from './ui.js';
 import { createAudio } from './audio.js';
 import { createEffects } from './effects.js';
+import { createRadar } from './radar.js';
 
 const boot = document.getElementById('boot');
 function bootError(err) {
@@ -152,6 +153,9 @@ function start() {
   player.onJump = () => audio.play('jump');
   player.onLand = () => audio.play(player.inWater ? 'splash' : 'land');
   player.onStep = () => audio.play(player.inWater ? 'splash' : 'step');
+  player.onBounce = () => audio.play('bounce');
+
+  const radar = createRadar({ root: touchRoot });
 
   document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
   window.addEventListener('pagehide', save);
@@ -163,7 +167,6 @@ function start() {
   const clock = new THREE.Clock();
   let t = 0;
   let wasModal = false;
-  let lastTarget = null;
 
   renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 1 / 20);
@@ -177,6 +180,7 @@ function start() {
 
     if (playing && !modal) {
       player.update(dt, input.state, camera);
+      if (input.state.interactPressed && gameplay.interact) gameplay.interact();
       gameplay.update(dt, t);
       saveTimer += dt;
       if (saveTimer > 8) { saveTimer = 0; save(); }
@@ -186,9 +190,21 @@ function start() {
     world.update(dt, t, camera);
     effects.update(dt);
 
-    const target = playing ? gameplay.getNearestTarget() : null;
-    ui.setTarget(target ? target.position : null, target ? target.label : '');
-    if (target !== lastTarget) lastTarget = target;
+    // v2：互動提示、導航（指南針等級）與雷達
+    const hint = playing && !modal && gameplay.getInteractHint ? gameplay.getInteractHint() : null;
+    if (input.setInteractHint) input.setInteractHint(hint);
+    if (ui.setPrompt) ui.setPrompt(hint && !input.isTouch ? `F ${hint}` : null);
+
+    if (playing && gameplay.getNavInfo && ui.setNav) {
+      const nav = gameplay.getNavInfo();
+      ui.setNav(nav);
+      radar.setVisible(!modal);
+      radar.update(nav, player, camera);
+    } else {
+      const target = playing ? gameplay.getNearestTarget() : null;
+      ui.setTarget(target ? target.position : null, target ? target.label : '');
+      radar.setVisible(false);
+    }
     ui.update(dt, camera, player);
 
     renderer.render(scene, camera);
@@ -196,7 +212,7 @@ function start() {
   });
 
   // 開發/測試用掛勾
-  window.__game = { THREE, scene, camera, renderer, world, player, input, cameraRig, gameplay, ui, audio, effects };
+  window.__game = { THREE, scene, camera, renderer, world, player, input, cameraRig, gameplay, ui, audio, effects, radar };
 
   requestAnimationFrame(() => {
     boot.classList.add('hidden');
