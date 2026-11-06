@@ -424,7 +424,7 @@ export function createTimeTrial({ scene, world, player, ui, audio, effects } = {
     if (newRecord) best = time;
     if (rankOf(medal) > rankOf(bestMedal)) bestMedal = medal;
     safe(() => ui && ui.setTimer && ui.setTimer(null));
-    play('trialEnd');
+    // 整合者：結束音效由 ui.showTrialResult 播放，避免重複
     let choice = 'exit';
     if (ui && typeof ui.showTrialResult === 'function') {
       try {

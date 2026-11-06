@@ -336,19 +336,19 @@ export function createEffects(scene) {
       let spread = 0.3, lift = 0.25, vUp = 0, vSide = 0, L = 1, sz = 0.25, g = 0, sw = 0, sp = 0;
       if (K === K_LEAF) {
         spread = 0.3; lift = 0.3 + Math.random() * 0.25; vUp = 1.3 + Math.random() * 0.8; vSide = 0.6 + Math.random() * 0.6;
-        L = 1.3 + Math.random() * 0.5; sz = 0.24 + Math.random() * 0.1; g = 0.32; sw = 0.9; sp = (Math.random() < 0.5 ? -1 : 1) * (3 + Math.random() * 3);
+        L = 1.3 + Math.random() * 0.5; sz = 0.34 + Math.random() * 0.12; g = 0.32; sw = 0.9; sp = (Math.random() < 0.5 ? -1 : 1) * (3 + Math.random() * 3);
         _c.setHex(LEAF_COLORS[(Math.random() * LEAF_COLORS.length) | 0]);
       } else if (K === K_STAR) {
         spread = 0.38; lift = 0.1 + Math.random() * 0.6; vUp = 0.25 + Math.random() * 0.4; vSide = 0.15;
-        L = 0.7 + Math.random() * 0.45; sz = 0.2 + Math.random() * 0.16; g = -0.04; sw = 0; sp = (Math.random() - 0.5) * 2;
+        L = 0.7 + Math.random() * 0.45; sz = 0.28 + Math.random() * 0.16; g = -0.04; sw = 0; sp = (Math.random() - 0.5) * 2;
         _c.setHex(STAR_COLORS[(Math.random() * STAR_COLORS.length) | 0]);
       } else if (K === K_BUBBLE) {
         spread = 0.32; lift = 0.15 + Math.random() * 0.2; vUp = 0.9 + Math.random() * 0.7; vSide = 0.2;
-        L = 1.1 + Math.random() * 0.5; sz = 0.15 + Math.random() * 0.17; g = -0.18; sw = 0.45; sp = 0;
+        L = 1.1 + Math.random() * 0.5; sz = 0.17 + Math.random() * 0.18; g = -0.18; sw = 0.45; sp = 0;
         _c.setHSL(0.53 + Math.random() * 0.05, 0.75, 0.78);
       } else {
         spread = 0.45; lift = 0.6 + Math.random() * 0.45; vUp = 0.25 + Math.random() * 0.25; vSide = 0.25;
-        L = 1.4 + Math.random() * 0.5; sz = 0.17 + Math.random() * 0.09; g = 0.11; sw = 0.6; sp = (Math.random() - 0.5) * 2.4;
+        L = 1.4 + Math.random() * 0.5; sz = 0.24 + Math.random() * 0.1; g = 0.11; sw = 0.6; sp = (Math.random() - 0.5) * 2.4;
         _c.setRGB(0.93, 0.97, 1);
       }
       const off = (0.35 + Math.random() * 0.65) * spread;

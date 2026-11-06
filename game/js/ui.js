@@ -1538,7 +1538,21 @@ export function createUI({ root, audio, callbacks = {} }) {
       setTimeout(() => sp.remove(), 700);
     }
     const mx = (sx + tx) / 2 + (tx < sx ? -40 : 40), my = Math.min(sy, ty) - 80;
-    const finish = () => { el.remove(); if (done) done(); if (target === starPill) retrigger(starPill, 'is-pop'); };
+    const finish = () => {
+      el.remove();
+      if (done) done();
+      if (target !== starPill) return;
+      retrigger(starPill, 'is-pop');
+      // 對話框蓋住 HUD 時，在最上層補一個會跳動的星星數，讓玩家看得到 +1
+      const r = starPill.getBoundingClientRect();
+      const ghost = starPill.cloneNode(true);
+      ghost.hidden = false;
+      ghost.className = 'tw-starpill tw-star-ghost';
+      ghost.style.left = `${r.left - rr.left}px`;
+      ghost.style.top = `${r.top - rr.top}px`;
+      flyLayer.append(ghost);
+      setTimeout(() => ghost.remove(), 1500);
+    };
     if (!el.animate) { finish(); return; }
     const anim = el.animate([
       { transform: `translate(${sx}px, ${sy}px) translate(-50%, -50%) scale(0.4) rotate(0deg)`, opacity: 0 },

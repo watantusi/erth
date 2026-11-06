@@ -1344,6 +1344,14 @@
   animation: tw-flyspark 0.65s ease-out forwards;
 }
 @keyframes tw-flyspark { to { transform: translate(var(--dx), var(--dy)) scale(0.2); opacity: 0; } }
+.tw-fly .tw-star-ghost { position: absolute; margin: 0; box-shadow: inset 0 0 0 1px rgba(229, 150, 20, 0.32), 0 0 0 3px rgba(255, 255, 255, 0.9), 0 0 18px 4px rgba(255, 207, 77, 0.8); animation: tw-star-ghost 1.5s ease both; }
+@keyframes tw-star-ghost {
+  0% { transform: scale(1); opacity: 1; }
+  15% { transform: scale(1.5) rotate(-6deg); }
+  30% { transform: scale(1) rotate(0deg); }
+  75% { opacity: 1; }
+  100% { transform: scale(1); opacity: 0; }
+}
 
 /* ===================== v3：按鈕 ===================== */
 .tw-btn-gold {
@@ -1614,7 +1622,7 @@
   0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
   25% { transform: translate(-50%, -50%) scale(1.12); opacity: 1; }
   60% { opacity: 1; }
-  100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+  100% { transform: translate(-50%, -50%) scale(1.3); opacity: 0; }
 }
 
 /* ===================== v3：衣櫥（側邊面板 / 底部抽屜） ===================== */
@@ -1767,10 +1775,16 @@
     border-radius: 26px 26px 0 0;
   }
   .tw-modal-wd.is-open .tw-wd-card { animation-name: tw-wd-in-b; }
-  .tw-wd-head { margin-bottom: 8px; }
-  .tw-wd-tabs { margin-bottom: 10px; }
+  .tw-wd-head { margin: -6px -6px 6px 2px; }
+  .tw-wd-tabs { margin-bottom: 8px; }
+  .tw-wd-tab { flex-direction: row; gap: 5px; min-height: 42px; }
   .tw-wd-grid { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
-  .tw-wd-item { min-height: 92px; }
+  .tw-wd-item { min-height: 86px; padding: 8px 4px 6px; gap: 4px; }
+  .tw-wd-art { width: 46px; height: 46px; }
+  .tw-wd-ic { font-size: 28px; }
+}
+@media (orientation: portrait) and (max-width: 480px) {
+  .tw-wd-tab-ic { display: none; }
 }
 
 /* ===================== v3：圖鑑 ===================== */
@@ -1829,6 +1843,10 @@
 }
 .tw-jn-retry:hover { transform: translateY(-1px); }
 .tw-jn-retry:active { transform: translateY(2px); box-shadow: 0 1px 0 #7a52d6; }
+@media (min-width: 700px) {
+  .tw-jn-hints-l { columns: 2; column-gap: 30px; }
+  .tw-jn-hints-l li { break-inside: avoid; }
+}
 @media (max-width: 560px) {
   .tw-jn-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tw-jn-head { padding-left: 18px; }

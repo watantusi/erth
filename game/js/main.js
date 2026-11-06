@@ -225,7 +225,7 @@ function start() {
     world.update(dt, t, camera);
     if (world.isNight && audio.setNight) {
       const night = world.isNight();
-      if (night !== wasNight) { audio.setNight(night); wasNight = night; }
+      if (night !== wasNight) { audio.setNight(night); if (ui.setNight) ui.setNight(night); wasNight = night; }
     }
     effects.update(dt);
 

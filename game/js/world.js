@@ -5,7 +5,7 @@ import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js'
 import {
   BIOMES, PALETTE, PLANET_RADIUS, SEA_LEVEL, QUALITY, WORLD_SEED, START_BIOME, DAY_LENGTH, START_TIME_OF_DAY,
 } from './config.js';
-import { clamp, lerp, smoothstep, damp, mulberry32, noise3, fbm3, randomDirNear, tangentBasis } from './utils.js';
+import { clamp, lerp, smoothstep, damp, mulberry32, noise3, fbm3, randomDirNear, randomUnitVector, tangentBasis } from './utils.js';
 
 const R = PLANET_RADIUS;
 const SEA_H = SEA_LEVEL - R;          // 海面相對基準半徑的高度（負值）
@@ -1395,6 +1395,13 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
     uSun: { value: new THREE.Vector3(0.4, 0.6, 0.7).normalize() },
     uPlanetR: { value: R + 0.6 },
     uSat,
+    // v3：日夜
+    uGlow: { value: CL(PALETTE.sun) },        // 太陽那一側的地平光暈色
+    uSunVis: { value: 1 },                     // 太陽圓盤可見度
+    uMoon: { value: new THREE.Vector3(0, 1, 0) },
+    uMoonX: { value: new THREE.Vector3(1, 0, 0) }, // 月面切線（已除以月亮角半徑）
+    uMoonY: { value: new THREE.Vector3(0, 0, 1) },
+    uMoonVis: { value: 0 },
   };
   const skyMat = new THREE.ShaderMaterial({
     uniforms: skyUniforms,
@@ -1406,6 +1413,8 @@ void main() {
 }`,
     fragmentShader: `uniform vec3 uTop; uniform vec3 uBottom; uniform vec3 uSunCol; uniform vec3 uCam; uniform vec3 uSun;
 uniform float uPlanetR; uniform float uSat;
+uniform vec3 uGlow; uniform float uSunVis;
+uniform vec3 uMoon; uniform vec3 uMoonX; uniform vec3 uMoonY; uniform float uMoonVis;
 varying vec3 vWorld;
 void main() {
   vec3 rd = normalize(vWorld - uCam);
@@ -1416,8 +1425,25 @@ void main() {
   float g = clamp((th - alpha) / 0.6, 0.0, 1.0);
   g = smoothstep(0.0, 1.0, pow(g, 0.7));
   vec3 col = mix(uBottom, uTop, g);
-  float s = max(dot(rd, uSun), 0.0);
-  col += uSunCol * (pow(s, 90.0) * 0.55 + pow(s, 10.0) * 0.12);
+  // 太陽：地平光暈（日出日落時最明顯）+ 光芒 + 圓盤
+  float sd = dot(rd, uSun);
+  float s = max(sd, 0.0);
+  col += uGlow * (pow(s, 3.0) * 0.5 * (1.0 - 0.65 * g));
+  col += uSunCol * (pow(s, 90.0) * 0.55 + pow(s, 10.0) * 0.12) * uSunVis;
+  col = mix(col, uSunCol * 1.35 + vec3(0.3, 0.26, 0.18), smoothstep(0.99888, 0.99902, sd) * uSunVis);
+  // 月亮：淡藍光暈 + 彎月（暗面留一點地球照）
+  float md = dot(rd, uMoon);
+  float mh = max(md, 0.0);
+  col += vec3(0.42, 0.52, 0.9) * (pow(mh, 260.0) * 0.4 + pow(mh, 20.0) * 0.07) * uMoonVis;
+  vec2 mp = vec2(dot(rd, uMoonX), dot(rd, uMoonY));
+  float mr = length(mp);
+  if (md > 0.0 && mr < 1.1) {
+    float disc = 1.0 - smoothstep(0.9, 1.0, mr);
+    float lit = smoothstep(0.78, 0.98, length(mp - vec2(0.48, 0.26)));
+    float crater = smoothstep(0.17, 0.12, length(mp - vec2(-0.42, -0.2))) + smoothstep(0.11, 0.07, length(mp - vec2(-0.1, -0.55)));
+    vec3 mc = vec3(1.0, 0.95, 0.78) * (1.25 - 0.18 * crater);
+    col = mix(col, mix(col * 0.75 + vec3(0.05, 0.06, 0.1), mc, lit), disc * uMoonVis);
+  }
   gl_FragColor = vec4(col, 1.0);
   #include <colorspace_fragment>
   float tewL = dot(gl_FragColor.rgb, vec3(0.2126, 0.7152, 0.0722));
@@ -1440,6 +1466,10 @@ void main() {
   const sun = new THREE.DirectionalLight(PALETTE.sun, 2.3);
   sun.position.set(40, 60, 70);
   root.add(hemi, sun, sun.target);
+  // v3：夜裡跟著鏡頭的暖色小燈籠（照亮玩家附近，晚上也看得清楚；白天強度 0）
+  const lantern = new THREE.PointLight(0xffc98a, 0, 15, 0); // decay 0：沒有近距離亮斑，只在範圍邊緣淡出
+  lantern.name = 'nightLantern';
+  root.add(lantern);
 
   // =========================================================================
   // 道具擺放
@@ -2022,7 +2052,7 @@ void main() {
     // 森林：樹屋隔壁的小木屋屋頂（要先爬到樹屋平台，再跳過去）
     add('forest', buildCourse({
       id: 'secret-forest', secret: true, F: forestC.F, base: forestC.base, from: forestC.list[forestC.list.length - 1].dir,
-      steps: [STEP('treehut', 0.8, 8.4, [4.3, 62])],
+      steps: [STEP('treehut', 0.8, 8.4, [4.0, 62])],
     }), '樹屋的隔壁還有一間小木屋，它的屋頂比誰都高。');
     // 沙漠：遠離路線的孤單高方山，只能靠旁邊的彈跳蘑菇
     add('desert', buildCourse({
@@ -2048,8 +2078,8 @@ void main() {
       steps: [
         STEP('basalt', 0.95, 2.2, [9.9, 160]),
         STEP('basalt', 0.9, 3.6, [8.0, 180]),
-        STEP('basalt', 0.85, 5.0, [6.1, 196]),
-        STEP('basalt', 1.0, 6.4, [4.9, 228]),
+        STEP('basalt', 0.85, 5.0, [6.4, 202]),
+        STEP('basalt', 1.0, 6.4, [4.9, 235]),
       ],
     }), '沿著火山口外緣往上找，最高的那塊岩台一點都不怕熱。');
     // 海洋：從瓶中信小島踩著踏石往外，最遠最高的海蝕柱
@@ -2283,11 +2313,316 @@ void main() {
   const WHALE_ANG = 0.15;
 
   // =========================================================================
+  // v3：日夜循環 —— 調色盤、窗燈、星星、螢火蟲、極光、流星
+  // （日月與光線都相對鏡頭擺放：玩家看的那面永遠照得到；夜晚是月光下的藍色童話，不是全黑）
+  // =========================================================================
+  // 調色盤關鍵影格（t：0 午夜、0.25 日出、0.5 正午、0.75 日落）
+  // top/bottom 天空、glow 太陽側地平光暈、sun 太陽色＝主光色、hemi 天空/地面環境光、cloud 雲的自發光色
+  const K = (t, top, bottom, glow, sun, sunI, hs, hg, hI, cloud) => ({
+    t, top: CL(top), bottom: CL(bottom), glow: CL(glow), sun: CL(sun), sunI, hs: CL(hs), hg: CL(hg), hI, cloud: CL(cloud),
+  });
+  const NIGHT_KEY = [0x1a2656, 0x3b4f8e, 0x101830, 0xa9bfff, 1.35, 0x8ea2e6, 0x4a4f80, 1.35, 0x363e66];
+  const DAY_KEY = [PALETTE.skyTop, PALETTE.skyBottom, 0x000000, PALETTE.sun, 2.3, 0xdcefff, 0xffdcb8, 0.65, 0xa9b6c8];
+  const KEYS = [
+    K(0.0, ...NIGHT_KEY),
+    K(0.165, 0x1d2a5e, 0x445594, 0x1c1a3a, 0xa9bfff, 1.3, 0x8ea2e6, 0x4a4f80, 1.3, 0x3a4268),
+    K(0.235, 0x6c7cc4, 0xffa9b4, 0xff9a7a, 0xffb59a, 1.7, 0xc9b6ea, 0x8a6a80, 0.9, 0xf0a8bc),
+    K(0.3, 0x7cbcf5, 0xffd8c2, 0x3a2418, 0xffe2c4, 2.15, 0xdcecff, 0xffd8bc, 0.7, 0xc0bfd2),
+    K(0.37, ...DAY_KEY),
+    K(0.63, ...DAY_KEY),
+    K(0.7, 0x79b3ef, 0xffd29a, 0x4a2a0c, 0xffd49a, 2.2, 0xeae2f0, 0xffcf9a, 0.7, 0xd6b8a0),
+    K(0.755, 0x5f6ec0, 0xff9a5c, 0xff8a4a, 0xffa66a, 1.85, 0xd8a8c8, 0xb87a60, 0.85, 0xf0a084),
+    K(0.81, 0x2e3a7a, 0x9a6aa8, 0x7a3a6a, 0xc0a8f0, 1.45, 0x9a96dc, 0x4a3f6a, 1.05, 0x6a5a90),
+    K(0.865, ...NIGHT_KEY),
+    K(1.0, ...NIGHT_KEY),
+  ];
+  const WHITE = new THREE.Color(1, 1, 1), CLOUD_NIGHT = CL(0xa4abc8);
+  const pal = { top: new THREE.Color(), bottom: new THREE.Color(), glow: new THREE.Color(), sun: new THREE.Color(), hs: new THREE.Color(), hg: new THREE.Color(), cloud: new THREE.Color(), sunI: 1, hI: 1 };
+  function samplePalette(t) {
+    let k = 0;
+    while (k < KEYS.length - 2 && t >= KEYS[k + 1].t) k++;
+    const A = KEYS[k], B = KEYS[k + 1];
+    const f = smoothstep(0, 1, (t - A.t) / (B.t - A.t));
+    for (const n of ['top', 'bottom', 'glow', 'sun', 'hs', 'hg', 'cloud']) pal[n].lerpColors(A[n], B[n], f);
+    pal.sunI = lerp(A.sunI, B.sunI, f);
+    pal.hI = lerp(A.hI, B.hI, f);
+  }
+  /** 夜晚程度 0..1（約 0.17–0.26 天亮、0.74–0.83 天黑） */
+  const nightAmount = (t) => (t < 0.5 ? 1 - smoothstep(0.17, 0.26, t) : smoothstep(0.74, 0.83, t));
+  const DAY_PARK = 0.42;
+  let tod = clamp(Number(START_TIME_OF_DAY) || 0.3, 0, 1) % 1; // 邏輯時間
+  let todVis = tod;                                            // 畫面時間（跳時間時快速追上）
+  let dayNightOn = true, nightF = nightAmount(tod), frames = 0;
+  const wrap = (x) => x - Math.floor(x);
+
+  // ---- 窗戶：夜裡亮起暖黃燈光（一個 draw call） ----
+  const uGlow = { value: 0 };
+  const glowMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  glowMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uSat = uSat;
+    shader.uniforms.uGlow = uGlow;
+    shader.fragmentShader = 'uniform float uSat;\nuniform float uGlow;\n' + shader.fragmentShader
+      .replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.5, 0.1), uGlow * 0.9);')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vec3(0.9, 0.4, 0.05) * uGlow * 0.55;')
+      .replace('#include <dithering_fragment>', DESAT_CHUNK);
+  };
+  let windowMesh = null;
+  if (glowParts.length) {
+    windowMesh = new THREE.Mesh(merge(glowParts), glowMat);
+    windowMesh.name = 'windows';
+    root.add(windowMesh);
+  }
+
+  // ---- 星星（跟著鏡頭的天球，方位固定在世界；夜晚淡入、會眨眼） ----
+  const PR = () => (renderer && renderer.getPixelRatio ? renderer.getPixelRatio() : 1);
+  const uNight = { value: 0 };
+  const uPx = { value: 1 };          // 像素比
+  const uViewH = { value: 400 };     // 畫布高度的一半（像素，螢火蟲的距離縮放）
+  let stars;
+  {
+    const n = q === 'low' ? 600 : 1000;
+    const rng = mulberry32(WORLD_SEED + 505);
+    const pos = new Float32Array(n * 3), aux = new Float32Array(n * 3);
+    const v = new THREE.Vector3();
+    for (let i = 0; i < n; i++) {
+      randomUnitVector(rng, v).multiplyScalar(160);
+      pos[i * 3] = v.x; pos[i * 3 + 1] = v.y; pos[i * 3 + 2] = v.z;
+      const big = rng();
+      aux[i * 3] = 2.2 + Math.pow(big, 5) * 3.6;  // 大小（像素）
+      aux[i * 3 + 1] = rng() * 6.283;             // 眨眼相位
+      aux[i * 3 + 2] = rng();                     // 顏色（藍白 ↔ 暖白）
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('aux', new THREE.BufferAttribute(aux, 3));
+    stars = new THREE.Points(g, new THREE.ShaderMaterial({
+      uniforms: { uNight, uTime, uPx },
+      vertexShader: `attribute vec3 aux; uniform float uNight; uniform float uTime; uniform float uPx;
+varying float vA; varying float vC;
+void main() {
+  float tw = 0.7 + 0.3 * sin(uTime * (1.3 + aux.z * 1.7) + aux.y);
+  vA = uNight * tw;
+  vC = aux.z;
+  gl_PointSize = aux.x * uPx * (0.8 + 0.25 * tw);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`,
+      fragmentShader: `varying float vA; varying float vC;
+void main() {
+  vec2 p = gl_PointCoord * 2.0 - 1.0;
+  float d = dot(p, p);
+  float a = smoothstep(1.0, 0.0, d);
+  a = a * a * 1.6;
+  vec3 c = mix(vec3(0.78, 0.86, 1.0), vec3(1.0, 0.93, 0.78), vC);
+  gl_FragColor = vec4(c * a * vA, 1.0);
+}`,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    }));
+    stars.name = 'stars';
+    stars.frustumCulled = false;
+    stars.renderOrder = -9;
+    stars.visible = false;
+    root.add(stars);
+  }
+
+  // ---- 螢火蟲（草原與森林，夜晚才出現；全部在頂點著色器裡飄動與閃爍） ----
+  let fireflies;
+  {
+    const n = q === 'low' ? 110 : 200;
+    const rng = mulberry32(WORLD_SEED + 606);
+    const pos = [], aux = [];
+    const v = new THREE.Vector3();
+    let tries = 0;
+    while (pos.length < n * 3 && tries < n * 30) {
+      tries++;
+      const b = rng() < 0.5 ? iMeadow : iForest;
+      randomDirNear(BC[b][0], 0.78, rng, v);
+      const bi = biomeWeights(v.x, v.y, v.z, W);
+      if ((bi !== iMeadow && bi !== iForest) || W[bi] < 0.5) continue;
+      const g = seabed(v.x, v.y, v.z);
+      if (g < SEA_LEVEL + 0.2) continue;
+      const hgt = 0.35 + Math.pow(rng(), 1.5) * 2.2;
+      v.multiplyScalar(g + hgt);
+      pos.push(v.x, v.y, v.z);
+      aux.push(rng() * 6.283, rng() * 6.283, 0.7 + rng() * 0.8);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('aux', new THREE.Float32BufferAttribute(aux, 3));
+    g.computeBoundingSphere();
+    fireflies = new THREE.Points(g, new THREE.ShaderMaterial({
+      uniforms: { uNight, uTime, uViewH },
+      vertexShader: `attribute vec3 aux; uniform float uNight; uniform float uTime; uniform float uViewH;
+varying float vA;
+void main() {
+  float s = aux.z;
+  vec3 p = position + vec3(sin(uTime * 0.55 * s + aux.x), sin(uTime * 0.8 * s + aux.y) * 0.55, cos(uTime * 0.47 * s + aux.x * 1.7)) * 0.55;
+  float blink = smoothstep(-0.2, 1.0, sin(uTime * 1.6 * s + aux.y * 3.0));
+  vA = uNight * (0.15 + 0.85 * blink);
+  vec4 mv = modelViewMatrix * vec4(p, 1.0);
+  gl_PointSize = clamp(0.3 * projectionMatrix[1][1] * uViewH / max(-mv.z, 0.1), 2.0, 34.0) * (0.75 + 0.25 * blink);
+  gl_Position = projectionMatrix * mv;
+}`,
+      fragmentShader: `varying float vA;
+void main() {
+  vec2 p = gl_PointCoord * 2.0 - 1.0;
+  float d = dot(p, p);
+  float core = smoothstep(0.16, 0.0, d);
+  float halo = smoothstep(1.0, 0.0, d);
+  vec3 c = vec3(0.8, 1.0, 0.4) * (halo * halo * 0.7) + vec3(1.0, 1.0, 0.75) * core;
+  gl_FragColor = vec4(c * vA, 1.0);
+}`,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    }));
+    fireflies.name = 'fireflies';
+    fireflies.visible = false;
+    fireflies.renderOrder = 4;
+    root.add(fireflies);
+  }
+
+  // ---- 極光（南北極上空的彩帶，加法混色；一個 draw call） ----
+  const uAurora = { value: 0 };
+  let aurora;
+  {
+    const M = q === 'low' ? 36 : 56;
+    const pos = [], uv = [], side = [], idx = [];
+    const c = new THREE.Vector3(), c2 = new THREE.Vector3(), tg = new THREE.Vector3(), nrm = new THREE.Vector3();
+    const ribbon = (P, rho0, phi0, span, h0, H, seed) => {
+      const { right, forward } = tangentBasis(P, new THREE.Vector3(), new THREE.Vector3());
+      const at = (u, out) => {
+        const ph = phi0 + span * u;
+        const rho = rho0 + 0.035 * Math.sin(ph * 3 + seed) + 0.02 * Math.sin(ph * 7 + seed * 2);
+        return out.copy(P).multiplyScalar(Math.cos(rho))
+          .addScaledVector(right, Math.sin(rho) * Math.cos(ph)).addScaledVector(forward, Math.sin(rho) * Math.sin(ph)).normalize();
+      };
+      const base = pos.length / 3;
+      for (let i = 0; i <= M; i++) {
+        const u = i / M;
+        at(u, c); at(Math.min(1, u + 0.01), c2);
+        tg.copy(c2).sub(c); if (i === M) { at(u - 0.01, c2); tg.copy(c).sub(c2); }
+        nrm.crossVectors(c, tg).normalize();
+        const hh = H * (0.8 + 0.3 * Math.sin(u * 9 + seed));
+        for (const [k, v] of [[R + h0, 0], [R + h0 + hh, 1]]) {
+          pos.push(c.x * k, c.y * k, c.z * k);
+          uv.push(u, v);
+          side.push(nrm.x, nrm.y, nrm.z);
+        }
+        if (i < M) { const a = base + i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+      }
+    };
+    for (const [P, s] of [[POLN, 0], [POLS, 3]]) {
+      ribbon(P, 0.2, s, 4.2, 8.5, 7.5, 1.3 + s);
+      ribbon(P, 0.31, s + 2.4, 3.4, 10.5, 6.0, 4.1 + s);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('aUV', new THREE.Float32BufferAttribute(uv, 2));
+    g.setAttribute('aSide', new THREE.Float32BufferAttribute(side, 3));
+    g.setIndex(idx);
+    g.computeBoundingSphere();
+    aurora = new THREE.Mesh(g, new THREE.ShaderMaterial({
+      uniforms: { uTime, uAurora },
+      vertexShader: `attribute vec2 aUV; attribute vec3 aSide; uniform float uTime; varying vec2 vUV;
+void main() {
+  vUV = aUV;
+  float w = sin(aUV.x * 19.0 + uTime * 0.45) * 0.5 + sin(aUV.x * 7.0 - uTime * 0.27) * 0.9;
+  vec3 p = position + aSide * w * (0.35 + aUV.y * 0.75);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+}`,
+      fragmentShader: `uniform float uTime; uniform float uAurora; varying vec2 vUV;
+void main() {
+  float u = vUV.x, v = vUV.y;
+  float rays = 0.5 + 0.5 * sin(u * 95.0 + sin(u * 17.0 + uTime * 0.7) * 3.0 + uTime * 0.5);
+  float folds = 0.55 + 0.45 * sin(u * 12.0 - uTime * 0.33);
+  float vb = smoothstep(0.0, 0.07, v) * pow(1.0 - v, 1.7);
+  float ends = smoothstep(0.0, 0.12, u) * (1.0 - smoothstep(0.86, 1.0, u));
+  vec3 col = mix(vec3(0.2, 1.0, 0.6), vec3(0.3, 0.7, 1.0), smoothstep(0.2, 0.65, v));
+  col = mix(col, vec3(0.95, 0.42, 0.9), smoothstep(0.6, 1.0, v) * 0.75);
+  float a = vb * ends * (0.35 + 0.65 * rays) * folds * uAurora;
+  gl_FragColor = vec4(col * a, 1.0);
+}`,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    }));
+    aurora.name = 'aurora';
+    aurora.visible = false;
+    aurora.renderOrder = 3;
+    root.add(aurora);
+  }
+
+  // ---- 流星（夜裡偶爾劃過鏡頭前方的天空） ----
+  const uShoot = { value: 0 };
+  let shoot;
+  const shootState = { t: 0, dur: 0.9, wait: 6, pos: new THREE.Vector3(), vel: new THREE.Vector3(), len: 16 };
+  {
+    const g = new THREE.PlaneGeometry(1, 1).translate(0.5, 0, 0);
+    shoot = new THREE.Mesh(g, new THREE.ShaderMaterial({
+      uniforms: { uShoot },
+      vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `uniform float uShoot; varying vec2 vUv;
+void main() {
+  float w = 1.0 - abs(vUv.y * 2.0 - 1.0);
+  float a = pow(vUv.x, 2.2) * w * w * uShoot;
+  gl_FragColor = vec4(vec3(1.0, 0.95, 0.82) * a + vec3(0.6, 0.75, 1.0) * a * (1.0 - vUv.x), 1.0);
+}`,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    }));
+    shoot.name = 'shootingStar';
+    shoot.matrixAutoUpdate = false;
+    shoot.frustumCulled = false;
+    shoot.visible = false;
+    shoot.renderOrder = -8;
+    root.add(shoot);
+  }
+
+  // =========================================================================
   // update
   // =========================================================================
   const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3();
   const _m1 = new THREE.Matrix4(), _q1 = new THREE.Quaternion(), _s1 = new THREE.Vector3();
   const sunDir = new THREE.Vector3(0.4, 0.6, 0.7).normalize();
+  const _v5 = new THREE.Vector3(), _v6 = new THREE.Vector3();
+  const camR = new THREE.Vector3(1, 0, 0), camU = new THREE.Vector3(0, 1, 0), camF = new THREE.Vector3(0, 0, -1);
+  /** 主光方向（相對鏡頭；_v1 鏡頭方向、_v2 上、_v3 右），th = 日/月的弧度位置，w = 權重 */
+  function lightFrom(out, th, w) {
+    const el = clamp(Math.sin(th), 0, 1), side = Math.cos(th);
+    return out.copy(_v1).multiplyScalar(0.6)
+      .addScaledVector(_v2, 0.3 + 0.7 * el)
+      .addScaledVector(_v3, lerp(1.05 * clamp(side, -1, 1), 0.75, el))
+      .normalize().multiplyScalar(w);
+  }
+  /** 天空中的日/月方向：右邊（th=0）升起、上方（π/2）、左邊（π）落下；peak = 最高時往上的量 */
+  function arcDir(out, th, peak) {
+    return out.copy(camF).addScaledVector(camR, 0.62 * Math.cos(th)).addScaledVector(camU, peak * Math.sin(th) - 0.06).normalize();
+  }
+  function updateShootingStar(dt, cp) {
+    const S = shootState;
+    if (S.t <= 0) {
+      if (nightF < 0.6) { shoot.visible = false; return; }
+      S.wait -= dt;
+      if (S.wait > 0) { shoot.visible = false; return; }
+      // 生成：鏡頭前上方，往左或右下斜劃過
+      const sgn = Math.random() < 0.5 ? -1 : 1;
+      S.pos.copy(camF).addScaledVector(camU, 0.32 + Math.random() * 0.3).addScaledVector(camR, -sgn * (0.15 + Math.random() * 0.45)).normalize().multiplyScalar(150);
+      S.vel.copy(camR).multiplyScalar(sgn).addScaledVector(camU, -0.42 - Math.random() * 0.2).normalize().multiplyScalar(62 + Math.random() * 20);
+      S.dur = 0.75 + Math.random() * 0.4;
+      S.t = S.dur;
+      S.wait = 7 + Math.random() * 11;
+    }
+    S.t -= dt;
+    const k = 1 - Math.max(S.t, 0) / S.dur; // 0 → 1
+    const head = _v6.copy(S.pos).addScaledVector(S.vel, k * S.dur);
+    const len = S.len * smoothstep(0, 0.25, k);
+    uShoot.value = smoothstep(0, 0.15, k) * (1 - smoothstep(0.7, 1, k)) * nightF;
+    // 帶狀四邊形：x 軸沿速度、面向鏡頭
+    _sx.copy(S.vel).normalize();
+    _sz.copy(head).negate().addScaledVector(_sx, head.dot(_sx)).normalize(); // 指向鏡頭（相對座標原點 = 鏡頭）
+    _sy.crossVectors(_sz, _sx).normalize();
+    _sx.multiplyScalar(Math.max(len, 0.01)); _sy.multiplyScalar(0.32);
+    _sp.copy(head).addScaledVector(S.vel, -len / S.vel.length()).add(cp);
+    shoot.matrix.makeBasis(_sx, _sy, _sz).setPosition(_sp);
+    shoot.matrixWorldNeedsUpdate = true;
+    shoot.visible = S.t > 0;
+  }
+  const _sx = new THREE.Vector3(), _sy = new THREE.Vector3(), _sz = new THREE.Vector3(), _sp = new THREE.Vector3();
   const lavaA = new THREE.Color(0xff6a2d), lavaB = new THREE.Color(0xffb347);
   let sunInit = false;
 
@@ -2297,7 +2632,29 @@ void main() {
     if (Math.abs(restoreCur - restoreTarget) < 1e-4) restoreCur = restoreTarget;
     uSat.value = SAT_MIN + (SAT_MAX - SAT_MIN) * restoreCur;
 
-    // 太陽跟著鏡頭（從肩膀後上方照過來）
+    // ---- v3：時間 ----
+    frames++;
+    if (dayNightOn) {
+      tod = wrap(tod + dt / DAY_LENGTH);
+    } else if (tod !== DAY_PARK) {
+      // 關閉日夜：往前（快轉到早上）或往回，平滑停在白天
+      let d = wrap(DAY_PARK - tod);
+      if (d > 0.6) d -= 1;
+      const step = d * (1 - Math.exp(-1.8 * dt));
+      tod = Math.abs(d) < 1e-4 ? DAY_PARK : wrap(tod + (Math.abs(step) < Math.abs(d) ? step : d));
+    }
+    {
+      let d = tod - todVis;
+      d -= Math.round(d);
+      todVis = Math.abs(d) < 0.003 ? tod : wrap(todVis + d * (1 - Math.exp(-3 * dt)));
+    }
+    const tv = todVis;
+    nightF = nightAmount(tv);
+    samplePalette(tv);
+
+    // 太陽（白天）與月亮（晚上）在鏡頭前方的天空走一道弧：右邊升起、左邊落下
+    const thS = (Math.PI * (tv - 0.2)) / 0.6;
+    const thM = (Math.PI * wrap(tv - 0.78)) / 0.44;
     if (camera) {
       const cp = camera.position;
       const dist = cp.length();
@@ -2306,16 +2663,62 @@ void main() {
         _v1.copy(cp).multiplyScalar(1 / dist);              // 鏡頭所在方向
         _v2.set(e[4], e[5], e[6]).normalize();               // 鏡頭上
         _v3.set(e[0], e[1], e[2]).normalize();               // 鏡頭右
-        _v4.copy(_v1).multiplyScalar(0.6).addScaledVector(_v2, 1.0).addScaledVector(_v3, 0.75).normalize();
-        if (!sunInit) { sunDir.copy(_v4); sunInit = true; }
-        else sunDir.lerp(_v4, 1 - Math.exp(-4 * dt)).normalize();
+        _v5.set(-e[8], -e[9], -e[10]).normalize();           // 鏡頭前
+        // 主光：從肩膀後上方照過來（白天＝太陽、晚上＝月亮；低角度時偏向它所在的那一側）
+        lightFrom(_v4, thS, 1 - nightF);
+        lightFrom(_v6, thM, nightF);
+        _v4.add(_v6).normalize();
+        if (!sunInit) { sunDir.copy(_v4); camR.copy(_v3); camU.copy(_v2); camF.copy(_v5); sunInit = true; }
+        else {
+          sunDir.lerp(_v4, 1 - Math.exp(-4 * dt)).normalize();
+          const k = 1 - Math.exp(-1.2 * dt);
+          camR.lerp(_v3, k).normalize(); camU.lerp(_v2, k).normalize(); camF.lerp(_v5, k).normalize();
+        }
         hemi.position.copy(_v1);
+        lantern.position.copy(cp).addScaledVector(_v5, 2.0).addScaledVector(_v2, 1.0);
         sky.position.copy(cp);
+        stars.position.copy(cp);
         skyUniforms.uCam.value.copy(cp);
+        updateShootingStar(dt, cp);
       }
     }
     sun.position.copy(sunDir).multiplyScalar(100);
-    skyUniforms.uSun.value.copy(sunDir);
+    // 天空中的日月位置（平滑過的鏡頭座標，轉鏡頭時天空會慢慢跟上）
+    arcDir(skyUniforms.uSun.value, thS, 0.85);
+    arcDir(skyUniforms.uMoon.value, thM, 0.42);
+    {
+      const m = skyUniforms.uMoon.value;
+      const mx = skyUniforms.uMoonX.value, my = skyUniforms.uMoonY.value;
+      mx.crossVectors(camU, m).normalize();            // 月面「右」
+      my.crossVectors(m, mx).normalize();              // 月面「上」
+      const inv = 1 / 0.046;                           // 月亮角半徑 ≈ 2.6°
+      mx.multiplyScalar(inv); my.multiplyScalar(inv);
+    }
+    skyUniforms.uSunVis.value = smoothstep(-0.12, 0.12, Math.sin(thS)) * (thS > -0.5 && thS < Math.PI + 0.5 ? 1 : 0);
+    skyUniforms.uMoonVis.value = smoothstep(-0.12, 0.15, Math.sin(thM)) * (thM < Math.PI + 0.5 ? 1 : 0);
+    skyUniforms.uTop.value.copy(pal.top);
+    skyUniforms.uBottom.value.copy(pal.bottom);
+    skyUniforms.uGlow.value.copy(pal.glow);
+    skyUniforms.uSunCol.value.copy(pal.sun);
+    sun.color.copy(pal.sun);
+    sun.intensity = pal.sunI;
+    hemi.color.copy(pal.hs);
+    hemi.groundColor.copy(pal.hg);
+    hemi.intensity = pal.hI;
+    lantern.intensity = 0.7 * nightF;
+    cloudMat.emissive.copy(pal.cloud);
+    cloudMat.color.copy(WHITE).lerp(CLOUD_NIGHT, nightF);
+    // 夜晚特效：沒有夜色時整個不畫（白天不多花 draw call）
+    uNight.value = nightF;
+    uGlow.value = smoothstep(0.05, 0.7, nightF);
+    uAurora.value = smoothstep(0.3, 1.0, nightF);
+    stars.visible = nightF > 0.01;
+    fireflies.visible = nightF > 0.05;
+    aurora.visible = uAurora.value > 0.01;
+    if (renderer) {
+      uPx.value = PR();
+      uViewH.value = renderer.domElement ? Math.max(1, renderer.domElement.height * 0.5) : 400;
+    }
 
     // 雲
     for (let i = 0; i < cloudGroups.length; i++) {
@@ -2396,10 +2799,25 @@ void main() {
   function updateLighthouse(dt, t) {
     lightCur = damp(lightCur, lightTarget, 2.2, dt);
     if (Math.abs(lightCur - lightTarget) < 1e-3) lightCur = lightTarget;
-    lampMat.emissiveIntensity = 0.1 + 1.7 * lightCur;
-    beamMat.opacity = 0.32 * lightCur;
+    // v3：晚上就算還沒點亮，燈也會微微發光；點亮後的光束在夜空更明顯
+    lampMat.emissiveIntensity = 0.1 + 1.7 * lightCur + 0.8 * nightF * (1 - lightCur);
+    beamMat.opacity = 0.32 * lightCur * (1 + 0.45 * nightF);
     beamPivot.visible = lightCur > 0.01;
     beamPivot.rotation.y = t * 0.55;
+  }
+
+  // ---- v3：日夜 API ----
+  function getTimeOfDay() { return tod; }
+  function setTimeOfDay(t) {
+    const v = Number(t);
+    if (!Number.isFinite(v)) return;
+    tod = wrap(v);
+    if (frames <= 1) todVis = tod; // 還沒開始跑：直接到位（之後跳時間時，畫面約 1 秒追上）
+  }
+  function isNight() { return todVis < 0.22 || todVis > 0.78; }
+  function setDayNightEnabled(on) {
+    dayNightOn = !!on;
+    if (!dayNightOn && frames <= 1) tod = todVis = DAY_PARK;
   }
 
   // 初始一次（沒有鏡頭時也有合理的燈光）
@@ -2426,6 +2844,10 @@ void main() {
     setLighthouseLit,
     // ---- v3 ----
     secretSpots,        // [{ id, biome, position, nightOnly, hint }]（順序同 BIOMES）
+    getTimeOfDay,       // → 0..1（0 午夜、0.25 日出、0.5 正午、0.75 日落）
+    setTimeOfDay,
+    isNight,
+    setDayNightEnabled, // false：平滑回到白天 0.42 並停住
   };
   return api;
 }
