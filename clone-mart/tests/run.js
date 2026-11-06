@@ -133,6 +133,7 @@ function qaLib() {
   const C = window.__cloneMart, N = window.__cloneMartNav, UX = window.__cloneMartUX;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const Q = window.__qa = { C };
+  C.G.skipTut = true;   // the level-1 tutorial pauses the clock and scripts tickets; logic tests run without it
   Q.slot = id => { const s = C.SLOT[id]; if (!s) throw new Error('no station "' + id + '"'); return s; };
   Q.near = (sl, p) => sl.band ? { x: clamp(p.x, sl.band[0], sl.band[1]), z: clamp(p.z, sl.band[2], sl.band[3]) } : { x: sl.x, z: sl.z };
   Q.place = (s, x, z, rot) => { const a = s.agent; a.pos.x = x; a.pos.z = z; a.path.length = 0; s.pending = null; s.slip = null; if (rot !== undefined) { a.rot = rot; a.g.rotation.y = rot; } };

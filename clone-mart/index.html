@@ -3177,7 +3177,7 @@ function updateHUD(dt){
 }
 /* order tickets across the top */
 function renderTickets(){
-  if (G.demo) return;
+  if (G.demo || !(G.state === 'play' || G.state === 'paused' || G.state === 'countdown')) return;   // no tickets over 'ending' / results
   for (const o of orders){
     const R = RECIPES[o.rec];
     if (!o.el){
@@ -3434,7 +3434,7 @@ function setupWorld(i, team, demo){
   const L = G.level;
   G.time = 0; G.money = 0; G.combo = 1; G.fails = 0; G.spawnT = 1; G.gapT = 0; G.stats = newStats();
   G.spillT = L.spills ? rand(14, 24)/L.spills : 1e9; G.outT = L.outage ? L.outage*0.7 : 1e9;
-  G.tut = (!demo && L.script && !(G.best[i] && G.best[i].stars)) ? 0 : -1; G.rush = null; G.warnAt = 0;   // the tutorial runs until the level has a ★
+  G.tut = (!demo && L.script && !G.skipTut && !(G.best[i] && G.best[i].stars)) ? 0 : -1;   // G.skipTut: test hook G.rush = null; G.warnAt = 0;   // the tutorial runs until the level has a ★
   G.rainT = L.rain ? L.rain.every*0.6 : 1e9; G.stormT = L.storm ? L.storm.every*0.55 : 1e9;
   owner.agent.pos.set(4.2, 0, 2.4); owner.agent.face(-Math.PI/2);
   for (const id of team) spawnClone(id, !!demo);
