@@ -1261,10 +1261,11 @@ function makeChar(o){
   parts.armL = add(CG.arm, M(o.shirt), -0.33,1.03,0);
   parts.armR = add(CG.arm, M(o.shirt),  0.33,1.03,0);
   parts.head = add(CG.head, M(o.skin), 0,1.32,0);
-  const hair = add(CG.hair, M(o.hair), 0,1.34,-0.01); hair.rotation.x = -0.35;
-  add(CG.eye, mat(0x1a1a1a), -0.075,1.34,0.205, false); add(CG.eye, mat(0x1a1a1a), 0.075,1.34,0.205, false);
+  const onHead = (geo, m, x,y,z, cast) => { const mesh = add(geo, m, x,y-1.32,z, cast); parts.head.add(mesh); return mesh; };   // hair, eyes and cap ride the head bob (cosmetics too)
+  const hair = onHead(CG.hair, M(o.hair), 0,1.34,-0.01); hair.rotation.x = -0.35;
+  onHead(CG.eye, mat(0x1a1a1a), -0.075,1.34,0.205, false); onHead(CG.eye, mat(0x1a1a1a), 0.075,1.34,0.205, false);
   if (o.apron) add(CG.apron, M(o.apron), 0,0.74,0.17);
-  if (o.cap){ add(CG.capTop, M(o.cap), 0,1.52,0); add(CG.brim, M(o.cap), 0,1.48,0.2); }
+  if (o.cap) parts.cap = [onHead(CG.capTop, M(o.cap), 0,1.52,0), onHead(CG.brim, M(o.cap), 0,1.48,0.2)];   // hidden while a cosmetic hat is worn
   charDetails(parts, o, M);
   parts.carry = add(CG.carry, mat(0xc8955a), 0,0.92,0.42); parts.carry.visible = false;
   const tape = new THREE.Mesh(new THREE.BoxGeometry(0.52,0.02,0.12), mat(0xe8d2a9)); tape.position.y = 0.2; parts.carry.add(tape);
@@ -1645,6 +1646,35 @@ Object.assign(SFX, {
   noStars(){ tone(392, 0.3, 'triangle', 0.06, 0, 370); tone(330, 0.5, 'triangle', 0.06, 0.28, 300); },
 });
 
+/* ---------------- shop / progression SFX + chapter-3 station SFX ----------------
+   The UI sounds (buy, equip, achieve, unlock, coins) also play in the menus, so they don't go through sfxAs
+   (the menus run the attract demo, where world sounds are muted). shake / flip are world sounds. */
+function coinsAt(when, n){ for (let i=0;i<n;i++){ const w = when + i*0.055 + rand(0,0.03); bell(2349*rand(0.9,1.12), w, 0.18, 0.03); sfxVoice('square', 4699*rand(0.95,1.05), w, 0.02, 0.005, 0.002); } }
+Object.assign(SFX, {
+  // a little pile of coins tumbling (n tinks, default 6)
+  coins(n){ if (!sfxOK() || !sfxGate('coins', 0.08)) return; n = clamp(Math.round(n || 6), 1, 14); coinsAt(0, n); sfxNoise(n*0.055, 0.08, 0.025, 'hp'); },
+  // bought something: drawer thunk + "ka-ching" + a few coins
+  buy(){ if (!sfxOK()) return; sfxNoise(0, 0.06, 0.07, 'lp'); tone(180, 0.08, 'square', 0.04, 0, 120); bell(1760, 0.07, 0.5, 0.07); bell(2637, 0.15, 0.8, 0.06); coinsAt(0.2, 4); },
+  // put a cosmetic on: cloth swish + two-note pop + sparkle
+  equip(){ if (!sfxOK()) return; sfxSweep(0, 0.18, 0.06, 'bandpass', 900, 3200, 1.2); sfxVoice('triangle', 660, 0.12, 0.08, 0.06); sfxVoice('triangle', 990, 0.18, 0.14, 0.06); bell(1976, 0.22, 0.4, 0.035); },
+  // achievement: short brass-ish fanfare (da-da-da DAAA) + bells
+  achieve(){ if (!sfxOK()) return;
+    [[523,0,0.13],[659,0.12,0.13],[784,0.24,0.13],[1047,0.38,0.8]].forEach(([f, w, d]) => { sfxVoice('triangle', f, w, d, 0.07, 0.01); sfxVoice('square', f/2, w, d*0.9, 0.018, 0.012); });
+    sfxVoice('triangle', 659, 0.38, 0.75, 0.04, 0.02); sfxVoice('triangle', 784, 0.38, 0.75, 0.04, 0.02);
+    bell(2093, 0.4, 0.8, 0.05); bell(2637, 0.55, 0.9, 0.04); sfxNoise(0.38, 0.5, 0.03, 'hp');
+  },
+  // something unlocked: lock clunk, whoosh and a rising pentatonic sparkle
+  unlock(){ if (!sfxOK()) return;
+    sfxVoice('square', 1200, 0, 0.03, 0.03); tone(300, 0.08, 'triangle', 0.08, 0.03, 200);
+    sfxSweep(0.1, 0.5, 0.05, 'highpass', 1500, 7000, 0.8);
+    [1047,1175,1319,1568,1760,2093].forEach((f, i) => bell(f, 0.12 + i*0.05, 0.5, 0.04));
+  },
+  // hold-to-shake station (call every tick while held; self-throttled): ice rattling in a shaker
+  shake(who){ sfxAs(who, () => { if (!sfxGate('shake', 0.11)) return; sfxSweep(0, 0.1, 0.07, 'bandpass', rand(1800,2600), rand(3500,4500), 2.5); bell(rand(2600,3400), rand(0,0.05), 0.08, 0.02); }); },
+  // flip on a griddle: whoosh up, slap down, sizzle
+  flip(who){ sfxAs(who, () => { sfxSweep(0, 0.16, 0.08, 'bandpass', 600, 2400, 1.4); tone(520, 0.1, 'sine', 0.06, 0.02, 900); tone(200, 0.1, 'sine', 0.12, 0.2, 110); sfxNoise(0.2, 0.25, 0.05, 'hp'); }); },
+});
+
 /* ---------------- kitchen loops: one voice per station ----------------
    Driven from the music scheduler tick (every 50 ms, no per-frame cost). A loop is 1–2 sources
    → filter → gain → sfx bus; it fades in, is modulated from the tick, and is stopped (not just
@@ -1762,6 +1792,54 @@ function musicMelody(M, seed){
   for (let i=24;i<32;i+=2) if (r() < M.dens*0.7){ idx = clamp(idx - 1 + Math.round(r()), 0, n-1); out[i] = idx; }
   return out;
 }
+/* chapter flavours on top of the store radio. applyTheme() calls musicTheme(id); a theme overrides MUSIC.day /
+   MUSIC.night fields (tempo, progression, scale, kit) and may add accent(i, s8, t, out, v, beat), run every step.
+   delivery: bouncier, brighter G-major groove with a scooter-horn "beep-beep" motif;
+   festival: straight pentatonic with a plucked zither lead, big drum kick, gong + tom fills. */
+AUD.theme = 'default';
+function musicHorn(t, out, v){                 // two-tone scooter horn (major third, buzzy square pair)
+  for (const [dt, len] of [[0, 0.08], [0.13, 0.15]]){ audVoice('square', 740, t + dt, len, 0.016*v, 0.006, out); audVoice('square', 932, t + dt, len, 0.012*v, 0.006, out); }
+}
+function musicGong(t, out, v){                 // inharmonic partials with a long tail + a breath of noise
+  [[1,1],[1.48,0.5],[2.02,0.42],[2.74,0.3],[3.6,0.18]].forEach(([m, a], k) => audVoice('sine', 98*m, t, 2.8 - k*0.4, 0.075*a*v, 0.012, out, k ? rand(-8,8) : 0));
+  audNoise(t, 0.7, 0.04*v, AUD.hp, 0.35);
+}
+function musicTom(t, out, v, f0, vol){
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0*0.55, t + 0.18);
+  g.gain.setValueAtTime(vol*v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+  o.connect(g); g.connect(out); o.start(t); o.stop(t + 0.32); audTrack(o, g);
+}
+const DELIVERY_PROG = [[43,[55,59,62,66]], [40,[55,59,62,67]], [36,[55,60,64,67]], [38,[54,57,60,62]]];   // Gmaj7 Em7 C D7
+const FESTIVAL_PROG = [[36,[55,60,62,64]], [33,[57,60,64,67]], [38,[57,62,64,67]], [31,[55,60,62,67]]];   // pentatonic-only voicings
+const MUSIC_THEMES = {
+  delivery: {
+    day: Object.assign({}, MUSIC.day, {bpm:100, cut:3200, swing:0.08, prog:DELIVERY_PROG, scale:[67,69,71,74,76,79,81], dens:0.4,
+      kick:[1,0,0.45,0,0.9,0,0.45,0.3], rim:[0,0,1,0,0,0,1,0.4], hat:[0.35,0.75,0.35,0.75,0.35,0.75,0.35,0.9],
+      accent(i, s8, t, out, v){ if (i === 28 && AUD.phrase % 2 === 0) musicHorn(t, out, v); }}),
+    night: Object.assign({}, MUSIC.night, {bpm:82, cut:1700, swing:0.1, vol:0.85, prog:DELIVERY_PROG, scale:[62,64,67,69,71,74], dens:0.22,
+      kick:[0.8,0,0,0,0.5,0,0,0], rim:[0,0,0.6,0,0,0,0.6,0], hat:[0,0.3,0,0.3,0,0.3,0,0.35],
+      accent(i, s8, t, out, v){ if (i === 28 && AUD.phrase % 4 === 0) musicHorn(t, out, v*0.7); }}),
+  },
+  festival: {
+    day: Object.assign({}, MUSIC.day, {bpm:96, cut:2800, swing:0, prog:FESTIVAL_PROG, scale:[60,62,64,67,69,72,74,76], dens:0.42, pluck:true,
+      kick:[1,0,0,0.5,0,0,0.7,0], rim:[0,0.5,0,0,0.6,0,0,0.5], hat:[0.2,0,0.2,0,0.2,0,0.2,0], kf0:150, kf1:62, kdur:0.4,
+      accent: festivalAccent}),
+    night: Object.assign({}, MUSIC.night, {bpm:84, cut:2000, swing:0.05, vol:0.9, prog:FESTIVAL_PROG, scale:[62,64,67,69,72,74,76], dens:0.3, pluck:true,
+      kick:[0.9,0,0,0,0.6,0,0.4,0], rim:[0,0,0.5,0,0,0,0.5,0.3], hat:[0.15,0,0.15,0,0.15,0,0.15,0], kf0:140, kf1:58, kdur:0.45,
+      accent: festivalAccent}),
+  },
+};
+function festivalAccent(i, s8, t, out, v, beat){
+  if (i === 0 && AUD.phrase % 2 === 1) musicGong(t, out, v);                                   // gong opens every other phrase
+  if (i >= 28 && AUD.phrase % 2 === 0) musicTom(t, out, v, [210,185,160,125][i - 28], 0.12); // drum fill into the next phrase
+  if (i === 16) audNoise(t, 0.4, 0.03*v, AUD.hp, 0.6);                                        // small cymbal
+  void s8; void beat;
+}
+function musicM(mode){ const T = MUSIC_THEMES[AUD.theme]; return (T && T[mode]) || MUSIC[mode]; }
+/* switch the radio flavour (called from applyTheme; unknown ids fall back to the store radio) */
+function musicTheme(id){ AUD.theme = MUSIC_THEMES[id] ? id : 'default'; }
+window.__cloneMartSfx = {SFX, AUD, MUSIC, MUSIC_THEMES, musicTheme, initAudio};   // test/debug hook for the audio module
 function musicIsNight(){ return G.state === 'title' || G.state === 'menu' || G.demo || hourNow() >= 19; }
 function musicTarget(){
   if (!musicOn || document.hidden) return 0;
@@ -1782,11 +1860,12 @@ function musicStep(step, t){
   const rush = AUD.rush = musicRush();
   if (s8 === 0 || (rush && AUD.mode !== 'day')){                    // mode follows the game at every bar (menu → level is quick)
     AUD.mode = !rush && musicIsNight() ? 'night' : 'day';
-    if ((i === 0 && AUD.phrase % 2 === 0) || !AUD.mel || AUD.melMode !== AUD.mode){ AUD.mel = musicMelody(MUSIC[AUD.mode], 1013 + AUD.phrase*7919 + (AUD.mode === 'night' ? 31 : 0)); AUD.melMode = AUD.mode; }
+    const mk = AUD.mode + '|' + AUD.theme;
+    if ((i === 0 && AUD.phrase % 2 === 0) || !AUD.mel || AUD.melMode !== mk){ AUD.mel = musicMelody(musicM(AUD.mode), 1013 + AUD.phrase*7919 + (AUD.mode === 'night' ? 31 : 0)); AUD.melMode = mk; }
     if (i === 0) AUD.phrase++;
   }
-  if (i % 8 === 0) AUD.mfilter.frequency.setTargetAtTime(MUSIC[AUD.mode].cut*(1 + 0.7*rush), t, rush ? 0.4 : 1.5);
-  const M = MUSIC[AUD.mode], v = M.vol;
+  if (i % 8 === 0) AUD.mfilter.frequency.setTargetAtTime(musicM(AUD.mode).cut*(1 + 0.7*rush), t, rush ? 0.4 : 1.5);
+  const M = musicM(AUD.mode), v = M.vol;
   AUD.bpm = M.bpm*(1 + 0.16*rush);
   const beat = 60/AUD.bpm, sd = beat/2;
   if (s8 % 2) t += M.swing*sd;
@@ -1822,11 +1901,12 @@ function musicStep(step, t){
     if (s8 % 2) audVoice('square', midiHz(root + 12), t, sd*0.6, 0.03*rush, 0.006, out);
   }
   if (kv){
-    const o = actx.createOscillator(), g = actx.createGain();
-    o.frequency.setValueAtTime(115, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.13);
-    g.gain.setValueAtTime(0.15*kv*v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
-    o.connect(g); g.connect(out); o.start(t); o.stop(t + 0.26); audTrack(o, g);
+    const o = actx.createOscillator(), g = actx.createGain(), kd = M.kdur || 0.24;   // themes may retune the kick (festival: big drum)
+    o.frequency.setValueAtTime(M.kf0 || 115, t); o.frequency.exponentialRampToValueAtTime(M.kf1 || 42, t + kd*0.55);
+    g.gain.setValueAtTime(0.15*kv*v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + kd);
+    o.connect(g); g.connect(out); o.start(t); o.stop(t + kd + 0.02); audTrack(o, g);
   }
+  if (M.accent) M.accent(i, s8, t, out, v, beat);
   if (rv) audNoise(t, 0.06, 0.09*rv*v, AUD.bp, 0.8);
   if (hv) audNoise(t, s8 === 7 && !night ? 0.07 : 0.03, 0.035*hv*v, AUD.hp, 1);
   if (Math.random() < 0.22) audNoise(t + Math.random()*sd, 0.006, 0.03, AUD.hp, 0.5);    // vinyl dust
@@ -1834,7 +1914,9 @@ function musicStep(step, t){
   const mi = AUD.mel[i];
   if (mi >= 0){
     let len = 1; while (len < 3 && AUD.mel[(i + len) & 31] < 0) len++;
-    audVoice(night ? 'sine' : 'triangle', midiHz(M.scale[Math.min(mi, M.scale.length - 1)]), t, sd*len*0.95 + 0.08, (night ? 0.03 : 0.026)*v, 0.015, out, rand(-4,4));
+    const mf = midiHz(M.scale[Math.min(mi, M.scale.length - 1)]);
+    if (M.pluck){ audVoice('triangle', mf, t, sd*1.6, 0.034*v, 0.004, out); audVoice('sine', mf*2, t, sd*0.6, 0.012*v, 0.003, out); }   // zither-like pluck
+    else audVoice((M.lead || (night ? 'sine' : 'triangle')), mf, t, sd*len*0.95 + 0.08, (night ? 0.03 : 0.026)*v, 0.015, out, rand(-4,4));
   }
   AUD.steps++;
 }
@@ -4150,29 +4232,364 @@ function applyDiffToMachines(k){   // scale burn / fire timers for the difficult
 
 /* ---------------- cosmetics registry (shop items your staff can wear) ----------------
    slot: 'hat' | 'face' | 'back'. build() returns an Object3D placed in the character's local space (feet at y=0,
-   head centre at y≈1.32, facing +z). G.equip[roleId][slot] = cosmetic id ('owner' for you). */
+   head centre at y≈1.32, facing +z). G.equip[roleId][slot] = cosmetic id ('owner' for you).
+   applyCosmetics hangs hat/face items on the head and back items on the torso (so they ride the walk bob and the
+   squash) and hides the store cap while a hat is worn. Geometry is cached in COSG and materials come from mat():
+   a build() only creates a few Mesh wrappers. */
+const COSG = {};
+const cgeo = (k, f) => COSG[k] || (COSG[k] = f());
+function cmesh(g, geo, m, x,y,z, rx,ry,rz){ const o = new THREE.Mesh(geo, m); o.position.set(x,y,z); if (rx || ry || rz) o.rotation.set(rx||0, ry||0, rz||0); g.add(o); return o; }
+const cosBand = () => cgeo('band', () => new THREE.TorusGeometry(0.232, 0.014, 4, 18, Math.PI));     // headband arc over the head (XY plane)
+let _cosBoxMats = null;
+function cosBoxMats(){     // delivery box: brand print on the sides/back, plain lid (shared, built once)
+  if (_cosBoxMats) return _cosBoxMats;
+  const tex = canvasTex(128,128,(g,w,h)=>{
+    g.fillStyle='#2ec4a0'; g.fillRect(0,0,w,h); g.strokeStyle='#1d8f74'; g.lineWidth=6; g.strokeRect(3,3,w-6,h-6);
+    g.fillStyle='#fffaf0'; g.beginPath(); g.arc(w/2,h*0.4,h*0.22,0,Math.PI*2); g.fill();
+    g.fillStyle='#2ec4a0'; g.font=`900 ${h*0.26}px ${FONT}`; g.textAlign='center'; g.textBaseline='middle'; g.fillText('分', w/2, h*0.41);
+    g.fillStyle='#fffaf0'; g.font=`900 ${h*0.17}px ${FONT}`; g.fillText('分身快送', w/2, h*0.8);
+  });
+  const side = new THREE.MeshLambertMaterial({map:tex}), lid = mat(0x26a98a);
+  return (_cosBoxMats = [side, side, lid, lid, side, side]);
+}
 const COSMETICS = [
-  {id:'hat_chef', n:'廚師高帽', slot:'hat',  price:150, ic:'👨‍🍳', build(){ const g = new THREE.Group(); const b = new THREE.Mesh(new THREE.CylinderGeometry(0.17,0.15,0.26,14), mat(0xffffff)); b.position.y = 1.66; const t = new THREE.Mesh(new THREE.SphereGeometry(0.21,14,10), mat(0xffffff)); t.position.y = 1.82; g.add(b, t); return g; }},
-  {id:'hat_cat',  n:'貓耳髮箍', slot:'hat',  price:220, ic:'🐱',   build(){ const g = new THREE.Group(); for (const x of [-0.13,0.13]){ const e = new THREE.Mesh(new THREE.ConeGeometry(0.07,0.16,4), mat(0x333344)); e.position.set(x,1.6,0); g.add(e); } return g; }},
-  {id:'face_glasses', n:'圓框眼鏡', slot:'face', price:120, ic:'👓', build(){ const g = new THREE.Group(); for (const x of [-0.075,0.075]){ const r = new THREE.Mesh(new THREE.TorusGeometry(0.05,0.012,6,14), mat(0x222222)); r.position.set(x,1.34,0.215); g.add(r); } return g; }},
+  {id:'hat_chef', n:'廚師高帽', slot:'hat',  price:150, ic:'👨‍🍳', build(){ const g = new THREE.Group(), w = mat(0xffffff);
+    cmesh(g, cgeo('chefB', () => new THREE.CylinderGeometry(0.17,0.15,0.26,14)), w, 0,1.66,0);
+    cmesh(g, cgeo('chefT', () => new THREE.SphereGeometry(0.21,14,10)), w, 0,1.82,0).scale.set(1,0.8,1);
+    cmesh(g, cgeo('chefR', () => new THREE.CylinderGeometry(0.155,0.155,0.05,14)), mat(0xe9edf2), 0,1.555,0);
+    return g; }},
+  {id:'hat_cat',  n:'貓耳髮箍', slot:'hat',  price:220, ic:'🐱',   build(){ const g = new THREE.Group(), dk = mat(0x333344), pk = mat(0xf7a8c4);
+    cmesh(g, cosBand(), dk, 0,1.33,0, -0.12);
+    for (const s of [-1,1]){
+      cmesh(g, cgeo('catE', () => new THREE.ConeGeometry(0.07,0.16,4)), dk, s*0.13,1.6,0, 0,0,-s*0.25);
+      cmesh(g, cgeo('catI', () => new THREE.ConeGeometry(0.038,0.1,4)), pk, s*0.125,1.585,0.03, 0,0,-s*0.25);
+    }
+    return g; }},
+  {id:'hat_bunny', n:'兔耳髮箍', slot:'hat', price:260, ic:'🐰',   build(){ const g = new THREE.Group(), wt = mat(0xf7f3ee), pk = mat(0xf7a8c4), e = cgeo('bunE', () => new THREE.SphereGeometry(0.055,10,8));
+    cmesh(g, cosBand(), pk, 0,1.33,0, -0.12);
+    for (const s of [-1,1]){
+      cmesh(g, e, wt, s*0.085,1.74,-0.02, 0,0,-s*0.16).scale.set(1,3.4,0.55);
+      cmesh(g, e, pk, s*0.087,1.73,0.006, 0,0,-s*0.16).scale.set(0.55,2.6,0.3);
+    }
+    return g; }},
+  {id:'hat_crown', n:'金色皇冠', slot:'hat', price:600, ic:'👑',  build(){ const g = new THREE.Group(), gold = mat(0xffcf3a, 0xffa000, 0.3);
+    cmesh(g, cgeo('crB', () => new THREE.CylinderGeometry(0.16,0.15,0.09,10)), gold, 0,1.6,0);
+    for (let i=0;i<5;i++){ const a = i/5*Math.PI*2; cmesh(g, cgeo('crP', () => new THREE.ConeGeometry(0.036,0.09,4)), gold, Math.sin(a)*0.145,1.685,Math.cos(a)*0.145); }
+    cmesh(g, cgeo('crG', () => new THREE.SphereGeometry(0.027,8,6)), mat(0xe8304a, 0xe8304a, 0.35), 0,1.6,0.158);
+    for (const s of [-1,1]) cmesh(g, cgeo('crg', () => new THREE.SphereGeometry(0.018,6,4)), mat(0x3fb8ff, 0x3fb8ff, 0.35), s*0.11,1.6,0.115);
+    g.rotation.z = 0.1; g.position.x = 0.16; return g; }},
+  {id:'hat_hardhat', n:'工地安全帽', slot:'hat', price:120, ic:'👷', build(){ const g = new THREE.Group(), y = mat(0xffc21a);
+    cmesh(g, cgeo('hhD', () => new THREE.SphereGeometry(0.25,14,8,0,Math.PI*2,0,Math.PI/2)), y, 0,1.38,0).scale.set(1,0.92,1.05);
+    cmesh(g, cgeo('hhB', () => new THREE.CylinderGeometry(0.29,0.29,0.022,16)), y, 0,1.385,0.025).scale.set(1,1,1.08);
+    cmesh(g, cgeo('hhR', () => new THREE.BoxGeometry(0.05,0.04,0.44)), mat(0xf2b134), 0,1.6,0);
+    return g; }},
+  {id:'hat_straw', n:'夏日草帽', slot:'hat', price:180, ic:'👒',  build(){ const g = new THREE.Group(), st = mat(0xe8c77a);
+    cmesh(g, cgeo('swB', () => new THREE.CylinderGeometry(0.42,0.42,0.02,20)), st, 0,1.49,0);
+    cmesh(g, cgeo('swC', () => new THREE.CylinderGeometry(0.17,0.2,0.15,14)), st, 0,1.57,0);
+    cmesh(g, cgeo('swR', () => new THREE.CylinderGeometry(0.203,0.203,0.045,14)), mat(0xe85d75), 0,1.525,0);
+    g.rotation.x = -0.08; g.position.z = 0.125; return g; }},   // tilted back (pivot is at the feet)
+  {id:'hat_rider', n:'外送安全帽', slot:'hat', price:300, ic:'🛵', build(){ const g = new THREE.Group(), tl = mat(0x2ec4a0);
+    cmesh(g, cgeo('rdD', () => new THREE.SphereGeometry(0.26,16,8,0,Math.PI*2,0,Math.PI/2)), tl, 0,1.39,-0.01);
+    cmesh(g, cgeo('rdN', () => new THREE.SphereGeometry(0.26,14,5,Math.PI,Math.PI,Math.PI/2,0.5)), tl, 0,1.39,-0.01);     // neck guard at the back
+    cmesh(g, cgeo('rdV', () => new THREE.BoxGeometry(0.4,0.05,0.09)), mat(0x22303f), 0,1.405,0.235, -0.15);              // peak
+    cmesh(g, cgeo('rdS', () => new THREE.BoxGeometry(0.06,0.018,0.5)), mat(0xfffaf0), 0,1.645,-0.01);
+    return g; }},
+  {id:'face_glasses', n:'圓框眼鏡', slot:'face', price:120, ic:'👓', build(){ const g = new THREE.Group(), k = mat(0x222222);
+    for (const x of [-0.075,0.075]) cmesh(g, cgeo('glR', () => new THREE.TorusGeometry(0.05,0.012,6,14)), k, x,1.34,0.215);
+    cmesh(g, cgeo('glB', () => new THREE.BoxGeometry(0.05,0.012,0.012)), k, 0,1.345,0.222);
+    return g; }},
+  {id:'face_shades', n:'酷炫墨鏡', slot:'face', price:160, ic:'🕶️', build(){ const g = new THREE.Group(), k = mat(0x111418);
+    for (const s of [-1,1]){
+      cmesh(g, cgeo('shL', () => new THREE.BoxGeometry(0.11,0.07,0.02)), k, s*0.07,1.345,0.218);
+      cmesh(g, cgeo('shA', () => new THREE.BoxGeometry(0.012,0.016,0.2)), k, s*0.212,1.35,0.11);
+    }
+    cmesh(g, cgeo('shB', () => new THREE.BoxGeometry(0.06,0.016,0.016)), k, 0,1.36,0.222);
+    cmesh(g, cgeo('shG', () => new THREE.BoxGeometry(0.035,0.012,0.004)), mat(0xffffff, 0xffffff, 0.4), -0.09,1.36,0.23, 0,0,0.5);   // glint
+    return g; }},
+  {id:'face_mask', n:'衛生口罩', slot:'face', price:80, ic:'😷',   build(){ const g = new THREE.Group();
+    cmesh(g, cgeo('mkF', () => new THREE.SphereGeometry(0.232,14,4,Math.PI/2-0.95,1.9,Math.PI/2+0.02,0.68)), mat(0xeaf3fb), 0,1.32,0);
+    for (const s of [-1,1]) cmesh(g, cgeo('mkS', () => new THREE.BoxGeometry(0.012,0.012,0.16)), mat(0xd5e3f0), s*0.215,1.3,0.02);
+    return g; }},
+  {id:'face_mustache', n:'紳士鬍子', slot:'face', price:140, ic:'🥸', build(){ const g = new THREE.Group(), b = mat(0x3a2618);
+    for (const s of [-1,1]) cmesh(g, cgeo('muH', () => new THREE.SphereGeometry(0.045,8,6)), b, s*0.045,1.257,0.205, 0,0,s*0.3).scale.set(1.6,0.55,0.6);
+    return g; }},
+  {id:'back_pack', n:'小背包', slot:'back', price:180, ic:'🎒',     build(){ const g = new THREE.Group(), o = mat(0xf07b3f), d = mat(0xc8622f);
+    cmesh(g, cgeo('bpB', () => new THREE.BoxGeometry(0.32,0.34,0.14)), o, 0,0.84,-0.235);
+    cmesh(g, cgeo('bpF', () => new THREE.BoxGeometry(0.33,0.12,0.15)), d, 0,0.96,-0.236);
+    cmesh(g, cgeo('bpP', () => new THREE.BoxGeometry(0.22,0.12,0.04)), d, 0,0.75,-0.32);
+    for (const s of [-1,1]) cmesh(g, cgeo('bpS', () => new THREE.BoxGeometry(0.05,0.5,0.02)), d, s*0.14,0.86,0.19);
+    return g; }},
+  {id:'back_box', n:'外送保溫箱', slot:'back', price:280, ic:'📦', build(){ const g = new THREE.Group();
+    cmesh(g, cgeo('dbB', () => new THREE.BoxGeometry(0.48,0.44,0.4)), cosBoxMats(), 0,1.0,-0.37);
+    for (const s of [-1,1]) cmesh(g, cgeo('bpS', () => new THREE.BoxGeometry(0.05,0.5,0.02)), mat(0x1d8f74), s*0.14,0.86,0.19);
+    return g; }},
+  {id:'back_cape', n:'英雄披風', slot:'back', price:350, ic:'🦸',   build(){ const g = new THREE.Group(), r = mat(0xd93d4b);
+    cmesh(g, cgeo('cpB', () => new THREE.BoxGeometry(0.5,0.74,0.025)), r, 0,0.72,-0.205, 0.13);
+    cmesh(g, cgeo('cpC', () => new THREE.BoxGeometry(0.56,0.06,0.36)), r, 0,1.075,-0.01);
+    cmesh(g, cgeo('cpK', () => new THREE.SphereGeometry(0.035,8,6)), mat(0xffcf3a, 0xffa000, 0.3), 0,1.05,0.18);
+    return g; }},
+  {id:'back_wings', n:'天使翅膀', slot:'back', price:520, ic:'👼', build(){ const g = new THREE.Group(), w = mat(0xfffaf0, 0xfff1c4, 0.35), f = cgeo('wgF', () => new THREE.SphereGeometry(0.1,10,6));
+    for (const s of [-1,1]){
+      const wg = new THREE.Group(); wg.position.set(s*0.1,1.0,-0.2); wg.rotation.y = s*0.45; g.add(wg);
+      cmesh(wg, f, w, s*0.22,0.06,0, 0,0,s*0.35).scale.set(2.4,0.9,0.25);
+      cmesh(wg, f, w, s*0.2,-0.07,-0.01, 0,0,s*0.15).scale.set(2.0,0.75,0.22);
+      cmesh(wg, f, w, s*0.16,-0.18,-0.02, 0,0,-s*0.05).scale.set(1.5,0.6,0.2);
+    }
+    return g; }},
 ];
 const COSMETIC = id => COSMETICS.find(c => c.id === id);
-function applyCosmetics(s){
-  if (!s || !s.ch) return;
-  const want = (G.equip && G.equip[s.role]) || {}, ch = s.ch;
+const COS_SLOTS = ['hat','face','back'];
+const COS_ON = {hat:['head',1.32], face:['head',1.32], back:['torso',0.8]};   // parent part + its rest height (build() works in character space)
+/* put cosmetic `id` (or nothing) into `slot` of a makeChar() character; also used for theme NPCs */
+function wearCosmetic(ch, slot, id){
   ch.cos = ch.cos || {};
-  for (const slot of ['hat','face','back']){
-    const id = want[slot] || null;
-    if ((ch.cos[slot] && ch.cos[slot].id) === id) continue;
-    if (ch.cos[slot]){ ch.g.remove(ch.cos[slot].obj); ch.cos[slot] = null; }
-    const c = id && COSMETIC(id);
-    if (c && c.build){ const obj = c.build(); obj.traverse(o => { if (o.isMesh) o.castShadow = true; }); ch.g.add(obj); ch.cos[slot] = {id, obj}; }
+  const cur = ch.cos[slot] || null;
+  id = id || null;
+  if (cur && cur.id === id) return;
+  if (cur){ if (cur.obj.parent) cur.obj.parent.remove(cur.obj); ch.cos[slot] = null; }
+  const c = id && COSMETIC(id);
+  if (c && c.slot === slot && c.build){
+    const on = COS_ON[slot], par = ch[on[0]] || ch.g, obj = c.build();
+    if (par !== ch.g) obj.position.y -= on[1];
+    obj.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    par.add(obj); ch.cos[slot] = {id, obj};
   }
+  if (slot === 'hat' && ch.cap) for (const m of ch.cap) m.visible = !ch.cos.hat;
+}
+/* equip = optional {hat, face, back} override (e.g. a shop preview); default G.equip[s.role] */
+function applyCosmetics(s, equip){
+  if (!s || !s.ch) return;
+  const want = equip || (G.equip && G.equip[s.role]) || {};
+  for (const slot of COS_SLOTS) wearCosmetic(s.ch, slot, want[slot]);
 }
 
 /* ---------------- chapter themes (store dressing per chapter) ----------------
-   THEMES[id] = {n, on(), off()}; applyTheme switches the dressing when a level of another chapter starts. */
-const THEMES = { default:{n:'本店'} };
+   THEMES[id] = {n, on(), off()}; applyTheme switches the dressing when a level of another chapter starts.
+   Each dressed theme owns one root group that is added to the scene up front (hidden), so the scene child count
+   never changes when themes switch; its contents are built on the first on() and only shown/hidden after that.
+   Theme props never touch the nav grid: inside the store they hang on walls / above head height, outside they
+   stay off the customer lanes (street z≈9.3–10.1 and the diagonal to the door at x≈1.25, z 7–10). */
+const THEME_ROOT = {};
+for (const id of ['delivery','festival']){ const g = new THREE.Group(); g.name = 'theme:' + id; g.visible = false; scene.add(g); THEME_ROOT[id] = g; }
+const _tOut = new Map();
+const tOut = c => { let m = _tOut.get(c); if (!m){ m = outdoorMat(c); _tOut.set(c, m); } return m; };   // shared outdoor (night-tinted) materials
+function tGlow(c, dayI, nightI){ return nightGlow(new THREE.MeshLambertMaterial({color:c, emissive:c, emissiveIntensity:dayI}), dayI, nightI); }
+function tPool(root, m, x, y, z, w, d){ const p = new THREE.Mesh(_poolGeo, m); p.scale.set(w,1,d); p.position.set(x,y,z); p.renderOrder = 2; root.add(p); return p; }
+function tDecal(root, w, h, x, y, z, draw, ry){   // flat canvas sticker (unlit)
+  const m = signPlane(w, h, draw, root, x, y, z, ry); m.material.depthWrite = false; return m;
+}
+const TG = {   // shared theme geometry
+  wheel: new THREE.CylinderGeometry(0.2,0.2,0.1,14).rotateZ(Math.PI/2),
+  bulb: new THREE.SphereGeometry(0.06,6,4),
+  lantern: new THREE.SphereGeometry(0.26,12,9),
+  lanCap: new THREE.CylinderGeometry(0.11,0.13,0.06,10),
+  tassel: new THREE.BoxGeometry(0.03,0.22,0.03),
+  post: new THREE.BoxGeometry(0.07,1,0.07),
+};
+
+/* a scooter (faces +x); `box` = insulated delivery box on the rack */
+function tScooter(root, x, z, ry, color, withBox){
+  const g = new THREE.Group(); g.position.set(x,0,z); g.rotation.y = ry; root.add(g);
+  const body = tOut(color), dark = tOut(0x2b2f38);
+  box(1.05,0.16,0.34, body, -0.05,0.2,0, g);                    // floor board
+  box(0.5,0.32,0.36, body, -0.38,0.3,0, g);                     // rear body
+  box(0.52,0.08,0.3, dark, -0.36,0.62,0, g, {cast:false});      // seat
+  const col = box(0.12,0.62,0.22, body, 0.42,0.25,0, g); col.rotation.z = -0.25;
+  box(0.06,0.06,0.56, dark, 0.53,0.88,0, g, {cast:false});      // handlebar
+  box(0.05,0.1,0.14, tGlow(0xfff2c4, 0.1, 1.1), 0.56,0.72,0, g, {cast:false});   // headlight
+  for (const wx of [-0.42,0.46]){ const w = new THREE.Mesh(TG.wheel, tOut(0x1e1f24)); w.rotation.y = Math.PI/2; w.position.set(wx,0.2,0); w.castShadow = true; g.add(w); }
+  if (withBox){ const b = new THREE.Mesh(cgeo('dbB', () => new THREE.BoxGeometry(0.48,0.44,0.4)), cosBoxMats()); b.position.set(-0.5,0.88,0); b.rotation.y = Math.PI/2; b.castShadow = true; g.add(b); }
+  return g;
+}
+/* catenary string of bulbs from a to b (sag in m), bulbs cycle through the given glow materials */
+function tStringLights(root, a, b, sag, n, mats, wireM, bulbs){
+  const pts = [];
+  for (let i=0;i<=16;i++){ const t = i/16; pts.push(new THREE.Vector3(lerp(a[0],b[0],t), lerp(a[1],b[1],t) - sag*4*t*(1-t), lerp(a[2],b[2],t))); }
+  root.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), wireM));
+  for (let i=1;i<n;i++){
+    const t = i/n, k = bulbs.n++ % mats.length;
+    bulbs.pos[k].push([lerp(a[0],b[0],t), lerp(a[1],b[1],t) - sag*4*t*(1-t) - 0.06, lerp(a[2],b[2],t)]);
+  }
+}
+function tFlushBulbs(root, mats, bulbs){   // one InstancedMesh per bulb colour
+  const m4 = new THREE.Matrix4();
+  mats.forEach((m, k) => {
+    const P = bulbs.pos[k]; if (!P.length) return;
+    const im = new THREE.InstancedMesh(TG.bulb, m, P.length);
+    P.forEach((p, i) => { m4.makeTranslation(p[0], p[1], p[2]); im.setMatrixAt(i, m4); });
+    im.instanceMatrix.needsUpdate = true; im.frustumCulled = false; root.add(im);   // (r128 culls instanced meshes by the base geometry)
+  });
+}
+
+/* chapter 2 「外送大作戰」: delivery-app partner store */
+function buildThemeDelivery(root){
+  const TEAL = 0x2ec4a0, ORANGE = 0xff7a2e;
+  // facade banner over the left windows
+  box(5.6,0.62,0.08, tOut(0x1d8f74), -5,2.42,7.2, root, {cast:false});
+  signPlane(5.5,0.56,(g,w,h)=>{
+    g.fillStyle='#2ec4a0'; g.fillRect(0,0,w,h);
+    g.fillStyle='#fffaf0'; g.beginPath(); g.arc(h*0.55,h/2,h*0.38,0,Math.PI*2); g.fill();
+    g.fillStyle='#2ec4a0'; g.font=`900 ${h*0.5}px ${FONT}`; g.textAlign='center'; g.textBaseline='middle'; g.fillText('分', h*0.55, h*0.53);
+    g.fillStyle='#fffaf0'; g.textAlign='left'; g.font=`900 ${h*0.56}px ${FONT}`; g.fillText('分身快送', h*1.1, h*0.54);
+    g.fillStyle='#ff7a2e'; roundRect(g, w*0.53, h*0.18, w*0.44, h*0.64, h*0.3); g.fill();
+    g.fillStyle='#fffaf0'; g.font=`900 ${h*0.36}px ${FONT}`; g.textAlign='center'; g.fillText('外送取餐點 · 30 分鐘到', w*0.75, h*0.53);
+  }, root, -5, 2.73, 7.25);
+  // window stickers either side of the door
+  const sticker = (x, y, top, bot) => tDecal(root, 0.62, 0.62, x, y, 7.03, (g,w,h)=>{
+    g.beginPath(); g.arc(w/2,h/2,w*0.47,0,Math.PI*2); g.fillStyle='#2ec4a0'; g.fill(); g.lineWidth=6; g.strokeStyle='#fffaf0'; g.stroke();
+    g.fillStyle='#fffaf0'; g.font=`900 ${h*0.2}px ${FONT}`; g.textAlign='center'; g.textBaseline='middle'; g.fillText(top, w/2, h*0.4);
+    g.font=`900 ${h*0.13}px ${FONT}`; g.fillText(bot, w/2, h*0.64);
+  });
+  sticker(-0.55, 1.55, '外送', '合作店家'); sticker(3.05, 1.55, '取餐', 'PICK UP');
+  // rider waiting area on the sidewalk in front of the door (painted box + rack + stools + sign; no nav blocking)
+  tDecal(root, 3.0, 1.15, -1.0, 0.012, 10.95, (g,w,h)=>{
+    g.fillStyle='rgba(255,207,58,0.18)'; g.fillRect(0,0,w,h);
+    g.strokeStyle='#ffcf3a'; g.lineWidth=10; g.strokeRect(5,5,w-10,h-10);
+    g.save(); g.beginPath(); g.rect(5,5,w*0.16,h-10); g.clip(); g.lineWidth=9;
+    for (let x=-h; x<w*0.2; x+=26){ g.beginPath(); g.moveTo(x,h); g.lineTo(x+h,0); g.stroke(); } g.restore();
+    g.fillStyle='#ffcf3a'; g.font=`900 ${h*0.36}px ${FONT}`; g.textAlign='center'; g.textBaseline='middle'; g.fillText('外送員等候區', w*0.6, h*0.42);
+    g.font=`${h*0.17}px ${FONT_D}`; g.fillText('RIDER WAITING', w*0.6, h*0.76);
+  }).rotation.x = -Math.PI/2;
+  const rack = new THREE.Group(); rack.position.set(-2.8,0,11.2); root.add(rack);
+  for (const x of [-0.42,0.42]) for (const z of [-0.18,0.18]) box(0.04,1.05,0.04, tOut(0x8a94a3), x,0,z, rack, {cast:false});
+  for (const y of [0.3,0.68,1.03]) box(0.9,0.03,0.42, tOut(0x8a94a3), 0,y,0, rack, {cast:false});
+  const bag = cgeo('dbB', () => new THREE.BoxGeometry(0.48,0.44,0.4));
+  for (const [x,y,s] of [[-0.2,0.315,0.75],[0.22,0.315,0.75],[0,0.695,0.7]]){ const b = new THREE.Mesh(bag, cosBoxMats()); b.scale.setScalar(s); b.position.set(x, y + 0.22*s, 0); b.castShadow = true; rack.add(b); }
+  signPlane(0.9,0.22,(g,w,h)=>{ g.fillStyle='#ff7a2e'; g.fillRect(0,0,w,h); g.fillStyle='#fff'; g.font=`900 ${h*0.62}px ${FONT}`; g.textAlign='center'; g.textBaseline='middle'; g.fillText('待取餐 READY', w/2, h*0.55); }, rack, 0, 1.18, 0.2);
+  for (const x of [-1.55,-0.85]){ box(0.34,0.06,0.34, tOut(ORANGE), x,0.44,11.35, root); box(0.06,0.44,0.06, tOut(0x44505f), x,0,11.35, root, {cast:false}); }
+  const pole = new THREE.Group(); pole.position.set(0.35,0,11.35); root.add(pole);
+  box(0.06,1.5,0.06, tOut(0x44505f), 0,0,0, pole); box(0.4,0.04,0.4, tOut(0x44505f), 0,0,0, pole, {cast:false});
+  signPlane(0.7,0.5,(g,w,h)=>{ roundRect(g,3,3,w-6,h-6,14); g.fillStyle='#14233d'; g.fill(); g.fillStyle='#ffcf3a'; g.font=`900 ${h*0.27}px ${FONT}`; g.textAlign='center'; g.textBaseline='middle'; g.fillText('外送員', w/2, h*0.34); g.fillText('請在此等候', w/2, h*0.68); }, pole, 0, 1.4, 0.04);
+  // a rider waiting by the rack (static NPC wearing the delivery cosmetics)
+  const rider = makeChar({shirt:TEAL, pants:0x2f3b52, skin:0xe8b48f, hair:0x2b1d14, scale:1.08});
+  scene.remove(rider.g); root.add(rider.g); rider.g.position.set(-2.15,0,11.0); rider.g.rotation.y = -0.5;
+  wearCosmetic(rider, 'hat', 'hat_rider'); wearCosmetic(rider, 'back', 'back_box');
+  rider.armR.rotation.x = -1.1; rider.armR.rotation.z = 0.25;           // looking at the phone
+  box(0.09,0.15,0.02, mat(0x14233d, 0x4da3ff, 0.6), 0.08,-0.5,0.08, rider.armR, {cast:false}).rotation.x = -0.5;
+  // parked scooters with delivery boxes along the curb (clear of bench / bike rack / lamps)
+  tScooter(root, 2.3, 12.1, -1.1, TEAL, true);
+  tScooter(root, 3.55, 12.1, -1.1, ORANGE, true);
+  tScooter(root, 9.2, 11.7, 0.9, TEAL, true);
+  tScooter(root, -8.6, 11.75, 2.3, 0xfffaf0, true);
+  // app order board on the back wall, between the drinks fridge and the stockroom
+  box(1.62,1.0,0.06, mat(0x14233d), 3.2,1.05,-6.97, root, {cast:false});
+  const scr = signPlane(1.5,0.9,(g,w,h)=>{
+    g.fillStyle='#0f1d33'; g.fillRect(0,0,w,h);
+    g.fillStyle='#2ec4a0'; g.fillRect(0,0,w,h*0.2);
+    g.fillStyle='#fffaf0'; g.font=`900 ${h*0.12}px ${FONT}`; g.textBaseline='middle'; g.textAlign='left'; g.fillText('分身快送 · 即時訂單', w*0.04, h*0.1);
+    g.textAlign='right'; g.font=`${h*0.09}px ${FONT_D}`; g.fillText('LIVE', w*0.96, h*0.1);
+    const rows = [['#A102','咖啡 ×2','製作中','#ffcf3a'],['#A103','熱狗堡','待取餐','#34d6a6'],['#A104','泡麵 + 關東煮','新訂單','#ff7a2e'],['#A105','便當 ×3','外送員 3 分','#4da3ff']];
+    rows.forEach((r, i) => {
+      const y = h*(0.32 + i*0.18);
+      g.fillStyle = i%2 ? '#16294a' : '#1b3159'; g.fillRect(w*0.03, y - h*0.075, w*0.94, h*0.15);
+      g.fillStyle='#9fb3d9'; g.font=`${h*0.075}px ${FONT_D}`; g.textAlign='left'; g.fillText(r[0], w*0.05, y);
+      g.fillStyle='#fffaf0'; g.font=`900 ${h*0.085}px ${FONT}`; g.fillText(r[1], w*0.24, y);
+      g.fillStyle=r[3]; roundRect(g, w*0.7, y - h*0.05, w*0.25, h*0.1, h*0.05); g.fill();
+      g.fillStyle='#0f1d33'; g.font=`900 ${h*0.065}px ${FONT}`; g.textAlign='center'; g.fillText(r[2], w*0.825, y + 1);
+    });
+  }, root, 3.2, 1.55, -6.93);
+  void scr;
+}
+
+/* chapter 3 「節慶夜市」: lanterns, string lights, night-market stalls, festive window decals, warmer light */
+function buildThemeFestival(root){
+  const RED = 0xd93d4b;
+  // round red lanterns along the facade (glow after dusk)
+  const lanM = tGlow(0xe8304a, 0.12, 0.9), goldM = mat(0xffcf3a, 0xffa000, 0.25), tasM = mat(0xffb000);
+  const lantern = (x, y, z, s) => {
+    const g = new THREE.Group(); g.position.set(x,y,z); g.scale.setScalar(s || 1); root.add(g);
+    const b = new THREE.Mesh(TG.lantern, lanM); b.scale.set(1,0.82,1); g.add(b);
+    for (const yy of [0.23,-0.23]){ const c = new THREE.Mesh(TG.lanCap, goldM); c.position.y = yy; g.add(c); }
+    const t = new THREE.Mesh(TG.tassel, tasM); t.position.y = -0.37; g.add(t);
+    box(0.012,0.3,0.012, mat(0x2b2f38), 0,0.24,0, g, {cast:false});
+    return g;
+  };
+  for (const x of [-8.8,-6.3,-3.8,-0.65,3.15,5.65,8.15]) lantern(x, 2.6, 7.4);
+  lantern(-0.65, 2.0, 7.55, 0.7); lantern(3.15, 2.0, 7.55, 0.7);
+  // facade banner
+  box(4.2,0.6,0.08, tOut(0x9e1f2c), 6.25,2.42,7.2, root, {cast:false});
+  signPlane(4.1,0.54,(g,w,h)=>{
+    g.fillStyle='#c62f3c'; g.fillRect(0,0,w,h); g.strokeStyle='#ffcf3a'; g.lineWidth=5; g.strokeRect(6,6,w-12,h-12);
+    g.fillStyle='#ffcf3a'; g.font=`900 ${h*0.56}px ${FONT}`; g.textAlign='center'; g.textBaseline='middle'; g.fillText('分身夜市 開張大吉', w*0.43, h*0.54);
+    g.font=`${h*0.3}px ${FONT_D}`; g.fillText('NIGHT', w*0.88, h*0.54);
+  }, root, 6.25, 2.72, 7.25);
+  // festive paper-cut decals on the front windows (outside face)
+  const fu = (x, y, s) => tDecal(root, 0.7*s, 0.7*s, x, y, 7.03, (g,w,h)=>{
+    g.save(); g.translate(w/2,h/2); g.rotate(Math.PI/4); g.fillStyle='#d93d4b'; g.fillRect(-w*0.33,-h*0.33,w*0.66,h*0.66);
+    g.strokeStyle='#ffcf3a'; g.lineWidth=4; g.strokeRect(-w*0.29,-h*0.29,w*0.58,h*0.58); g.restore();
+    g.fillStyle='#ffcf3a'; g.font=`900 ${h*0.36}px ${FONT}`; g.textAlign='center'; g.textBaseline='middle'; g.fillText('福', w/2, h*0.53);
+  });
+  const flower = (x, y, s, label) => tDecal(root, 0.62*s, 0.62*s, x, y, 7.03, (g,w,h)=>{
+    g.fillStyle='#e8304a';
+    for (let i=0;i<8;i++){ const a = i/8*Math.PI*2; g.beginPath(); g.arc(w/2 + Math.cos(a)*w*0.25, h/2 + Math.sin(a)*h*0.25, w*0.17, 0, Math.PI*2); g.fill(); }
+    g.beginPath(); g.arc(w/2,h/2,w*0.27,0,Math.PI*2); g.fill();
+    g.fillStyle='#ffcf3a'; g.font=`900 ${h*0.26}px ${FONT}`; g.textAlign='center'; g.textBaseline='middle'; g.fillText(label, w/2, h*0.53);
+  });
+  fu(-8.1, 1.45, 1); flower(-6.1, 1.6, 1, '春'); fu(-2.0, 1.45, 0.9); flower(4.2, 1.6, 0.9, '囍'); fu(6.4, 1.45, 1); flower(9.0, 1.6, 0.85, '樂');
+  // string lights: around the top of the store walls, two strands across the store high above the aisles, and out over the street
+  const bulbMats = [tGlow(0xffd84a, 0.25, 1.3), tGlow(0xff5a5a, 0.25, 1.2), tGlow(0x5ad1ff, 0.25, 1.1), tGlow(0x7dea6a, 0.25, 1.1)];
+  const wireM = new THREE.LineBasicMaterial({color:0x2b2f38});
+  const bulbs = {n:0, pos:bulbMats.map(() => [])};
+  const S = (a, b, sag, n) => tStringLights(root, a, b, sag, n, bulbMats, wireM, bulbs);
+  S([-10,3.05,-7],[0,3.05,-7],0.25,20); S([0,3.05,-7],[10,3.05,-7],0.25,20);
+  S([-10,3.05,-7],[-10,3.05,0],0.22,14); S([-10,3.05,0],[-10,3.05,7],0.22,14);
+  S([10,3.05,-7],[10,3.05,0],0.22,14); S([10,3.05,0],[10,3.05,7],0.22,14);
+  S([-10,3.6,-1.8],[10,3.6,-1.8],0.35,36); S([-10,3.6,3.6],[10,3.6,3.6],0.35,36);
+  S([-10,2.95,7.15],[0,2.95,7.15],0.3,18); S([2.5,2.95,7.15],[10,2.95,7.15],0.3,14);
+  S([-6,2.95,7.15],[-6.5,4.0,12.9],0.45,10); S([7,2.95,7.15],[7.5,4.0,12.9],0.45,10); S([-6.5,4.0,12.9],[7.5,4.0,12.9],0.6,26);
+  tFlushBulbs(root, bulbMats, bulbs);
+  // night-market stalls on the far side of the sidewalk (facing the street / camera; clear of the customer lanes)
+  const stripeTex = canvasTex(64,16,(g,w,h)=>{ for (let i=0;i<8;i++){ g.fillStyle = i%2 ? '#fffaf0' : '#d93d4b'; g.fillRect(i*w/8,0,w/8,h); } });
+  const awnM = outdoorMat(0xffffff); awnM.map = stripeTex;
+  const stallPool = glowMat(0xffb35c, radialTex(), 0, 0.42);
+  const stall = (x, z, ry, title, price, goods) => {
+    const g = new THREE.Group(); g.position.set(x,0,z); g.rotation.y = ry; root.add(g);
+    box(1.7,0.85,0.7, tOut(0x9a6b45), 0,0,0, g);
+    box(1.76,0.05,0.76, tOut(0xc49a6c), 0,0.85,0, g, {cast:false});
+    for (const px of [-0.82,0.82]) for (const pz of [-0.32,0.32]){ const p = new THREE.Mesh(TG.post, tOut(0x5a4632)); p.scale.y = 2.1; p.position.set(px,1.05,pz); g.add(p); }
+    const aw = box(1.95,0.06,1.1, awnM, 0,2.1,0.12, g); aw.rotation.x = 0.18;
+    box(1.95,0.22,0.02, awnM, 0,1.88,0.66, g, {cast:false});
+    signPlane(1.5,0.4,(c,w,h)=>{
+      roundRect(c,3,3,w-6,h-6,12); c.fillStyle='#14233d'; c.fill(); c.strokeStyle='#ffcf3a'; c.lineWidth=4; c.stroke();
+      c.fillStyle='#ffcf3a'; c.font=`900 ${h*0.56}px ${FONT}`; c.textAlign='left'; c.textBaseline='middle'; c.fillText(title, w*0.07, h*0.54);
+      c.fillStyle='#fffaf0'; c.font=`${h*0.4}px ${FONT_D}`; c.textAlign='right'; c.fillText(price, w*0.93, h*0.56);
+    }, g, 0, 1.45, 0.37);
+    const lb = new THREE.Mesh(TG.bulb, bulbMats[0]); lb.scale.setScalar(1.8); lb.position.set(0,1.95,0.05); g.add(lb);
+    tPool(g, stallPool, 0, 0.006, 0.5, 3, 2.2);
+    goods(g);
+    return g;
+  };
+  const dot = (g, geo, c, x, y, z) => { const m = new THREE.Mesh(geo, mat(c)); m.position.set(x,y,z); g.add(m); return m; };
+  const ball = new THREE.SphereGeometry(0.07,8,6), cup = new THREE.CylinderGeometry(0.06,0.05,0.16,8), stick = new THREE.CylinderGeometry(0.035,0.035,0.32,6).rotateZ(Math.PI/2);
+  stall(-8.7, 11.35, 0, '雞蛋糕', '$50', g => { for (let i=0;i<9;i++) dot(g, ball, 0xe9b04a, -0.5 + (i%3)*0.16, 0.92, -0.15 + Math.floor(i/3)*0.12); box(0.5,0.08,0.4, mat(0x2b2f38), 0.45,0.87,-0.05, g, {cast:false}); });
+  stall(-1.15, 11.4, 0, '烤香腸', '$40', g => { box(0.9,0.12,0.4, mat(0x2b2f38), 0,0.87,-0.05, g, {cast:false}); for (let i=0;i<6;i++) dot(g, stick, 0xb5462e, -0.3 + i*0.12, 1.02, -0.05).rotation.y = Math.PI/2; });
+  stall(3.1, 11.4, 0, '珍珠奶茶', '$55', g => { for (let i=0;i<7;i++) dot(g, cup, i%2 ? 0xd9b48a : 0xc98b5a, -0.6 + i*0.2, 0.96, -0.1); });
+  stall(9.3, 11.35, 0, '射氣球', '$30', g => {
+    box(1.5,0.9,0.04, tOut(0xfffaf0), 0,0.9,-0.3, g, {cast:false});
+    const cols = [0xff5a5a,0xffcf3a,0x5ad1ff,0x7dea6a,0xb57cf0];
+    for (let i=0;i<12;i++) dot(g, ball, cols[i%5], -0.6 + (i%6)*0.24, 1.15 + Math.floor(i/6)*0.3, -0.25).scale.set(1.2,1.4,1.2);
+  });
+  // warm lantern glow pools on the sidewalk under the facade
+  const poolM = glowMat(0xff6a3a, radialTex(), 0, 0.35);
+  for (const x of [-7.55,-5.05,-2.2,4.4,6.9]) tPool(root, poolM, x, 0.007, 7.9, 2.4, 1.8);
+}
+
+function themeDressing(id, build){
+  return {
+    on(){ const r = THEME_ROOT[id]; if (!r.userData.built){ r.userData.built = true; build(r); } r.visible = true; },
+    off(){ THEME_ROOT[id].visible = false; },
+  };
+}
+const THEMES = {
+  default:{n:'本店'},
+  delivery: Object.assign({n:'外送大作戰'}, themeDressing('delivery', buildThemeDelivery)),
+  festival: Object.assign({n:'節慶夜市'}, themeDressing('festival', buildThemeFestival)),
+};
+{ // festival: warmer interior lamp after dark (applyTimeOfDay only drives its intensity)
+  const F = THEMES.festival, on = F.on, off = F.off;
+  F.on = () => { on(); storeLight.color.setHex(0xff9a52); };
+  F.off = () => { off(); storeLight.color.setHex(0xffc27a); };
+}
 let themeNow = 'default';
 function applyTheme(id){
   if (!THEMES[id]) id = 'default';
@@ -4180,6 +4597,7 @@ function applyTheme(id){
   const prev = THEMES[themeNow]; if (prev && prev.off) try { prev.off(); } catch(e){}
   themeNow = id;
   const T = THEMES[id]; if (T.on) try { T.on(); } catch(e){}
+  musicTheme(id);
 }
 // menus simulate the world behind them: a quit/finished level must not keep running there (tickets, fails, keyboard)
 function menuWorld(){ if (!G.demo){ setupWorld(0, ROLES.map(r => r.id), true); hud.big.innerHTML = ''; } }
