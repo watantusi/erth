@@ -1,0 +1,77 @@
+/* 基礎版面（整合者）。介面樣式在 css/ui.css，操控樣式在 css/controls.css。 */
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: #7cc6ff;
+  color: #2f3b52;
+  font-family: system-ui, -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+#game {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  z-index: 0;
+  outline: none;
+}
+
+#touch {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+#ui {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+}
+
+#boot {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: linear-gradient(180deg, #7cc6ff 0%, #ffe3c2 100%);
+  transition: opacity 0.6s ease;
+}
+#boot.hidden { opacity: 0; pointer-events: none; }
+#boot.error .boot-text { color: #b3261e; max-width: 80vw; text-align: center; line-height: 1.5; }
+
+.boot-planet {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #b8f08f 0%, #5fb05a 45%, #3fa7d6 46%, #2a7fc0 100%);
+  box-shadow: 0 8px 24px rgba(47, 59, 82, 0.25);
+  animation: boot-spin 2.4s linear infinite;
+}
+.boot-text { font-size: 16px; font-weight: 600; letter-spacing: 0.1em; }
+
+@keyframes boot-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
