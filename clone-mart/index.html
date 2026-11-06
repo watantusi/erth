@@ -1997,6 +1997,7 @@ function tipWhile(key, text, cond){
 function totalStars(){ let t = 0; for (const k in G.best) t += (G.best[k] && G.best[k].stars) || 0; return t; }
 
 /* ---------------- item meshes ---------------- */
+// Read at a glance from above: raw = pale / sealed / icy, cooked = warm colours + steam (fx), burnt = black + embers + smoke (fx)
 const IG = {
   cup: new THREE.CylinderGeometry(0.09,0.07,0.2,12).translate(0,0.1,0),
   lid: new THREE.CylinderGeometry(0.095,0.095,0.03,12).translate(0,0.215,0),
@@ -2018,32 +2019,112 @@ const IG = {
   ext: new THREE.CylinderGeometry(0.075,0.075,0.38,10).translate(0,0.19,0),
   nozzle: new THREE.BoxGeometry(0.16,0.04,0.04).translate(0.06,0.4,0),
   steam: new THREE.SphereGeometry(0.05,6,5),
+  // --- detail parts
+  sleeve: new THREE.CylinderGeometry(0.088,0.08,0.075,12).translate(0,0.11,0),
+  cupIn: new THREE.CylinderGeometry(0.078,0.078,0.004,12).translate(0,0.198,0),
+  sip: new THREE.BoxGeometry(0.05,0.022,0.03).translate(0,0.24,0.055),
+  ncup: new THREE.CylinderGeometry(0.115,0.085,0.17,14).translate(0,0.085,0),
+  nband: new THREE.CylinderGeometry(0.113,0.1,0.06,14).translate(0,0.1,0),
+  nlid: new THREE.CylinderGeometry(0.12,0.12,0.012,14).translate(0,0.176,0),
+  ndot: new THREE.CylinderGeometry(0.05,0.05,0.004,12).translate(0,0.184,0),
+  nflap: new THREE.CylinderGeometry(0.12,0.12,0.01,14,1,false,0,Math.PI).translate(0,0,0),
+  nsoup: new THREE.CylinderGeometry(0.108,0.108,0.012,14).translate(0,0.162,0),
+  curl: new THREE.TorusGeometry(0.03,0.01,4,10).rotateX(Math.PI/2),
+  bit: new THREE.BoxGeometry(0.025,0.012,0.025),
+  bfood: new THREE.BoxGeometry(0.15,0.05,0.2),
+  bnug: new THREE.IcosahedronGeometry(0.04,0),
+  btop: new THREE.BoxGeometry(0.37,0.025,0.27),
+  frost: new THREE.OctahedronGeometry(0.022,0),
+  sausEnd: new THREE.SphereGeometry(0.045,8,6),
+  sausRing: new THREE.CylinderGeometry(0.048,0.048,0.012,8).rotateZ(Math.PI/2),
+  bunIn: new THREE.BoxGeometry(0.3,0.012,0.05),
+  dash: new THREE.BoxGeometry(0.05,0.012,0.016),
+  ptray: new THREE.BoxGeometry(0.3,0.05,0.2).translate(0,0.025,0),
+  disc: new THREE.CylinderGeometry(0.05,0.05,0.035,12).rotateX(Math.PI/2),
+  tri: new THREE.CylinderGeometry(0.06,0.06,0.03,3).rotateX(Math.PI/2),
+  egg: new THREE.SphereGeometry(0.045,10,8).scale(1,1.25,1),
+  apple: new THREE.SphereGeometry(0.11,14,10).scale(1,0.9,1).translate(0,0.1,0),
+  stem: new THREE.CylinderGeometry(0.008,0.01,0.06,5).translate(0,0.215,0),
+  shine: new THREE.SphereGeometry(0.025,6,5).scale(1,0.6,1),
+  dome: new THREE.SphereGeometry(0.09,12,6,0,Math.PI*2,0,Math.PI/2).translate(0,0.2,0),
+  pick: new THREE.CylinderGeometry(0.006,0.006,0.22,4),
+  shoulder: new THREE.CylinderGeometry(0.035,0.06,0.06,10).translate(0,0.31,0),
+  label: new THREE.CylinderGeometry(0.063,0.066,0.1,10).translate(0,0.13,0),
+  crimp: new THREE.BoxGeometry(0.27,0.03,0.07),
+  logo: new THREE.CylinderGeometry(0.06,0.06,0.01,12).rotateX(Math.PI/2),
+  ember: new THREE.BoxGeometry(0.03,0.03,0.03),
+  extTop: new THREE.CylinderGeometry(0.05,0.075,0.05,10).translate(0,0.405,0),
+  valve: new THREE.BoxGeometry(0.05,0.07,0.05).translate(0,0.46,0),
+  lever: new THREE.BoxGeometry(0.14,0.016,0.035).translate(0.04,0.5,0),
+  hose: new THREE.TorusGeometry(0.09,0.012,5,10,Math.PI*1.1),
+  extBand: new THREE.CylinderGeometry(0.077,0.077,0.08,10).translate(0,0.2,0),
 };
 const steamMat = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.55, depthWrite:false});
+const IM = {   // shared see-through materials for items
+  icy: new THREE.MeshLambertMaterial({color:0xbfe8ff, transparent:true, opacity:0.62, emissive:0x4da3ff, emissiveIntensity:0.18}),
+  clear: new THREE.MeshLambertMaterial({color:0xe8f6ff, transparent:true, opacity:0.45, depthWrite:false}),
+  ember: new THREE.MeshLambertMaterial({color:0xff6a1a, emissive:0xff4a00, emissiveIntensity:0.9}),
+};
+const HOT_ITEMS = {coffee:1, noodle:1, bento:1, sausage_cooked:1, hotdog:1, oden:1};
 function itemMesh(type){
   const g = new THREE.Group();
   const add = (geo, c, x, y, z, rx, ry, rz) => { const m = new THREE.Mesh(geo, typeof c === 'number' ? mat(c) : c); m.position.set(x||0, y||0, z||0); if (rx||ry||rz) m.rotation.set(rx||0, ry||0, rz||0); m.castShadow = true; g.add(m); return m; };
-  const steam = () => { for (let i=0;i<3;i++){ const s = add(IG.steam, steamMat, (i-1)*0.05, 0.32 + i*0.07, 0); s.userData.steam = i; } };
+  const sausage = (c, y, ring) => { add(IG.saus, c, 0, y-0.06, 0); add(IG.sausEnd, c, -0.16, y, 0); add(IG.sausEnd, c, 0.16, y, 0); if (ring) for (let i=0;i<3;i++) add(IG.sausRing, ring, -0.08+i*0.08, y, 0, 0, 0.35); };
   switch (type){
-    case 'cup': add(IG.cup, 0xf4f4f4); break;
-    case 'coffee': add(IG.cup, 0xf4f4f4); add(IG.lid, 0x7a4a2a); steam(); break;
-    case 'noodle_raw': add(IG.bowl, 0xff6058); add(IG.soup, 0xf4f4f4); break;
-    case 'noodle': add(IG.bowl, 0xff6058); add(IG.soup, 0xf2c14e); steam(); break;
-    case 'bento_cold': add(IG.tray, 0x2b2b2b); add(IG.tlid, 0x9fd3ff); break;
-    case 'bento': add(IG.tray, 0x2b2b2b); add(IG.tlid, 0xff9f43); steam(); break;
-    case 'sausage': add(IG.saus, 0xf08a9a); break;
-    case 'sausage_cooked': add(IG.saus, 0xa0522d); steam(); break;
-    case 'bun': add(IG.bun, 0xe0b070); break;
-    case 'hotdog': add(IG.bun, 0xe0b070); add(IG.saus, 0xa0522d, 0, 0.05, 0); add(IG.cube, 0xffd23f, 0, 0.11, 0).scale.set(3.2,0.2,0.4); break;
-    case 'oden_raw': add(IG.tray, 0xd8d0c0); for (let i=0;i<3;i++) add(IG.ball, [0xfff5e0,0xd9a066,0xf2f2f2][i], -0.1+i*0.1, 0.12, 0); break;
-    case 'oden': add(IG.bowl, 0xf2f2f2); add(IG.soup, 0xb8863b); for (let i=0;i<3;i++){ add(IG.ball, [0xfff5e0,0xd9a066,0x8b5a2b][i], -0.06+i*0.06, 0.16+i*0.03, 0); } add(IG.stick, 0xe8d2a9, 0.05, 0.25, 0, 0, 0, 0.3); steam(); break;
-    case 'fruit': add(IG.fruit, 0xe8413c); add(IG.leaf, 0x3f8a4f); break;
-    case 'fruitcup': add(IG.cup, new THREE.MeshLambertMaterial({color:0xe8f6ff, transparent:true, opacity:0.55})); for (let i=0;i<6;i++) add(IG.cube, [0xe8413c,0xffcf3a,0x34d6a6,0xff9f43][i%4], ((i%3)-1)*0.04, 0.06+Math.floor(i/3)*0.07, ((i%2)-0.5)*0.04); break;
-    case 'drink': add(IG.bottle, pick([0x4da3ff,0x34d6a6,0xff6058,0xffcf3a])); add(IG.bcap, 0xffffff); break;
-    case 'snack': add(IG.bag, pick([0xff6058,0xffcf3a,0xb57cf0,0x4da3ff])); break;
-    case 'burnt': add(IG.lump, 0x1e1a18); add(IG.ball, 0x3a302a, 0.08, 0.16, 0.03); break;
-    case 'ext': add(IG.ext, 0xd9262c); add(IG.nozzle, 0x222222); break;
+    case 'cup': add(IG.cup, 0xf7f7f2); add(IG.sleeve, 0xd8b47a); add(IG.cupIn, 0xcfd3d8); break;
+    case 'coffee': add(IG.cup, 0xf7f7f2); add(IG.sleeve, 0x8a5a36); add(IG.lid, 0x3b2a20); add(IG.sip, 0xf2f2f2); break;
+    case 'noodle_raw': add(IG.ncup, 0xfafaf5); add(IG.nband, 0xe8412c); add(IG.nlid, 0xf4efe2); add(IG.ndot, 0xe8412c); break;
+    case 'noodle':
+      add(IG.ncup, 0xfafaf5); add(IG.nband, 0xe8412c); add(IG.nsoup, 0xe9a93a);
+      for (let i=0;i<4;i++) add(IG.curl, 0xffd76a, -0.04 + (i%2)*0.07, 0.172, -0.035 + Math.floor(i/2)*0.06);
+      add(IG.bit, 0x3fae4f, 0.03, 0.175, 0.04); add(IG.bit, 0x3fae4f, -0.05, 0.175, 0.01); add(IG.bit, 0xe8413c, 0.0, 0.175, -0.05);
+      add(IG.nflap, 0xf4efe2, 0, 0.22, -0.1, -1.15); break;
+    case 'bento_cold':
+      add(IG.tray, 0x262a30); add(IG.bfood, 0xf4f1e8, -0.08, 0.075, 0); add(IG.bfood, 0x9ab08a, 0.09, 0.075, 0).scale.set(0.9,1,1);
+      add(IG.btop, IM.icy, 0, 0.11, 0);
+      for (let i=0;i<5;i++) add(IG.frost, 0xffffff, -0.13 + i*0.065, 0.128, ((i*37)%5-2)*0.04, 0, i);
+      break;
+    case 'bento':
+      add(IG.tray, 0x262a30); add(IG.bfood, 0xfbfaf4, -0.08, 0.075, 0); add(IG.ball, 0xe8413c, -0.08, 0.1, 0.02).scale.setScalar(0.3);
+      for (let i=0;i<3;i++) add(IG.bnug, 0xd9822b, 0.06 + (i%2)*0.06, 0.11, -0.07 + i*0.06, i, i);
+      add(IG.bit, 0xffd23f, 0.12, 0.11, 0.08).scale.set(2.2,3,1.6); add(IG.ball, 0x3fae4f, 0.03, 0.11, 0.08).scale.setScalar(0.55);
+      break;
+    case 'sausage': sausage(0xf6a8b0, 0.06); break;
+    case 'sausage_cooked': sausage(0xb24a22, 0.06, 0x4a1d0c); break;
+    case 'bun': add(IG.bun, 0xe3a857); add(IG.bunIn, 0xfbe3b3, 0, 0.1, 0); break;
+    case 'hotdog':
+      add(IG.bun, 0xe3a857); sausage(0xb24a22, 0.1, 0x4a1d0c);
+      for (let i=0;i<5;i++) add(IG.dash, 0xffd23f, -0.12 + i*0.06, 0.15, 0, 0, i%2 ? 0.7 : -0.7);
+      break;
+    case 'oden_raw':
+      add(IG.ptray, 0xf2ead8);
+      for (let i=0;i<2;i++){ const k = new THREE.Group(); k.position.set(-0.06 + i*0.12, 0.05, 0); k.rotation.z = (i ? -1 : 1)*0.12; g.add(k);
+        [[IG.stick,0xe8d2a9,0.12],[IG.disc,0xf6f3ea,0.2],[IG.tri,0xf0e2bf,0.12],[IG.egg,0xfdfdf8,0.04]].forEach(([geo,c,y],j) => { const m = new THREE.Mesh(geo, mat(c)); m.position.y = y; if (j===2) m.rotation.z = Math.PI/2; m.castShadow = true; k.add(m); }); }
+      break;
+    case 'oden':
+      add(IG.bowl, 0xf6f2ea); add(IG.soup, 0xb07a35);
+      { const k = new THREE.Group(); k.position.set(0.0, 0.1, 0); k.rotation.z = 0.25; g.add(k);
+        [[IG.stick,0xe8d2a9,0.12],[IG.disc,0xd9a35a,0.2],[IG.tri,0xa86a32,0.12],[IG.egg,0x8a5524,0.04]].forEach(([geo,c,y],j) => { const m = new THREE.Mesh(geo, mat(c)); m.position.y = y; if (j===2) m.rotation.z = Math.PI/2; m.castShadow = true; k.add(m); }); }
+      add(IG.ball, 0xd9a35a, -0.08, 0.14, 0.05).scale.set(0.8,0.5,0.8);
+      break;
+    case 'fruit': add(IG.apple, 0xe8413c); add(IG.stem, 0x5a3a1e); add(IG.leaf, 0x3fae4f, 0.0, -0.005, 0, 0, 0, -0.18); add(IG.shine, 0xffd0c8, -0.05, 0.16, 0.07); break;
+    case 'fruitcup':
+      for (let i=0;i<8;i++) add(IG.cube, [0xe8413c,0xffcf3a,0x34d6a6,0xff9f43][i%4], ((i%3)-1)*0.032, 0.045+Math.floor(i/3)*0.05, ((i%2)-0.5)*0.04, i, i*0.7).scale.setScalar(0.62);
+      add(IG.cup, IM.clear); add(IG.dome, IM.clear); add(IG.pick, 0x4da3ff, 0.03, 0.27, 0, 0, 0, 0.3);
+      break;
+    case 'drink': { const c = pick([0x4da3ff,0x34d6a6,0xff6058,0xffcf3a]); add(IG.bottle, c).scale.set(1,0.9,1); add(IG.shoulder, c, 0, -0.03, 0); add(IG.label, 0xffffff); add(IG.bcap, c === 0xffcf3a ? 0xe8413c : 0xffffff); break; }
+    case 'snack': { const c = pick([0xff6058,0xffcf3a,0xb57cf0,0x4da3ff]); add(IG.bag, c).scale.set(1,1,1.1); add(IG.crimp, c, 0, 0.3, 0); add(IG.crimp, c, 0, 0.015, 0); add(IG.logo, 0xffffff, 0, 0.16, 0.052); add(IG.logo, 0xffcf3a, 0, 0.16, 0.058).scale.setScalar(0.55); break; }
+    case 'burnt':
+      add(IG.lump, 0x1b1715); add(IG.ball, 0x2e2622, 0.08, 0.16, 0.03);
+      add(IG.ember, IM.ember, 0.06, 0.15, 0.08, 0.5, 0.5); add(IG.ember, IM.ember, -0.07, 0.12, 0.07, 0.3, 0.9); add(IG.ember, IM.ember, -0.02, 0.21, -0.04, 0.8, 0.2);
+      break;
+    case 'ext':
+      add(IG.ext, 0xd9262c); add(IG.extBand, 0xf4f4f4); add(IG.extTop, 0xb81d22); add(IG.valve, 0x30343c); add(IG.lever, 0x30343c);
+      add(IG.nozzle, 0x222222); add(IG.hose, 0x222222, 0.08, 0.32, 0.02, 0, Math.PI/2, -0.4);
+      break;
   }
+  if (HOT_ITEMS[type]) g.userData.hot = 1;
+  if (type === 'burnt') g.userData.smoke = 1;
   return g;
 }
 function newItem(type){ return {type, cook:0, chop:0, mesh:itemMesh(type)}; }
@@ -2085,55 +2166,147 @@ function placeOnSlot(sl, it){
 function takeFromSlot(sl){ const it = sl.item; sl.item = null; return it; }
 
 let highlight = null, fireGroupGeo = null;
+const KIT = {grRollers:[]};   // station parts the fx module animates (microwave light, grill glow, water stream, bell…)
+// floating name card that always faces the camera (readable in both camera views)
+function labelSprite(text, col, w, parent, x, y, z){
+  const tex = canvasTex(256, 88, (c, W, H) => {
+    roundRect(c, 4, 6, W-8, H-12, 30); c.fillStyle = '#fffaf0'; c.fill(); c.lineWidth = 7; c.strokeStyle = col; c.stroke();
+    c.beginPath(); c.arc(40, H/2, 17, 0, Math.PI*2); c.fillStyle = col; c.fill();
+    c.fillStyle = '#14233d'; c.font = `900 ${text.length > 3 ? 36 : 44}px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(text, W/2 + 18, H/2 + 2);
+  });
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({map:tex, transparent:true}));
+  s.scale.set(w, w*88/256, 1); s.position.set(x, y, z); (parent || scene).add(s);
+  return s;
+}
 function buildKitchen(){
   const steel = 0xc9d1dc, top = 0x9aa7b8, white = 0xf2f2ee;
+  const cyl = (rt, rb, h, seg, c, x, y, z, parent) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), typeof c === 'number' ? mat(c) : c); m.position.set(x, y + h/2, z); m.castShadow = true; m.receiveShadow = true; parent.add(m); return m; };
+  const additive = (c, op) => new THREE.MeshBasicMaterial({color:c, map:radialTex(), transparent:true, opacity:op, blending:THREE.AdditiveBlending, depthWrite:false});
+  const flat = (m, w, d, x, y, z, parent) => { const p = new THREE.Mesh(_poolGeo, m); p.scale.set(w, 1, d); p.position.set(x, y, z); p.renderOrder = 2; parent.add(p); return p; };
   // island (prep line) in the front-left of the store
   const isl = new THREE.Group(); scene.add(isl); pickables.push(isl);
   box(6.4,0.9,0.9, white, -5.25,0,4.45, isl);
   box(6.5,0.05,1.0, top, -5.25,0.9,4.45, isl);
   box(6.4,0.12,0.05, 0xffcf3a, -5.25,0.62,3.99, isl, {cast:false});
+  box(6.4,0.12,0.05, 0xffcf3a, -5.25,0.62,4.91, isl, {cast:false});
+  box(6.42,0.1,0.92, 0x6c7686, -5.25,0,4.45, isl, {cast:false});
   blockRect(-8.45,4.0,-2.05,4.9);
   const IY = 0.95, IZ = 4.45, NZ = 3.3;
-  // microwave (open-front box so the tray inside is visible)
+  // microwave: glass door faces the camera, interior lights up while cooking
   const mw = new THREE.Group(); mw.position.set(-7.9, IY, IZ); isl.add(mw);
-  box(0.62,0.04,0.46, 0x2e3440, 0,0.38,0, mw); box(0.04,0.38,0.46, 0x2e3440, -0.29,0,0, mw); box(0.04,0.38,0.46, 0x2e3440, 0.29,0,0, mw);
-  box(0.62,0.38,0.04, 0x2e3440, 0,0,-0.21, mw); box(0.14,0.3,0.02, mat(0x9fe8ff,0x4da3ff,0.6), 0.22,0.04,0.235, mw, {cast:false});
-  // grill rollers
+  const mwBody = 0xeef1f5, mwDark = 0x2e3440;
+  box(0.76,0.04,0.5, mwDark, 0,0,0, mw);
+  box(0.76,0.05,0.5, mwBody, 0,0.4,0, mw);
+  box(0.03,0.4,0.5, mwBody, -0.365,0,0, mw);
+  box(0.18,0.4,0.5, mwBody, 0.29,0,0, mw);
+  KIT.mwInner = new THREE.MeshLambertMaterial({color:0x5d6470, emissive:0xffc45c, emissiveIntensity:0});
+  box(0.56,0.36,0.03, KIT.mwInner, -0.08,0.04,-0.235, mw, {cast:false});
+  box(0.55,0.006,0.46, KIT.mwInner, -0.08,0.394,0, mw, {cast:false});
+  KIT.mwPlate = cyl(0.17,0.17,0.01,20, 0xdfe8ee, 0,0.04,0, mw);
+  for (const [w,h,x,y] of [[0.58,0.035,-0.075,0.04],[0.58,0.035,-0.075,0.385],[0.03,0.38,-0.355,0.04],[0.03,0.38,0.2,0.04]]) box(w,h,0.025, mwDark, x,y,0.25, mw, {cast:false});
+  KIT.mwGlass = new THREE.MeshBasicMaterial({color:0x1d2a33, transparent:true, opacity:0.42, depthWrite:false});
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(0.53,0.33), KIT.mwGlass); glass.position.set(-0.075,0.235,0.258); glass.renderOrder = 3; mw.add(glass);
+  box(0.025,0.26,0.035, 0xb7c0cc, 0.165,0.09,0.28, mw);
+  KIT.mwDisp = new THREE.MeshBasicMaterial({color:0x10241a});
+  const disp = new THREE.Mesh(new THREE.PlaneGeometry(0.13,0.055), KIT.mwDisp); disp.position.set(0.29,0.34,0.252); mw.add(disp);
+  for (let i=0;i<6;i++) box(0.035,0.025,0.01, i===5 ? 0x34d6a6 : 0x9aa7b8, 0.255 + (i%2)*0.07, 0.24 - Math.floor(i/2)*0.045, 0.25, mw, {cast:false});
+  cyl(0.03,0.03,0.015,12, 0x5b6472, 0.29,0.09,0.25, mw).rotation.x = Math.PI/2;
+  KIT.mwPool = flat(additive(0xffc45c, 0), 0.9, 0.5, -0.05, 0.003, 0.42, mw);
+  // roller grill: rollers spin and glow red-hot while something is on them
   const gr = new THREE.Group(); gr.position.set(-6.8, IY, IZ); isl.add(gr);
-  box(0.62,0.1,0.48, 0x8a94a3, 0,0,0, gr);
-  for (let i=0;i<5;i++){ const r = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.56,8), mat(0xb0b8c4)); r.rotation.z = Math.PI/2; r.position.set(0,0.12,-0.16+i*0.08); gr.add(r); }
-  // pot
+  box(0.64,0.08,0.5, 0x8a94a3, 0,0,0, gr);
+  box(0.05,0.19,0.5, 0x5b6472, -0.315,0,0, gr); box(0.05,0.19,0.5, 0x5b6472, 0.315,0,0, gr);
+  box(0.56,0.025,0.06, 0x3a404a, 0,0.08,0.22, gr, {cast:false});
+  KIT.grRollMat = new THREE.MeshLambertMaterial({color:0xc3cad4, emissive:0xff3d10, emissiveIntensity:0});
+  const rollGeo = new THREE.CylinderGeometry(0.028,0.028,0.58,10);
+  for (let i=0;i<6;i++){ const r = new THREE.Mesh(rollGeo, KIT.grRollMat); r.rotation.z = Math.PI/2; r.position.set(0,0.12,-0.175+i*0.07); r.castShadow = true; gr.add(r); KIT.grRollers.push(r); }
+  KIT.grGlow = flat(additive(0xff5a1a, 0), 0.62, 0.5, 0, 0.1, 0, gr);
+  cyl(0.03,0.03,0.02,12, 0x14233d, 0.315,0.1,0.25, gr).rotation.x = Math.PI/2;
+  KIT.grLamp = new THREE.MeshBasicMaterial({color:0x40221a});
+  box(0.03,0.03,0.01, KIT.grLamp, -0.315,0.13,0.25, gr, {cast:false});
+  // oden pot: steel tray with compartments, simmering broth
   const pt = new THREE.Group(); pt.position.set(-4.6, IY, IZ); isl.add(pt);
-  const potM = new THREE.Mesh(new THREE.CylinderGeometry(0.27,0.24,0.16,16), mat(0xb0b8c4)); potM.position.y = 0.08; potM.castShadow = true; pt.add(potM);
-  const brM = new THREE.Mesh(new THREE.CylinderGeometry(0.25,0.25,0.02,16), mat(0x8b5a2b)); brM.position.y = 0.155; pt.add(brM);
-  // chopping board
+  box(0.72,0.03,0.52, 0x5b6472, 0,0,0, pt);
+  box(0.7,0.17,0.03, 0xb7c0cc, 0,0,0.235, pt); box(0.7,0.17,0.03, 0xb7c0cc, 0,0,-0.235, pt);
+  box(0.03,0.17,0.44, 0xb7c0cc, -0.335,0,0, pt); box(0.03,0.17,0.44, 0xb7c0cc, 0.335,0,0, pt);
+  for (const z of [0.25,-0.25]) box(0.74,0.015,0.02, 0xe3e8ee, 0,0.17,z, pt, {cast:false});
+  KIT.broth = new THREE.MeshLambertMaterial({color:0xc58a42, emissive:0x8a4a10, emissiveIntensity:0.12});
+  box(0.64,0.01,0.44, KIT.broth, 0,0.135,0, pt, {cast:false});
+  for (const x of [-0.17,0.17]){ box(0.012,0.06,0.44, 0xd5dbe3, x,0.1,0, pt, {cast:false}); box(0.15,0.06,0.012, 0xd5dbe3, x*1.5,0.1,0, pt, {cast:false}); }
+  const deco = [[IG.egg,0x8a5524,-0.25,-0.1,0],[IG.egg,0x8a5524,-0.27,-0.15,0],[IG.disc,0xd9a35a,0.25,-0.1,1],[IG.disc,0xd9a35a,0.24,-0.16,1],[IG.tri,0xa86a32,-0.25,0.1,1],[IG.ball,0xd9a35a,0.26,0.11,2],[IG.ball,0xe8c070,0.23,0.08,2]];
+  for (const [geo,c,x,z,k] of deco){ const m = new THREE.Mesh(geo, mat(c)); m.position.set(x, 0.15, z); if (k===1) m.rotation.x = Math.PI/2; if (k===2) m.scale.set(0.8,0.45,0.8); pt.add(m); }
+  const ladle = new THREE.Mesh(new THREE.CylinderGeometry(0.008,0.008,0.36,5), mat(0x9aa7b8)); ladle.position.set(0.2,0.27,-0.12); ladle.rotation.set(0.5,0,-0.6); pt.add(ladle);
+  // chopping board + knife, steel work mats
   box(0.52,0.04,0.38, 0xd9a066, -3.5,IY,IZ, isl);
-  // trash can
+  for (let i=0;i<3;i++) box(0.46,0.002,0.008, 0xc48a52, -3.5,IY+0.04,IZ-0.1+i*0.1, isl, {cast:false});
+  const knife = new THREE.Group(); knife.position.set(-3.13, IY, IZ+0.04); knife.rotation.y = 0.25; isl.add(knife);
+  box(0.045,0.008,0.2, 0xe3e8ee, 0,0,-0.06, knife); box(0.035,0.025,0.11, 0x2b2b2b, 0,0,0.1, knife);
+  box(0.46,0.02,0.36, 0xb9c2ce, -5.7,IY,IZ, isl, {cast:false}); box(0.46,0.02,0.36, 0xb9c2ce, -2.6,IY,IZ, isl, {cast:false});
+  // trash can with domed swing lid
   const tr = new THREE.Group(); tr.position.set(-1.55,0,IZ); scene.add(tr); pickables.push(tr);
-  const can = new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.24,0.82,14), mat(0x3f6b4f)); can.position.y = 0.41; can.castShadow = true; tr.add(can);
-  const lidM = new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.3,0.05,14), mat(0x2f523c)); lidM.position.y = 0.84; tr.add(lidM);
+  cyl(0.27,0.23,0.78,16, 0x2f7a55, 0,0,0, tr);
+  cyl(0.272,0.262,0.08,16, 0xe8f0ea, 0,0.56,0, tr);
+  cyl(0.29,0.29,0.04,16, 0x245e42, 0,0.78,0, tr);
+  const lid = new THREE.Mesh(new THREE.SphereGeometry(0.29,16,6,0,Math.PI*2,0,Math.PI/2), mat(0x2f7a55)); lid.scale.y = 0.32; lid.position.y = 0.82; lid.castShadow = true; tr.add(lid);
+  box(0.2,0.025,0.05, 0x14233d, 0,0.86,0.13, tr, {cast:false}).rotation.x = -0.35;
+  box(0.16,0.03,0.08, 0x9aa7b8, 0,0,0.27, tr);
+  signPlane(0.3,0.12,(c,w,h)=>{ roundRect(c,2,2,w-4,h-4,10); c.fillStyle='#ffffff'; c.fill(); c.fillStyle='#245e42'; c.font=`900 ${h*0.62}px ${FONT}`; c.textAlign='center'; c.textBaseline='middle'; c.fillText('垃圾', w/2, h*0.55); }, tr, 0, 0.35, 0.265);
+  KIT.trashLid = lid;
   blockRect(-1.85,4.15,-1.25,4.75,0.25);
-  // ingredient crates along the west wall
-  const crate = (z, type, label) => {
+  // ingredient crates along the west wall: slatted wood, a heap of the item on top, a name card that faces the camera
+  const crate = (z, type, label, col) => {
     const g = new THREE.Group(); g.position.set(-9.55,0,z); scene.add(g); pickables.push(g);
-    box(0.72,0.62,0.86, 0xb88445, 0,0,0, g);
-    box(0.74,0.06,0.88, 0x9a6b3a, 0,0.62,0, g);
-    for (let i=0;i<3;i++){ const m = itemMesh(type); m.position.set(-0.12+i*0.12, 0.66, -0.2+i*0.18); m.rotation.y = i; g.add(m); }
-    signPlane(0.7,0.26,(c,w,h)=>{ roundRect(c,3,3,w-6,h-6,10); c.fillStyle='#fffaf0'; c.fill(); c.fillStyle='#14233d'; c.font=`900 ${h*0.56}px ${FONT}`; c.textAlign='center'; c.textBaseline='middle'; c.fillText(label, w/2, h*0.55); }, g, 0.37, 0.4, 0, Math.PI/2);
+    box(0.68,0.6,0.82, 0x5e3b1e, 0,0.02,0, g);
+    for (let k=0;k<3;k++) box(0.72,0.14,0.86, 0xc8955a, 0,0.04+k*0.19,0, g);
+    for (const [x,zz] of [[-0.34,-0.41],[0.34,-0.41],[-0.34,0.41],[0.34,0.41]]) box(0.07,0.64,0.07, 0xa8743e, x,0,zz, g);
+    box(0.74,0.04,0.88, 0x9a6b3a, 0,0.62,0, g);
+    box(0.62,0.02,0.76, 0x4a2e16, 0,0.64,0, g, {cast:false});
+    box(0.02,0.1,0.6, new THREE.MeshLambertMaterial({color:col}), 0.371,0.42,0, g, {cast:false});
+    const heap = [[-0.14,-0.22,0.4],[0.12,-0.2,2.1],[-0.1,0.06,1.2],[0.13,0.1,0.2],[0,0.27,2.8]];
+    heap.forEach(([x,zz,r], i) => { const m = itemMesh(type); m.position.set(x, 0.64 + (i===2 ? 0.03 : 0), zz); m.rotation.y = r; g.add(m); });
+    signPlane(0.7,0.26,(c,w,h)=>{ roundRect(c,3,3,w-6,h-6,10); c.fillStyle='#fffaf0'; c.fill(); c.lineWidth=6; c.strokeStyle=col; c.stroke(); c.fillStyle='#14233d'; c.font=`900 ${h*0.56}px ${FONT}`; c.textAlign='center'; c.textBaseline='middle'; c.fillText(label, w/2, h*0.55); }, g, 0.375, 0.17, 0, Math.PI/2);
+    labelSprite(label, col, 0.62, g, -0.12, 1.12, 0);
     blockRect(-9.95, z-0.45, -9.2, z+0.45);
     return g;
   };
-  crate(-1.6, 'sausage', '香腸'); crate(-0.4, 'bun', '麵包'); crate(0.8, 'oden_raw', '關東煮料'); crate(2.0, 'fruit', '水果');
-  // extinguisher wall hook
-  box(0.5,0.9,0.08, 0xd9262c, -9.95,0.6,3.15); box(0.45,0.06,0.4, 0x6c7686, -9.7,0.55,3.15);
+  crate(-1.6, 'sausage', '香腸', '#ff6f87'); crate(-0.4, 'bun', '麵包', '#e3a857'); crate(0.8, 'oden_raw', '關東煮料', '#c98b5a'); crate(2.0, 'fruit', '水果', '#e8413c');
+  // extinguisher wall station: red-framed board, bracket, strap; a beacon pulses on the floor while anything burns
+  box(0.06,1.04,0.64, 0xd9262c, -9.97,0.38,3.15); box(0.04,0.96,0.56, 0xf6f4ef, -9.93,0.42,3.15);
+  box(0.45,0.06,0.4, 0x6c7686, -9.7,0.55,3.15);
+  box(0.3,0.04,0.04, 0x6c7686, -9.8,0.5,3.0); box(0.3,0.04,0.04, 0x6c7686, -9.8,0.5,3.3);
+  const strap = new THREE.Mesh(new THREE.TorusGeometry(0.095,0.012,5,16), mat(0x30343c)); strap.rotation.x = Math.PI/2; strap.position.set(-9.6,0.92,3.15); scene.add(strap);
+  signPlane(0.5,0.18,(c,w,h)=>{ roundRect(c,2,2,w-4,h-4,12); c.fillStyle='#d9262c'; c.fill(); c.fillStyle='#ffffff'; c.font=`900 ${h*0.6}px ${FONT}`; c.textAlign='center'; c.textBaseline='middle'; c.fillText('滅火器', w/2, h*0.55); }, scene, -9.9,1.25,3.15, Math.PI/2);
+  labelSprite('滅火器', '#d9262c', 0.62, scene, -9.65, 1.62, 3.15);
+  KIT.extBeacon = flat(additive(0xff3b30, 0), 1.3, 1.3, -9.3, 0.02, 3.15, scene);
   blockRect(-9.95,2.9,-9.45,3.4,0.25);
-  // hot-water dispenser on the back counter
+  // hot-water dispenser on the back counter (faces west, toward the cook)
   const hw = new THREE.Group(); hw.position.set(9.65,0.95,4.2); scene.add(hw); pickables.push(hw);
-  box(0.5,0.62,0.42, 0xf4f4f4, 0,0,0, hw); box(0.06,0.06,0.06, 0xff6058, -0.26,0.42,0.1, hw); box(0.12,0.08,0.12, 0x888888, -0.22,0.3,0, hw);
-  // pass mat on the checkout counter
+  box(0.4,0.5,0.44, 0xf4f4f4, 0.03,0,0, hw);
+  box(0.42,0.04,0.46, 0xd5dbe3, 0.03,0.5,0, hw);
+  box(0.02,0.24,0.38, 0x2b2f38, -0.175,0.22,0, hw, {cast:false});
+  box(0.012,0.14,0.07, mat(0x9fe8ff,0x4da3ff,0.6), -0.187,0.27,0.13, hw, {cast:false});
+  KIT.hwLamp = new THREE.MeshBasicMaterial({color:0x5a1a14});
+  box(0.012,0.04,0.04, KIT.hwLamp, -0.187,0.38,-0.12, hw, {cast:false});
+  box(0.012,0.04,0.04, mat(0x34d6a6,0x34d6a6,0.5), -0.187,0.38,-0.05, hw, {cast:false});
+  box(0.13,0.05,0.08, 0x888888, -0.23,0.36,0, hw); box(0.04,0.04,0.04, 0x5b6472, -0.27,0.33,0, hw);
+  box(0.22,0.02,0.3, 0x5b6472, -0.25,0,0, hw);
+  KIT.hwStream = new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,0.15,6), new THREE.MeshBasicMaterial({color:0xcfefff, transparent:true, opacity:0.8, depthWrite:false}));
+  KIT.hwStream.position.set(-0.27,0.255,0); KIT.hwStream.visible = false; hw.add(KIT.hwStream);
+  signPlane(0.3,0.1,(c,w,h)=>{ roundRect(c,2,2,w-4,h-4,8); c.fillStyle='#ff6058'; c.fill(); c.fillStyle='#ffffff'; c.font=`900 ${h*0.66}px ${FONT}`; c.textAlign='center'; c.textBaseline='middle'; c.fillText('熱水', w/2, h*0.55); }, hw, -0.188,0.17,0, -Math.PI/2);
+  signPlane(0.3,0.1,(c,w,h)=>{ roundRect(c,2,2,w-4,h-4,8); c.fillStyle='#ff6058'; c.fill(); c.fillStyle='#ffffff'; c.font=`900 ${h*0.66}px ${FONT}`; c.textAlign='center'; c.textBaseline='middle'; c.fillText('熱水', w/2, h*0.55); }, hw, 0.03,0.546,0).rotation.x = -Math.PI/2;
+  // pass mat on the checkout counter, heat lamp above, service bell
   signPlane(0.95,0.95,(c,w,h)=>{ roundRect(c,6,6,w-12,h-12,22); c.fillStyle='#ffcf3a'; c.fill(); c.lineWidth=8; c.strokeStyle='#14233d'; c.stroke();
-    c.fillStyle='#14233d'; c.font=`900 ${h*0.24}px ${FONT}`; c.textAlign='center'; c.textBaseline='middle'; c.fillText('出餐', w/2, h*0.5); }, scene, 6.5, 1.035, 2.4).rotation.x = -Math.PI/2;
-  const bell = new THREE.Mesh(new THREE.SphereGeometry(0.07,10,6,0,Math.PI*2,0,Math.PI/2), mat(0xd4af37)); bell.position.set(6.5,1.03,1.9); bell.castShadow = true; scene.add(bell);
+    c.fillStyle='#14233d'; c.font=`900 ${h*0.24}px ${FONT}`; c.textAlign='center'; c.textBaseline='middle'; c.fillText('出餐', w/2, h*0.5); }, scene, 6.5, 1.044, 2.4).rotation.x = -Math.PI/2;   // sits just above the 1.04 counter top
+  box(0.04,0.6,0.04, 0x9aa7b8, 6.93,1.04,1.95); box(0.04,0.6,0.04, 0x9aa7b8, 6.93,1.04,2.85);
+  box(0.34,0.06,1.0, 0x30343c, 6.8,1.64,2.4);
+  box(0.28,0.01,0.9, mat(0xffb35c,0xff9a3c,0.9), 6.8,1.635,2.4, scene, {cast:false});
+  flat(additive(0xff9a3c, 0.22), 1.1, 1.2, 6.55, 1.047, 2.4, scene);
+  KIT.passPool = flat(additive(0xffe08a, 0), 1.3, 1.3, 6.5, 1.05, 2.4, scene);
+  const bell = new THREE.Group(); bell.position.set(6.5,1.04,1.9); scene.add(bell);
+  cyl(0.085,0.095,0.02,14, 0x30343c, 0,0,0, bell);
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.07,12,6,0,Math.PI*2,0,Math.PI/2), mat(0xd4af37, 0xd4af37, 0.15)); dome.position.y = 0.02; dome.castShadow = true; bell.add(dome);
+  cyl(0.008,0.008,0.03,6, 0x9aa7b8, 0,0.085,0, bell); cyl(0.018,0.018,0.012,8, 0x14233d, 0,0.112,0, bell);
+  KIT.bell = bell;
 
   // --- slots ---
   const isle = (id, x, kind, n, extra) => addSlot(Object.assign({id, kind, n, x, y:IY + (id==='micro'?0.05:id==='grill'?0.1:id==='pot'?0.03:id==='board'?0.04:0.03), z:IZ, spot:{x, z:NZ}, isl:true}, extra||{}));
@@ -2169,7 +2342,14 @@ function buildKitchen(){
   // target highlight (pulsing ring) shown under the station you would interact with
   highlight = new THREE.Mesh(new THREE.RingGeometry(0.3,0.42,28).rotateX(-Math.PI/2), new THREE.MeshBasicMaterial({color:0xffcf3a, transparent:true, opacity:0.9, depthWrite:false, side:THREE.DoubleSide}));
   highlight.renderOrder = 5; highlight.visible = false; scene.add(highlight);
-  fireGroupGeo = new THREE.ConeGeometry(0.12,0.42,7).translate(0,0.21,0);
+  // fire parts: teardrop flames, inner flames, a flickering light pool and a scorch mark
+  const flameProfile = [[0,0],[0.08,0.03],[0.115,0.11],[0.1,0.23],[0.065,0.36],[0.025,0.47],[0,0.56]].map(([x,y]) => new THREE.Vector2(x,y));
+  fireGroupGeo = new THREE.LatheGeometry(flameProfile, 8);
+  fireInnerGeo = fireGroupGeo.clone().scale(0.6,0.72,0.6);
+  fireGlowGeo = new THREE.PlaneGeometry(1.05,1.05).rotateX(-Math.PI/2);
+  fireCharGeo = new THREE.CircleGeometry(0.28,18).rotateX(-Math.PI/2);
+  fireGlowMat = new THREE.MeshBasicMaterial({color:0xff7a2a, map:radialTex(), transparent:true, opacity:0.5, blending:THREE.AdditiveBlending, depthWrite:false});
+  fireCharMat = new THREE.MeshBasicMaterial({color:0x1a1210, transparent:true, opacity:0.45, depthWrite:false});
 }
 
 /* ---------------- extra stations: the 飯糰 corner in the old stockroom ---------------- */
@@ -2218,11 +2398,16 @@ function buildKitchenExtra(){
 }
 
 /* ---------------- fire, spills, outages ---------------- */
-const fireMats = [new THREE.MeshBasicMaterial({color:0xff6a00, transparent:true, opacity:0.9}), new THREE.MeshBasicMaterial({color:0xffd23f, transparent:true, opacity:0.85})];
+const fireMats = [new THREE.MeshBasicMaterial({color:0xff5a1f, transparent:true, opacity:0.92}), new THREE.MeshBasicMaterial({color:0xffd23f, transparent:true, opacity:0.95}),
+  new THREE.MeshBasicMaterial({color:0xfff4c0, transparent:true, opacity:0.75, blending:THREE.AdditiveBlending, depthWrite:false})];
+let fireInnerGeo = null, fireGlowGeo = null, fireCharGeo = null, fireGlowMat = null, fireCharMat = null;
 function ignite(sl){
   if (sl.fire || sl.kind === 'src' && !sl.band) return;
   const g = new THREE.Group(); g.position.set(sl.x, sl.y, sl.z); scene.add(g);
-  for (let i=0;i<4;i++){ const m = new THREE.Mesh(fireGroupGeo, fireMats[i%2]); m.position.set((i%2-0.5)*0.16, 0, (Math.floor(i/2)-0.5)*0.14); m.userData.ph = Math.random()*6; g.add(m); }
+  for (let i=0;i<7;i++){ const outer = i < 4, a = i*1.7 + Math.random()*0.4, r = outer ? 0.12 : 0.045;
+    const m = new THREE.Mesh(outer ? fireGroupGeo : fireInnerGeo, fireMats[outer ? 0 : i === 6 ? 2 : 1]); m.position.set(Math.cos(a)*r, i === 6 ? 0.01 : 0, Math.sin(a)*r*0.85); m.userData.ph = Math.random()*6; g.add(m); }
+  const glow = new THREE.Mesh(fireGlowGeo, fireGlowMat); glow.position.y = 0.02; glow.renderOrder = 2; g.add(glow); g.userData.glow = glow;
+  const scorch = new THREE.Mesh(fireCharGeo, fireCharMat); scorch.position.y = 0.006; g.add(scorch);
   sl.fire = {t:0, hp:1, g, spread:0};
   if (sl.item && sl.item.type !== 'ext') setItemType(sl.item, 'burnt');
   G.stats.fires++;
@@ -2242,13 +2427,32 @@ function spawnSpill(){
     if (p.z > 6 || (p.x > 7 && p.z > -0.5 && p.z < 5.5)) continue;
     if (spills.some(s => Math.hypot(s.x-p.x, s.z-p.z) < 1.2)) continue;
     const g = new THREE.Group(); g.position.set(p.x, 0, p.z); scene.add(g);
-    const m = new THREE.Mesh(new THREE.CircleGeometry(0.5,20).rotateX(-Math.PI/2), new THREE.MeshLambertMaterial({color:0x7fc8ff, transparent:true, opacity:0.6, depthWrite:false}));
-    m.position.y = 0.012; m.scale.set(rand(0.8,1.25),1,rand(0.7,1.1)); g.add(m);
+    const W = puddleParts();
+    const m = new THREE.Mesh(W.geo, W.mat); m.position.y = 0.012; m.rotation.y = rand(0, 6.28); m.scale.set(rand(0.85,1.25),1,rand(0.75,1.1)); m.renderOrder = 1; g.add(m);
+    const sign = new THREE.Group(); sign.position.set(0.55, 0, -0.35); sign.rotation.y = rand(-0.5,0.5); g.add(sign);
+    for (const k of [-1,1]){ const pnl = new THREE.Mesh(W.signGeo, W.signMats); pnl.position.set(0, 0.235, k*0.065); pnl.rotation.x = -k*0.27; pnl.castShadow = true; sign.add(pnl); }
     const sp = {x:p.x, z:p.z, g, prog:0, tag:new Tag('')}; sp.tag.icon('💧');
     spills.push(sp); SFX.splash();
     tip('spill', '地上濕了會滑倒！空手站在水漬旁長按「動作」可以拖乾。');
     return;
   }
+}
+let _puddle = null;
+function puddleParts(){   // shared puddle texture/material + the little yellow 小心地滑 A-frame sign
+  if (_puddle) return _puddle;
+  const tex = canvasTex(128,128,(c,w,h)=>{
+    c.fillStyle = 'rgba(126,198,255,0.78)';
+    for (const [x,y,r] of [[64,64,38],[42,54,24],[86,70,26],[60,88,22],[78,42,20],[36,80,14],[96,92,10]]){ c.beginPath(); c.arc(x,y,r,0,Math.PI*2); c.fill(); }
+    c.fillStyle = 'rgba(255,255,255,0.55)';
+    for (const [x,y,rx,ry] of [[50,48,14,5],[80,62,8,3],[62,84,6,2.5]]){ c.beginPath(); c.ellipse(x,y,rx,ry,-0.4,0,Math.PI*2); c.fill(); }
+  });
+  const signTex = canvasTex(64,96,(c,w,h)=>{
+    c.fillStyle = '#ffcf3a'; c.fillRect(0,0,w,h); c.lineWidth = 5; c.strokeStyle = '#14233d'; c.strokeRect(4,4,w-8,h-8);
+    c.fillStyle = '#14233d'; c.font = `900 22px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('小心', w/2, h*0.33); c.fillText('地滑', w/2, h*0.66);
+  });
+  const yel = mat(0xffcf3a), face = new THREE.MeshLambertMaterial({map:signTex});
+  return _puddle = {geo:new THREE.PlaneGeometry(1.25,1.25).rotateX(-Math.PI/2), mat:new THREE.MeshLambertMaterial({map:tex, transparent:true, depthWrite:false, opacity:0.9}),
+    signGeo:new THREE.BoxGeometry(0.3,0.48,0.014), signMats:[yel, yel, yel, yel, face, face]};
 }
 function removeSpill(sp){ const i = spills.indexOf(sp); if (i >= 0) spills.splice(i,1); scene.remove(sp.g); sp.tag.remove(); }
 function breakRandomMachine(){
@@ -2258,6 +2462,254 @@ function breakRandomMachine(){
   toast('⚡ 停電！' + sl.n + '故障了', 'bad'); SFX.zap(); camShakeAdd(0.15);
   tip('outage', '機器故障 ⚡ 時不會運作。空手站在旁邊長按「動作」就能修好。');
 }
+
+/* ---------------- kitchen fx: pooled particles, rings, station animation ----------------
+   Two fixed-size point pools (soft alpha for smoke/steam/foam/water, additive for flames/sparks),
+   one draw call each, no per-frame allocation. kfxUpdate(dt) runs once per rendered frame and reads
+   the game state (slots, fires, spills, held items) to decide what to emit — gameplay code only calls
+   kfxSpray() from sprayFx. prefers-reduced-motion: far fewer particles, no rings. */
+const KFX = (() => {
+  const MAX = LOWQ ? 240 : 420;
+  const U = {uScale:{value:400}};
+  const VS = 'attribute vec4 pcol; attribute float psize; uniform float uScale; varying vec4 vCol; varying float vStar;\n' +
+    'void main(){ vCol = pcol; vStar = psize < 0.0 ? 1.0 : 0.0; vec4 mv = modelViewMatrix*vec4(position,1.0);\n' +
+    ' gl_PointSize = abs(psize)*uScale/max(0.1, -mv.z); gl_Position = projectionMatrix*mv; }';
+  const FS = 'varying vec4 vCol; varying float vStar;\n' +
+    'void main(){ vec2 d = gl_PointCoord - 0.5; float r = length(d)*2.0;\n' +
+    ' float a = clamp(1.0 - r*r, 0.0, 1.0); a *= a;\n' +
+    ' if (vStar > 0.5){ vec2 q = abs(d)*2.0; float rays = max(0.0, 1.0 - q.x*6.0)*(1.0 - q.y) + max(0.0, 1.0 - q.y*6.0)*(1.0 - q.x); a = max(a*a*1.3, rays); }\n' +
+    ' if (a < 0.01) discard; gl_FragColor = vec4(vCol.rgb, vCol.a*a); }';
+  const F = n => new Float32Array(n);
+  function pool(blend, order){
+    const p = {n:0, pos:F(MAX*3), col:F(MAX*4), size:F(MAX), vel:F(MAX*3), life:F(MAX), max:F(MAX), s0:F(MAX), s1:F(MAX),
+      c0:F(MAX*3), c1:F(MAX*3), a0:F(MAX), drag:F(MAX), grav:F(MAX), star:new Uint8Array(MAX)};
+    const geo = new THREE.BufferGeometry();
+    p.aPos = new THREE.BufferAttribute(p.pos, 3); p.aCol = new THREE.BufferAttribute(p.col, 4); p.aSize = new THREE.BufferAttribute(p.size, 1);
+    for (const a of [p.aPos, p.aCol, p.aSize]) a.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('position', p.aPos); geo.setAttribute('pcol', p.aCol); geo.setAttribute('psize', p.aSize);
+    geo.setDrawRange(0, 0); p.geo = geo;
+    const m = new THREE.ShaderMaterial({uniforms:U, vertexShader:VS, fragmentShader:FS, transparent:true, depthWrite:false, blending:blend});
+    p.pts = new THREE.Points(geo, m); p.pts.frustumCulled = false; p.pts.renderOrder = order; scene.add(p.pts);
+    return p;
+  }
+  const SOFT = pool(THREE.NormalBlending, 6), GLOW = pool(THREE.AdditiveBlending, 7);
+  // colours (linear 0..1 triples), shared — never allocated per emit
+  const C = {
+    white:[1,1,1], steam:[0.86,0.9,0.96], smokeD:[0.16,0.15,0.15], smokeL:[0.5,0.5,0.52], grey:[0.62,0.62,0.64], greyL:[0.82,0.82,0.84],
+    flameY:[1,0.86,0.32], flameR:[1,0.28,0.04], ember:[1,0.62,0.18], gold:[1,0.84,0.3], goldW:[1,0.97,0.75],
+    foam:[1,1,1], foamB:[0.72,0.86,1], water:[0.55,0.8,1], waterL:[0.85,0.95,1], spark:[0.75,0.9,1], bubble:[0.98,0.9,0.72],
+  };
+  function emit(p, x, y, z, vx, vy, vz, life, s0, s1, c0, c1, a, drag, grav, star){
+    if (p.n >= MAX) return;
+    const i = p.n++, k = i*3;
+    p.pos[k] = x; p.pos[k+1] = y; p.pos[k+2] = z; p.vel[k] = vx; p.vel[k+1] = vy; p.vel[k+2] = vz;
+    p.life[i] = 0; p.max[i] = life; p.s0[i] = s0; p.s1[i] = s1; p.a0[i] = a; p.drag[i] = drag; p.grav[i] = grav; p.star[i] = star ? 1 : 0;
+    p.c0[k] = c0[0]; p.c0[k+1] = c0[1]; p.c0[k+2] = c0[2]; p.c1[k] = c1[0]; p.c1[k+1] = c1[1]; p.c1[k+2] = c1[2];
+    p.size[i] = 0; p.col[i*4+3] = 0;
+  }
+  function kill(p, i){
+    const j = --p.n; if (i === j) return;
+    const ki = i*3, kj = j*3;
+    for (let q=0;q<3;q++){ p.pos[ki+q] = p.pos[kj+q]; p.vel[ki+q] = p.vel[kj+q]; p.c0[ki+q] = p.c0[kj+q]; p.c1[ki+q] = p.c1[kj+q]; }
+    p.life[i] = p.life[j]; p.max[i] = p.max[j]; p.s0[i] = p.s0[j]; p.s1[i] = p.s1[j]; p.a0[i] = p.a0[j]; p.drag[i] = p.drag[j]; p.grav[i] = p.grav[j]; p.star[i] = p.star[j];
+  }
+  function step(p, dt){
+    let i = 0;
+    while (i < p.n){
+      const life = p.life[i] + dt;
+      if (life >= p.max[i]){ kill(p, i); continue; }
+      p.life[i] = life;
+      const k = i*3, t = life/p.max[i], dr = Math.max(0, 1 - p.drag[i]*dt);
+      p.vel[k] *= dr; p.vel[k+1] = p.vel[k+1]*dr + p.grav[i]*dt; p.vel[k+2] *= dr;
+      p.pos[k] += p.vel[k]*dt; p.pos[k+1] += p.vel[k+1]*dt; p.pos[k+2] += p.vel[k+2]*dt;
+      if (p.pos[k+1] < 0.02){ p.pos[k+1] = 0.02; p.vel[k+1] = 0; }
+      const s = p.s0[i] + (p.s1[i] - p.s0[i])*t;
+      p.size[i] = p.star[i] ? -s : s;
+      const c = i*4;
+      p.col[c] = p.c0[k] + (p.c1[k] - p.c0[k])*t; p.col[c+1] = p.c0[k+1] + (p.c1[k+1] - p.c0[k+1])*t; p.col[c+2] = p.c0[k+2] + (p.c1[k+2] - p.c0[k+2])*t;
+      p.col[c+3] = p.a0[i]*Math.min(1, t*7)*(1 - t);
+      i++;
+    }
+    p.geo.setDrawRange(0, p.n);
+    if (p.n || p.was){ p.aPos.needsUpdate = true; p.aCol.needsUpdate = true; p.aSize.needsUpdate = true; }
+    p.was = p.n > 0;
+  }
+  // expanding ground/counter rings (splash, ding, ignition)
+  const ringGeo = new THREE.RingGeometry(0.82, 1, 36).rotateX(-Math.PI/2);
+  const rings = [];
+  for (let i=0;i<6;i++){
+    const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0, depthWrite:false, side:THREE.DoubleSide}));
+    m.visible = false; m.renderOrder = 5; scene.add(m); rings.push({m, t:0, dur:1, r0:0.1, r1:1, a:1});
+  }
+  function ring(x, y, z, r0, r1, dur, color, a){
+    let best = rings[0]; for (let i=0;i<rings.length;i++){ const r = rings[i]; if (!r.m.visible){ best = r; break; } if (r.t/r.dur > best.t/best.dur) best = r; }
+    best.t = 0; best.dur = dur; best.r0 = r0; best.r1 = r1; best.a = a;
+    best.m.material.color.setHex(color); best.m.position.set(x, y, z); best.m.visible = true;
+  }
+  function stepRings(dt){
+    for (let i=0;i<rings.length;i++){ const r = rings[i]; if (!r.m.visible) continue;
+      r.t += dt; const t = r.t/r.dur; if (t >= 1){ r.m.visible = false; continue; }
+      const e = 1 - (1-t)*(1-t); r.m.scale.setScalar(r.r0 + (r.r1 - r.r0)*e); r.m.material.opacity = r.a*(1 - t); }
+  }
+  return {SOFT, GLOW, C, emit, step, ring, stepRings, U};
+})();
+const _kv = new THREE.Vector3();
+const KST = {t:0, rm:1, mwOn:0, grOn:0, bellT:0, passT:0, stats:null, deliv:0};
+const krand = (a, b) => a + Math.random()*(b - a);
+function kacc(o, key, rate, dt){ const v = (o[key] || 0) + rate*dt; const n = Math.floor(v); o[key] = v - n; return n; }
+function kfxSteam(x, y, z, n, big){
+  const P = KFX.SOFT, C = KFX.C;
+  for (let i=0;i<n;i++) KFX.emit(P, x + krand(-0.05,0.05), y, z + krand(-0.05,0.05), krand(-0.06,0.06), krand(0.3,0.5), krand(-0.06,0.06), krand(1.0,1.5), big ? 0.14 : 0.1, big ? 0.5 : 0.38, C.steam, C.white, 0.55, 0.6, 0.05);
+}
+function kfxSmoke(x, y, z, n, dark, a){
+  const P = KFX.SOFT, C = KFX.C;
+  for (let i=0;i<n;i++) KFX.emit(P, x + krand(-0.08,0.08), y, z + krand(-0.08,0.08), krand(-0.1,0.1), krand(0.45,0.75), krand(-0.1,0.1), krand(1.5,2.3), 0.2, dark ? 0.95 : 0.65, dark ? C.smokeD : C.grey, dark ? C.smokeL : C.greyL, a, 0.4, 0.08);
+}
+function kfxSparkle(x, y, z, n, c0, c1){
+  for (let i=0;i<n;i++){ const a = Math.random()*6.283, s = krand(0.5,1.3);
+    KFX.emit(KFX.GLOW, x, y, z, Math.cos(a)*s, krand(1.2,2.4), Math.sin(a)*s, krand(0.5,0.8), krand(0.1,0.16), 0.03, c0, c1, 1, 1.8, -3.5, true); }
+}
+function kfxPuff(x, y, z, n, c0, c1, a, size){
+  for (let i=0;i<n;i++){ const ang = Math.random()*6.283, s = krand(0.4,1.0);
+    KFX.emit(KFX.SOFT, x, y, z, Math.cos(ang)*s, krand(0.4,1.0), Math.sin(ang)*s, krand(0.7,1.2), size*0.5, size, c0, c1, a, 2.5, 0.3); }
+}
+// extinguisher foam, called every frame the spray is held (from sprayFx)
+function kfxSpray(s, dt){
+  const n = kacc(s, '_kSpray', KST.rm < 1 ? 26 : 70, dt);
+  if (!n) return;
+  const r = s.agent.g.rotation.y, fx = Math.sin(r), fz = Math.cos(r), C = KFX.C;
+  const x = s.agent.pos.x + fx*0.5, z = s.agent.pos.z + fz*0.5;
+  for (let i=0;i<n;i++){ const sp = krand(-0.7,0.7), v = krand(3,4.3);
+    KFX.emit(KFX.SOFT, x + krand(-0.03,0.03), 1.08, z + krand(-0.03,0.03), fx*v - fz*sp, krand(0.05,0.55), fz*v + fx*sp, krand(0.45,0.7), 0.1, 0.46, C.foam, C.foamB, 0.95, 2.4, -0.3); }
+}
+function kfxSlot(sl, dt){
+  const C = KFX.C, rm = KST.rm, it = sl.item;
+  // fire
+  if (sl.fire){
+    const f = sl.fire, x = sl.x, y = sl.y, z = sl.z;
+    if (!f._kfx){ f._kfx = 1; for (let i=0;i<Math.round(16*rm);i++) KFX.emit(KFX.GLOW, x + krand(-0.2,0.2), y + 0.05, z + krand(-0.2,0.2), krand(-0.5,0.5), krand(1.2,2.2), krand(-0.5,0.5), krand(0.4,0.7), 0.3, 0.06, C.flameY, C.flameR, 0.95, 1.5, 0.5);
+      if (rm === 1) KFX.ring(x, y + 0.02, z, 0.1, 0.9, 0.5, 0xff7a2a, 0.7); }
+    for (let i=kacc(sl, '_kF', 24*rm, dt); i>0; i--) KFX.emit(KFX.GLOW, x + krand(-0.17,0.17), y + krand(0.02,0.12), z + krand(-0.14,0.14), krand(-0.12,0.12), krand(0.8,1.4), krand(-0.12,0.12), krand(0.35,0.6), krand(0.18,0.26), 0.05, C.flameY, C.flameR, 0.9, 1.4, 0.6);
+    for (let i=kacc(sl, '_kE', 6*rm, dt); i>0; i--) KFX.emit(KFX.GLOW, x + krand(-0.15,0.15), y + 0.2, z + krand(-0.15,0.15), krand(-0.35,0.35), krand(1.4,2.2), krand(-0.35,0.35), krand(0.7,1.1), 0.05, 0.02, C.ember, C.flameR, 1, 0.8, -0.4, true);
+    for (let i=kacc(sl, '_kS', 8*rm, dt); i>0; i--) kfxSmoke(x, y + 0.45, z, 1, true, 0.75);
+    const t = f.t || 0;
+    for (let i=0;i<f.g.children.length;i++){ const m = f.g.children[i]; if (m.userData.ph !== undefined) m.rotation.z = Math.sin(t*7 + m.userData.ph)*0.14; }
+    if (f.g.userData.glow) f.g.userData.glow.material.opacity = 0.5 + 0.18*Math.sin(t*13) + 0.1*Math.sin(t*31);
+    sl._kFire = 1; sl._kIt = it; sl._kType = it && it.type;
+    return;
+  }
+  if (sl._kFire){ sl._kFire = 0; kfxPuff(sl.x, sl.y + 0.15, sl.z, Math.round(18*rm), C.white, C.greyL, 0.7, 0.45); if (rm === 1) KFX.ring(sl.x, sl.y + 0.02, sl.z, 0.1, 0.8, 0.6, 0xffffff, 0.6); }
+  // power outage: sparks
+  if (sl.broken && Math.random() < dt*4*rm){
+    for (let i=0;i<6;i++) KFX.emit(KFX.GLOW, sl.x, sl.y + 0.35, sl.z, krand(-0.8,0.8), krand(0.6,1.6), krand(-0.8,0.8), krand(0.3,0.5), 0.07, 0.02, C.white, C.spark, 1, 0.5, -6, true);
+    kfxSmoke(sl.x, sl.y + 0.35, sl.z, 1, true, 0.3);
+  }
+  if (!it){ sl._kIt = null; return; }
+  // cooked / chopped / burnt the moment it happens
+  if (sl._kIt === it && sl._kType !== it.type){
+    if (it.type === 'burnt'){ kfxPuff(sl.x, sl.y + 0.2, sl.z, Math.round(14*rm), C.smokeD, C.smokeL, 0.75, 0.5); kfxSparkle(sl.x, sl.y + 0.2, sl.z, Math.round(5*rm), C.ember, C.flameR); }
+    else if (sl.kind === 'appl' || sl.kind === 'board'){ kfxSparkle(sl.x, sl.y + 0.3, sl.z, Math.round(16*rm), C.goldW, C.gold); if (rm === 1) KFX.ring(sl.x, sl.y + 0.02, sl.z, 0.15, 0.7, 0.45, 0xffd23f, 0.85); }
+  }
+  sl._kIt = it; sl._kType = it.type;
+  const outR = sl.kind === 'appl' ? applOutRule(sl.id, it.type) : null;
+  const live = !sl.broken;
+  if (outR && outR.burn && live && it.cook > outR.burn*0.4){
+    // about to burn: grey wisps that thicken toward the burn point
+    const k = clamp((it.cook/outR.burn - 0.4)/0.6, 0, 1);
+    for (let i=kacc(sl, '_kW', (2.5 + 11*k)*rm, dt); i>0; i--) kfxSmoke(sl.x, sl.y + 0.28, sl.z, 1, k > 0.6, 0.5 + 0.35*k);
+  } else if (it.mesh.userData.smoke){
+    const hot = sl.kind === 'appl' && live;
+    for (let i=kacc(sl, '_kW', (hot ? 9 : 2)*rm, dt); i>0; i--) kfxSmoke(sl.x, sl.y + 0.25, sl.z, 1, hot, hot ? 0.75 : 0.45);
+  } else if (it.mesh.userData.hot || (sl.kind === 'appl' && live && APPL[sl.id].ins[it.type] && sl.id !== 'micro')){
+    for (let i=kacc(sl, '_kH', 4*rm, dt); i>0; i--) kfxSteam(sl.x, sl.y + 0.28, sl.z, 1, false);
+  }
+}
+const kLive = sl => !!(sl && sl.item && !sl.broken && !sl.fire);
+function kfxStations(dt){
+  const t = KST.t, rm = KST.rm;
+  // microwave: interior light + warm door + turntable while cooking; display blinks when done
+  const mi = SLOT.micro, mCook = kLive(mi) && !!APPL.micro.ins[mi.item.type];
+  KST.mwOn += ((mCook ? 1 : 0) - KST.mwOn)*Math.min(1, dt*8);
+  const o = KST.mwOn;
+  KIT.mwInner.emissiveIntensity = o*(0.9 + 0.1*Math.sin(t*20));
+  KIT.mwGlass.color.setRGB(0.11 + o*0.89, 0.16 + o*0.66, 0.2 + o*0.25); KIT.mwGlass.opacity = 0.42 - o*0.12;
+  KIT.mwPool.material.opacity = o*0.4;
+  if (mCook){ KIT.mwPlate.rotation.y += dt*1.6; mi.item.mesh.rotation.y += dt*1.6; }
+  const dc = KIT.mwDisp.color;
+  if (mi.broken || mi.fire) dc.setRGB(0.02,0.02,0.02);
+  else if (mCook) dc.setRGB(0.36,1,0.62);
+  else if (mi.item && mi.item.type !== 'burnt') (Math.sin(t*9) > 0 ? dc.setRGB(1,0.3,0.25) : dc.setRGB(0.15,0.04,0.04));
+  else if (mi.item) dc.setRGB(1,0.2,0.15);
+  else dc.setRGB(0.06,0.14,0.1);
+  // roller grill: red-hot rollers spin while anything sits on them
+  const gHot = kLive(SLOT.grill);
+  KST.grOn += ((gHot ? 1 : 0) - KST.grOn)*Math.min(1, dt*3);
+  const g = KST.grOn;
+  KIT.grRollMat.emissiveIntensity = g*(0.42 + 0.12*Math.sin(t*5));
+  KIT.grGlow.material.opacity = g*(0.55 + 0.1*Math.sin(t*7));
+  if (g > 0.02 && rm === 1) for (let i=0;i<KIT.grRollers.length;i++) KIT.grRollers[i].rotation.x += dt*3*g;
+  KIT.grLamp.color.setRGB(g > 0.5 ? 1 : 0.25, g > 0.5 ? 0.45 : 0.13, g > 0.5 ? 0.1 : 0.1);
+  // oden pot: always simmering, bubbles faster while cooking
+  const pt = SLOT.pot;
+  if (pt && !pt.fire){
+    const cooking = kLive(pt) && !!APPL.pot.ins[pt.item.type];
+    KIT.broth.emissiveIntensity = 0.12 + (cooking ? 0.1 + 0.05*Math.sin(t*6) : 0);
+    if (!pt.broken){
+      for (let i=kacc(pt, '_kB', (cooking ? 14 : 4)*rm, dt); i>0; i--){ const side = Math.random() < 0.5 ? -1 : 1, x = Math.random() < 0.6 ? krand(-0.15,0.15) : side*krand(0.2,0.3);
+        KFX.emit(KFX.SOFT, pt.x + x, 1.1, pt.z + krand(-0.19,0.19), 0, krand(0.04,0.1), 0, krand(0.3,0.5), 0.05, 0.1, KFX.C.bubble, KFX.C.white, 1, 0, 0); }
+      if (!pt.item) for (let i=kacc(pt, '_kH', 1.2*rm, dt); i>0; i--) kfxSteam(pt.x + krand(-0.2,0.2), 1.15, pt.z, 1, true);
+    }
+  }
+  // hot-water dispenser: water stream + heating lamp
+  const hwS = SLOT.hotwater, wCook = kLive(hwS) && !!APPL.hotwater.ins[hwS.item.type];
+  KIT.hwStream.visible = !!wCook;
+  if (wCook) KIT.hwStream.scale.set(0.8 + 0.4*Math.random(), 1, 0.8 + 0.4*Math.random());
+  KIT.hwLamp.color.setRGB(wCook ? 1 : 0.35, wCook ? 0.3 : 0.1, wCook ? 0.2 : 0.08);
+  // extinguisher beacon pulses while something burns and the extinguisher is still on its hook
+  let anyFire = false; for (let i=0;i<SLOTS.length;i++) if (SLOTS[i].fire){ anyFire = true; break; }
+  const ext = SLOT.extstand;
+  KIT.extBeacon.material.opacity = (anyFire && ext && ext.item) ? 0.3 + 0.35*Math.abs(Math.sin(t*4)) : 0;
+  // pass: bell bounce + warm flash on delivery
+  if (KST.bellT > 0){ KST.bellT = Math.max(0, KST.bellT - dt); const k = KST.bellT/0.5; KIT.bell.scale.set(1 + 0.25*k*Math.sin(k*20), 1 - 0.2*k*Math.sin(k*20), 1 + 0.25*k*Math.sin(k*20)); }
+  if (KST.passT > 0){ KST.passT = Math.max(0, KST.passT - dt); }
+  KIT.passPool.material.opacity = KST.passT*0.9;
+}
+function kfxUpdate(dt){
+  if (!KIT.mwInner || G.state === 'paused') return;
+  KST.t += dt; KST.rm = reducedMotion() ? 0.3 : 1;
+  KFX.U.uScale.value = canvas.height/(2*Math.tan(camera.fov*Math.PI/360));
+  const C = KFX.C, rm = KST.rm;
+  for (let i=0;i<SLOTS.length;i++) kfxSlot(SLOTS[i], dt);
+  // hot / smoking items in hands
+  for (let i=0;i<staff.length;i++){
+    const s = staff[i], h = s.hold; if (!h) continue;
+    const ud = h.mesh.userData; if (!ud.hot && !ud.smoke) continue;
+    const n = kacc(s, '_kH', (ud.hot ? 3 : 2)*rm, dt); if (!n) continue;
+    h.mesh.getWorldPosition(_kv);
+    if (ud.hot) kfxSteam(_kv.x, _kv.y + 0.28, _kv.z, n, false); else kfxSmoke(_kv.x, _kv.y + 0.25, _kv.z, n, false, 0.45);
+  }
+  // spills: splash ring + droplets when one appears, then the odd glint
+  for (let i=0;i<spills.length;i++){
+    const sp = spills[i];
+    if (!sp._kfx){ sp._kfx = 1;
+      if (rm === 1){ KFX.ring(sp.x, 0.03, sp.z, 0.15, 1.0, 0.55, 0x9fd8ff, 0.9); KFX.ring(sp.x, 0.03, sp.z, 0.05, 0.6, 0.7, 0xffffff, 0.7); }
+      for (let k=0;k<Math.round(16*rm);k++){ const a = Math.random()*6.283, v = krand(0.9,1.6);
+        KFX.emit(KFX.SOFT, sp.x + Math.cos(a)*0.15, 0.06, sp.z + Math.sin(a)*0.15, Math.cos(a)*v, krand(1.5,2.4), Math.sin(a)*v, krand(0.45,0.65), 0.08, 0.05, C.water, C.waterL, 0.9, 0.3, -7); }
+    }
+    if (Math.random() < dt*0.8*rm) KFX.emit(KFX.GLOW, sp.x + krand(-0.35,0.35), 0.05, sp.z + krand(-0.25,0.25), 0, 0, 0, 0.5, 0.12, 0.02, C.white, C.waterL, 0.8, 0, 0, true);
+  }
+  // delivered at the pass: gold sparkle, ring, bell bounce
+  if (G.stats !== KST.stats){ KST.stats = G.stats; KST.deliv = G.stats.delivered; }
+  if (G.stats.delivered > KST.deliv){
+    KST.deliv = G.stats.delivered; const P = SLOT.pass;
+    kfxSparkle(P.x, P.y + 0.15, P.z, Math.round(22*rm), C.goldW, C.gold);
+    if (rm === 1) KFX.ring(P.x, P.y + 0.01, P.z, 0.15, 0.85, 0.5, 0xffd23f, 0.9);
+    KST.bellT = 0.5; KST.passT = 0.6;
+  }
+  kfxStations(dt);
+  KFX.step(KFX.SOFT, dt); KFX.step(KFX.GLOW, dt); KFX.stepRings(dt);
+}
+window.__cloneMartFx = {KFX, KST, KIT, update:kfxUpdate};   // test/debug hook for the effects module
 
 /* ---------------- staff & AI clones ---------------- */
 function makeStaffChar(roleColor){
@@ -2395,12 +2847,13 @@ function useTick(s, dt){
   return null;
 }
 const sprayGeo = new THREE.ConeGeometry(0.28,1.3,10,1,true).rotateX(-Math.PI/2).translate(0,0,0.95);
-const sprayMat = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.45, depthWrite:false, side:THREE.DoubleSide});
+const sprayMat = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.22, depthWrite:false, side:THREE.DoubleSide});
 function sprayFx(s, dt){
   if (!s.spray){ s.spray = new THREE.Mesh(sprayGeo, sprayMat); s.spray.position.set(0, 1.0, 0.3); s.ch.g.add(s.spray); }
   s.spray.visible = true; s.sprayT = 0.12;
   s.spray.scale.setScalar(0.85 + Math.random()*0.3);
   sprayHiss(s);
+  kfxSpray(s, dt);
 }
 
 /* ---------------- orders & customers ---------------- */
@@ -3733,6 +4186,7 @@ function frame(now){
   if (hud.actions.hidden === showAct) hud.actions.hidden = !showAct;
   updateCamera(dt);
   updateHighlight(clock);
+  kfxUpdate(dt);
   if (!hideTags){ updateSlotTags(); placeTags(); }
   updateDeviceUX(dt);
   updateHUD(dt); updateHint(dt);
