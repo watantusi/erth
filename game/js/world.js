@@ -435,6 +435,22 @@ function localWaterH(x, y, z) {
   return eastWater(x, y, z);
 }
 
+// ---- 細格點區域（這些圓內的粗三角形會細分，地形細節才看得清楚）：[x, y, z, cos] ----
+const DETAIL_ZONES = [];
+function detailZone(dir, radius) { DETAIL_ZONES.push([dir.x, dir.y, dir.z, Math.cos(radius / R)]); }
+detailZone(MT.dir, MT.Rm + 0.3);
+{
+  const pa = new Float64Array(4);
+  for (let s = 0; s <= RIVER.len + 0.01; s += 0.9) {
+    polyAt(RIVER, s, pa);
+    polyNearest(RIVER, pa[0], pa[1]);
+    detailZone(fromLocal(EF, pa[0], pa[1]), lerpArr(RW, PQ.i, PQ.t) + 1.6);
+  }
+  detailZone(fromLocal(EF, LAKE.x, LAKE.y), LAKE.r0 * 1.2 + 1.6);
+  detailZone(DELTA_DIR, 4.2);
+  detailZone(fromLocal(DF, 4.8, 0), 6.0);
+}
+
 // ---------------------------------------------------------------------------
 // 二十面體細分格點（自己建，才能精確反查三角形 → getGroundRadius 與網格完全一致）
 // ---------------------------------------------------------------------------
@@ -497,17 +513,21 @@ function locate(L, x, y, z, out) {
   let j = Math.floor(fu); if (j < 0) j = 0; else if (j > N - 1 - i) j = N - 1 - i;
   const ru = fu - j, rv = fv - i;
   const base = bf * L.per, rs = L.rowStart;
+  const tb = bf * N * N + i * (2 * N - i) + 2 * j; // 三角形編號（每面 N² 個；列 i 從 i(2N−i) 開始，上三角 2j、下三角 2j+1）
   if (ru + rv <= 1 || j >= N - 1 - i) {
-    out[0] = base + rs[i] + j; out[1] = base + rs[i] + j + 1; out[2] = base + rs[i + 1] + j;
+    out[0] = base + rs[i] + j; out[1] = base + rs[i] + j + 1; out[2] = base + rs[i + 1] + j; out[3] = tb;
   } else {
-    out[0] = base + rs[i] + j + 1; out[1] = base + rs[i + 1] + j + 1; out[2] = base + rs[i + 1] + j;
+    out[0] = base + rs[i] + j + 1; out[1] = base + rs[i + 1] + j + 1; out[2] = base + rs[i + 1] + j; out[3] = tb + 1;
   }
 }
 
 /** 射線 (x,y,z) 與格點三角形（頂點 = dir*rad[k]）的交點半徑 */
-const _tri = new Int32Array(3);
+const _tri = new Int32Array(4);
 function latticeRadius(L, rad, x, y, z) {
   locate(L, x, y, z, _tri);
+  return triRadius(L, rad, _tri, x, y, z);
+}
+function triRadius(L, rad, _tri, x, y, z) {
   const D = L.dirs;
   const k0 = _tri[0] * 3, k1 = _tri[1] * 3, k2 = _tri[2] * 3;
   const r0 = rad[_tri[0]], r1 = rad[_tri[1]], r2 = rad[_tri[2]];
