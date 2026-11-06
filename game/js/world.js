@@ -22,6 +22,7 @@ const iPolar = BI.polar ?? 3, iVolcano = BI.volcano ?? 4, iOcean = BI.ocean ?? 5
 const START = BC[BI[START_BIOME] ?? iMeadow][0].clone();
 const VOLC = BC[iVolcano][0].clone();
 const DESERT = BC[iDesert][0].clone();
+const { right: VE1, forward: VE2 } = tangentBasis(VOLC, new THREE.Vector3(), new THREE.Vector3());
 const FOREST = BC[iForest][0].clone();
 const POLN = BC[iPolar][0].clone();
 const POLS = (BC[iPolar][1] || BC[iPolar][0].clone().negate()).clone();
@@ -50,6 +51,8 @@ ISLANDS.forEach((I) => { I.cosR = Math.cos(I.r); I.cosTop = Math.cos(I.r * 0.3);
 const DUNE_AXIS = new THREE.Vector3().crossVectors(DESERT, new THREE.Vector3(0, 1, 0)).normalize();
 
 const SHARP = 16; // 邊界柔和度
+// 飽和度：f=0 時約為原色的一半（仍柔和好看），f=1 時略為加強以抵銷 ACES 色調映射的褪色
+const SAT_MIN = 0.55, SAT_MAX = 1.28;
 const W = new Float64Array(NB);
 
 /** 計算單位方向的生態區權重（寫入 w），回傳最大權重的索引 */
@@ -88,7 +91,7 @@ function hForest(x, y, z) {
 }
 function hDesert(x, y, z) {
   const a = x * DUNE_AXIS.x + y * DUNE_AXIS.y + z * DUNE_AXIS.z;
-  return 0.3 + 0.3 * Math.sin(22 * a + 2.4 * noise3(x * 1.8, y * 1.8 + 3, z * 1.8)) +
+  return 0.3 + 0.42 * Math.sin(22 * a + 2.4 * noise3(x * 1.8, y * 1.8 + 3, z * 1.8)) +
     0.22 * fbm3(x * 2.4 + 7, y * 2.4, z * 2.4 + 2, 2);
 }
 function hPolar(x, y, z) {
@@ -282,8 +285,8 @@ function geoFlower() {
   const parts = [part(new THREE.CylinderGeometry(0.025, 0.025, 0.32, 3, 1, true), C(0x5fae4e), 0, 0.12, 0)];
   for (let i = 0; i < 5; i++) {
     const a = (i / 5) * Math.PI * 2;
-    parts.push(part(new THREE.TetrahedronGeometry(0.12, 0), C(0xffffff),
-      Math.cos(a) * 0.12, 0.3, Math.sin(a) * 0.12, 0.6, -a, 0, 1.1, 0.4, 0.85));
+    parts.push(part(new THREE.OctahedronGeometry(0.11, 0), C(0xffffff),
+      Math.cos(a) * 0.12, 0.3, Math.sin(a) * 0.12, 0, -a, 0, 1, 0.45, 0.8));
   }
   parts.push(part(new THREE.OctahedronGeometry(0.07, 0), C(0xffd84a), 0, 0.33, 0));
   return merge(parts);
@@ -543,7 +546,7 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
   scene.add(root);
 
   // ---- 共用 uniform ----
-  const uSat = { value: 0.45 };
+  const uSat = { value: SAT_MIN };
   const uTime = { value: 0 };
   let restoreCur = 0, restoreTarget = 0;
 
@@ -560,7 +563,7 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
   const terrainMat = patch(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
   const propMat = patch(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
   const cloudMat = patch(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x8a96aa, emissiveIntensity: 0.55 }));
-  const lavaMat = patch(new THREE.MeshBasicMaterial({ color: 0xff7a3d }));
+  const lavaMat = patch(new THREE.MeshBasicMaterial({ color: 0xff7a3d, toneMapped: false }));
   const spoutMat = patch(new THREE.MeshBasicMaterial({ vertexColors: true, color: 0xe8f8ff, transparent: true, opacity: 0.85, depthWrite: false }));
 
   // =========================================================================
@@ -585,9 +588,9 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
     forestA: CL(0x4f9e5a), forestB: CL(0x3f8a4f), forestH: CL(0x6cb565),
     desertA: CL(0xe9c77b), desertB: CL(0xf3d891), desertC: CL(0xdcb168),
     polarA: CL(0xf4f9fc), polarB: CL(0xc2e2f4),
-    volcGlow: CL(0xd8623c), volcDark: CL(0x5b4b48), volcLow: CL(0x84726a), volcMoss: CL(0x8a9a6a),
+    volcGlow: CL(0xe8643a), volcDark: CL(0x4f4242), volcLow: CL(0x8a6c60), volcMoss: CL(0x8f9a62), volcStreak: CL(0xf08a3c),
     sand: CL(0xf3e3ae), seabed: CL(0xd8c79a), seabedDeep: CL(0xa9b79a), islandGreen: CL(0x9bd46e),
-    ice: CL(0xd8eef8),
+    ice: CL(0x9fd8f2),
   };
   const _bc = new THREE.Color(), _acc = new THREE.Color();
   function biomeColor(b, x, y, z, h, out) {
@@ -613,7 +616,8 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
       }
       case iPolar: {
         const n = noise3(x * 4 + 6, y * 4 + 2, z * 4 + 9);
-        out.lerpColors(COL.polarA, COL.polarB, smoothstep(-0.05, 0.3, n));
+        out.lerpColors(COL.polarA, COL.polarB, smoothstep(-0.1, 0.25, n));
+        if (n > 0.3) out.lerp(COL.ice, smoothstep(0.3, 0.4, n));
         break;
       }
       case iVolcano: {
@@ -622,6 +626,12 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
         else {
           out.lerpColors(COL.volcDark, COL.volcLow, smoothstep(0.12, 0.38, a));
           const n = noise3(x * 5 + 3, y * 5 + 3, z * 5 + 3);
+          // 從火山口流下的熔岩紋
+          if (a < 0.3) {
+            const ang = Math.atan2(x * VE2.x + y * VE2.y + z * VE2.z, x * VE1.x + y * VE1.y + z * VE1.z) + n * 0.6;
+            const st = Math.sin(ang * 5);
+            if (st > 0.86) out.lerp(COL.volcStreak, smoothstep(0.86, 0.97, st) * (1 - smoothstep(0.16, 0.3, a)));
+          }
           if (a > 0.3 && n > 0.1) out.lerp(COL.volcMoss, smoothstep(0.3, 0.45, a) * 0.6);
         }
         break;
@@ -855,7 +865,7 @@ void main() {
   vec3 toC = -uCam / dist;
   float th = acos(clamp(dot(rd, toC), -1.0, 1.0));
   float alpha = asin(clamp(uPlanetR / dist, 0.0, 1.0));
-  float g = clamp((th - alpha) / 0.75, 0.0, 1.0);
+  float g = clamp((th - alpha) / 0.6, 0.0, 1.0);
   g = smoothstep(0.0, 1.0, pow(g, 0.7));
   vec3 col = mix(uBottom, uTop, g);
   float s = max(dot(rd, uSun), 0.0);
@@ -863,7 +873,7 @@ void main() {
   gl_FragColor = vec4(col, 1.0);
   #include <colorspace_fragment>
   float tewL = dot(gl_FragColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-  gl_FragColor.rgb = mix(vec3(tewL), gl_FragColor.rgb, clamp(0.35 + uSat * 0.65, 0.0, 1.05));
+  gl_FragColor.rgb = mix(vec3(tewL), gl_FragColor.rgb, clamp(0.4 + uSat * 0.5, 0.0, 1.05));
 }`,
     side: THREE.BackSide,
     depthWrite: false,
@@ -878,8 +888,8 @@ void main() {
   // =========================================================================
   // 燈光
   // =========================================================================
-  const hemi = new THREE.HemisphereLight(0xdcefff, 0xffdcb8, 1.05);
-  const sun = new THREE.DirectionalLight(PALETTE.sun, 2.7);
+  const hemi = new THREE.HemisphereLight(0xdcefff, 0xffdcb8, 0.65);
+  const sun = new THREE.DirectionalLight(PALETTE.sun, 2.3);
   sun.position.set(40, 60, 70);
   root.add(hemi, sun, sun.target);
 
@@ -1002,7 +1012,7 @@ void main() {
   const volcTop = new THREE.Vector3();
   {
     const floor = seabed(VOLC.x, VOLC.y, VOLC.z);
-    const lavaR = floor + 0.42;
+    const lavaR = floor + 0.62;
     // 找熔岩面與火山口內壁的交界角
     let minA = 1;
     for (let az = 0; az < 360; az += 30) {
@@ -1081,7 +1091,7 @@ void main() {
     addObstacle(d, 0.42 * s);
   });
   // 草原：圓樹（含粉色花樹）
-  const meadowTrees = [0x8fd468, 0xffb8cf, 0x7cc95a, 0xffc9a8, 0x9bd66a];
+  const meadowTrees = [0x8fd468, 0xff9ec4, 0x7cc95a, 0xffd27a, 0x9bd66a, 0xffb0d0];
   scatter(rngObs, 16, iMeadow, { maxAngle: 0.7, radius: 0.45, maxSlope: 0.6, scale: (r) => 1.0 + r() * 0.45, exclude: (d) => d.dot(START) > Math.cos(0.3) }, (d, g, s, r) => {
     surfaceMatrix(d, r() * 6.28, s, s, s, 0.1, _im);
     addInst('trunk', _im); addInst('canopy', _im, meadowTrees[Math.floor(r() * meadowTrees.length)]);
@@ -1281,7 +1291,7 @@ void main() {
     uTime.value = t;
     restoreCur = damp(restoreCur, restoreTarget, 1.4, dt);
     if (Math.abs(restoreCur - restoreTarget) < 1e-4) restoreCur = restoreTarget;
-    uSat.value = 0.45 + 0.6 * restoreCur;
+    uSat.value = SAT_MIN + (SAT_MAX - SAT_MIN) * restoreCur;
 
     // 太陽跟著鏡頭（從肩膀後上方照過來）
     if (camera) {

@@ -105,9 +105,13 @@ export function createInput({ canvas, touchRoot }) {
     t === document.documentElement || t === canvas || (t.nodeType === 1 && container.contains(t));
   const isControl = (t) => !!t && t.nodeType === 1 &&
     (t.tagName === 'BUTTON' || t.tagName === 'A' || t.getAttribute('role') === 'button' || t.tabIndex >= 0);
-  function focusVisible(t) {
-    try { return t.matches(':focus-visible'); } catch { return false; }
-  }
+  // 分辨按鈕是用鍵盤（Tab）還是滑鼠/手指聚焦的
+  let lastPointerDownT = -1e9;
+  let keyboardFocusEl = null;
+  const onAnyPointerDown = () => { lastPointerDownT = performance.now(); };
+  const onFocusIn = (e) => {
+    keyboardFocusEl = performance.now() - lastPointerDownT > 400 ? e.target : null;
+  };
 
   function onKeyDown(e) {
     const code = e.code;
@@ -121,7 +125,7 @@ export function createInput({ canvas, touchRoot }) {
         e.preventDefault();
       } else if (isControl(t)) {
         // 用鍵盤（Tab）聚焦的按鈕：空白鍵照常操作按鈕，不當作跳躍
-        if (code === 'Space' && focusVisible(t)) return;
+        if (code === 'Space' && t === keyboardFocusEl) return;
         // 滑鼠點過而殘留焦點的按鈕：交還給遊戲，避免空白鍵重複觸發按鈕
         if (code === 'Space') { e.preventDefault(); t.blur(); }
       }
@@ -450,6 +454,8 @@ export function createInput({ canvas, touchRoot }) {
   const preventDefault = (e) => { if (e.cancelable) e.preventDefault(); };
 
   const listeners = [
+    [window, 'pointerdown', onAnyPointerDown, { capture: true, passive: true }],
+    [document, 'focusin', onFocusIn, false],
     [window, 'keydown', onKeyDown, false],
     [window, 'keyup', onKeyUp, false],
     [window, 'blur', onBlur, false],
