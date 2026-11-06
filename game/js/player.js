@@ -161,10 +161,12 @@ function buildCharacter() {
   const torso = new THREE.Group();
   rig.add(torso);
 
-  const bodyGeo = merge([
-    part(sphere(0.36, 12, 9), COL.coat, { s: [1, 0.94, 0.92], p: [0, 0.55, 0] }),
-    part(new THREE.TorusGeometry(0.26, 0.075, 6, 14), COL.scarf, { r: [Math.PI / 2, 0, 0], p: [0, 0.83, 0] }),
-  ]);
+  // v3：圍巾是合併幾何的最後一段，記下頂點範圍，換色時直接改頂點色（不重建幾何）
+  const coatPart = part(sphere(0.36, 12, 9), COL.coat, { s: [1, 0.94, 0.92], p: [0, 0.55, 0] });
+  const scarfPart = part(new THREE.TorusGeometry(0.26, 0.075, 6, 14), COL.scarf, { r: [Math.PI / 2, 0, 0], p: [0, 0.83, 0] });
+  const scarfStart = coatPart.attributes.position.count;
+  const scarfCount = scarfPart.attributes.position.count;
+  const bodyGeo = merge([coatPart, scarfPart]);
   const body = new THREE.Mesh(bodyGeo, bodyMat);
   torso.add(body);
 
@@ -177,6 +179,21 @@ function buildCharacter() {
   ]);
   const pack = new THREE.Mesh(packGeo, bodyMat);
   torso.add(pack);
+
+  // v3：圍巾尾巴（垂在右前胸，跑步時往後飄；顏色跟著圍巾換）
+  const scarfTail = new THREE.Group();
+  scarfTail.position.set(0.15, 0.69, 0.255);
+  const fringePart = part(new THREE.BoxGeometry(0.12, 0.035, 0.045), COL.scarf, { r: [0, 0, 0.08], p: [0.02, -0.225, 0] });
+  const tailFringe = fringePart.attributes.position.count; // 流蘇在合併幾何的最後
+  const tailGeo = merge([
+    part(sphere(0.06, 8, 6), COL.scarf, { s: [1.1, 0.9, 0.8] }),
+    part(new THREE.BoxGeometry(0.11, 0.2, 0.04), COL.scarf, { r: [0, 0, 0.08], p: [0.01, -0.12, 0] }),
+    fringePart,
+  ]);
+  const tail = new THREE.Mesh(tailGeo, bodyMat);
+  scarfTail.add(tail);
+  scarfTail.rotation.set(-0.42, 0, 0.12);
+  torso.add(scarfTail);
 
   // 手臂（肩膀為樞紐）
   const armGeo = merge([
@@ -240,7 +257,284 @@ function buildCharacter() {
   carry.position.set(0, HC + 0.38, -0.04);
   head.add(carry);
 
-  return { root, rig, torso, head, eyes, sprout, carry, legs, arms, shadow, shadowMat };
+  // v3：帽子掛點（兜帽球心；帽子幾何以這裡為原點建立，傾斜角度依帽子而定）
+  const hat = new THREE.Group();
+  hat.name = 'player-hat';
+  hat.position.set(0, HC + 0.03, -0.05);
+  head.add(hat);
+
+  return {
+    root, rig, torso, head, eyes, sprout, carry, legs, arms, shadow, shadowMat,
+    hat, bodyGeo, scarfStart, scarfCount, bodyMat, faceMat, scarfTail, tailGeo, tailFringe,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// v3 裝扮：帽子（第一次戴上時才建立，之後切換只改 visible）與圍巾顏色
+// ---------------------------------------------------------------------------
+// 兜帽是以帽子掛點為中心、半徑約 (0.468, 0.432, 0.45) 的橢球；帽子的帽圍都要比該高度的兜帽寬，避免穿模。
+export const HAT_IDS = ['straw', 'explorer', 'beanie', 'flower', 'penguin', 'crown'];
+export const SCARF_IDS = ['sunny', 'sky', 'mint', 'rose', 'lava', 'night'];
+const SCARF_COLORS = {
+  sunny: COL.scarf, sky: 0x62bdf6, mint: 0x5fd9a8, rose: 0xff8db4, lava: 0xf0502c, night: 0x2a3a8f,
+};
+const HAT_TOP_DEFAULT = 0.69; // 沒戴帽子時兜帽頂（頭部座標）
+
+const _hc = new THREE.Color();
+const _hv = new THREE.Vector3();
+const _he = new THREE.Euler();
+const _hq = new THREE.Quaternion();
+const _hm = new THREE.Matrix4();
+const _hs = new THREE.Vector3();
+
+/**
+ * 帽子零件：轉成非索引幾何（每個三角面可以有自己的顏色）、套用 縮放→旋轉→位移，
+ * color 可以是色碼，或 (x, y, z, faceIndex) => 色碼（依三角面中心決定，營造編織/條紋感）。
+ */
+function hp(geo, color, s = null, r = null, p = null) {
+  const g = geo.index ? geo.toNonIndexed() : geo;
+  if (g !== geo) geo.dispose();
+  for (const name of Object.keys(g.attributes)) {
+    if (name !== 'position' && name !== 'normal') g.deleteAttribute(name);
+  }
+  _hs.set(1, 1, 1);
+  if (s) { if (typeof s === 'number') _hs.setScalar(s); else _hs.set(s[0], s[1], s[2]); }
+  _he.set(r ? r[0] : 0, r ? r[1] : 0, r ? r[2] : 0);
+  _hq.setFromEuler(_he);
+  _hv.set(p ? p[0] : 0, p ? p[1] : 0, p ? p[2] : 0);
+  _hm.compose(_hv, _hq, _hs);
+  g.applyMatrix4(_hm);
+  const pos = g.attributes.position;
+  const n = pos.count;
+  const arr = new Float32Array(n * 3);
+  const fn = typeof color === 'function' ? color : null;
+  if (!fn) _hc.set(color);
+  for (let i = 0; i < n; i += 3) {
+    if (fn) {
+      const cx = (pos.getX(i) + pos.getX(i + 1) + pos.getX(i + 2)) / 3;
+      const cy = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3;
+      const cz = (pos.getZ(i) + pos.getZ(i + 1) + pos.getZ(i + 2)) / 3;
+      _hc.set(fn(cx, cy, cz, i / 3));
+    }
+    for (let j = 0; j < 3 && i + j < n; j++) {
+      arr[(i + j) * 3] = _hc.r; arr[(i + j) * 3 + 1] = _hc.g; arr[(i + j) * 3 + 2] = _hc.b;
+    }
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+  return g;
+}
+function hmerge(list) {
+  const g = mergeGeometries(list, false);
+  list.forEach((x) => x.dispose());
+  g.computeBoundingSphere();
+  return g;
+}
+/** 以 Y 軸為中心的角度 → 第幾片（用來交錯上色） */
+const sector = (x, z, n) => Math.floor(((Math.atan2(x, z) / (Math.PI * 2)) + 1) * n) % n;
+/** 一朵五瓣小花（面朝 +Z），之後由呼叫端旋轉擺放 */
+function flowerParts(petal, center, size, out, mtx) {
+  const parts = [];
+  for (let k = 0; k < 5; k++) {
+    const a = (k / 5) * Math.PI * 2;
+    parts.push(hp(sphere(size, 7, 4), petal, [1, 0.62, 0.32], [0, 0, a], [Math.sin(a) * size * 0.95, Math.cos(a) * size * 0.95, 0]));
+  }
+  parts.push(hp(sphere(size * 0.62, 7, 5), center, [1, 1, 0.6], null, [0, 0, size * 0.18]));
+  for (const g of parts) { g.applyMatrix4(mtx); out.push(g); }
+}
+
+const HAT_BUILD = {
+  // 草帽：寬帽簷 + 紅色緞帶與側邊蝴蝶結，小芽從帽頂冒出來
+  straw() {
+    const S1 = 0xf6d77e, S2 = 0xe9c463, S3 = 0xd9ad4c, RIB = 0xe8545a, RIB2 = 0xc93f4a;
+    const weave = (x, y, z) => (sector(x, z, 18) % 2 ? S1 : S2);
+    const list = [
+      hp(new THREE.CylinderGeometry(0.33, 0.45, 0.25, 18), weave, null, null, [0, 0.325, 0]),
+      hp(new THREE.CylinderGeometry(0.33, 0.33, 0.02, 18), S1, null, null, [0, 0.455, 0]),
+      hp(new THREE.CylinderGeometry(0.7, 0.73, 0.035, 22), (x, y, z) => (sector(x, z, 22) % 2 ? S1 : S2), null, null, [0, 0.19, 0]),
+      hp(new THREE.TorusGeometry(0.715, 0.028, 4, 26), S3, null, [Math.PI / 2, 0, 0], [0, 0.205, 0]),
+      hp(new THREE.CylinderGeometry(0.432, 0.452, 0.08, 18), RIB, null, null, [0, 0.245, 0]),
+      // 蝴蝶結（右前側）
+      hp(sphere(0.075, 7, 5), RIB, [1.2, 0.85, 0.5], [0, 0.95, 0.35], [0.33, 0.27, 0.33]),
+      hp(sphere(0.075, 7, 5), RIB, [1.2, 0.85, 0.5], [0, 0.95, -0.35], [0.43, 0.27, 0.19]),
+      hp(sphere(0.04, 6, 4), RIB2, null, null, [0.39, 0.26, 0.28]),
+      hp(new THREE.BoxGeometry(0.05, 0.13, 0.02), RIB, null, [0.2, 0.95, 0.35], [0.38, 0.19, 0.3]),
+      hp(new THREE.BoxGeometry(0.05, 0.11, 0.02), RIB2, null, [-0.25, 0.95, -0.2], [0.43, 0.2, 0.22]),
+    ];
+    return { geo: hmerge(list), tilt: [-0.14, 0, 0.1], sprout: 'raise', top: 0.465 };
+  },
+
+  // 探險帽：卡其色分片帽頂、向下斜的帽簷、咖啡色帽帶 + 小地球徽章
+  explorer() {
+    const K1 = 0xf0dfb0, K2 = 0xe2cc93, K3 = 0xcfb47a, BAND = 0x7d5a3a;
+    const list = [
+      hp(new THREE.SphereGeometry(0.485, 16, 7, 0, Math.PI * 2, 0, Math.PI / 2), (x, y, z) => (sector(x, z, 8) % 2 ? K1 : K2),
+        [1, 0.68, 1.04], null, [0, 0.17, 0]),
+      hp(new THREE.CylinderGeometry(0.49, 0.69, 0.07, 22), K3, [1, 1, 1.1], null, [0, 0.145, 0.02]),
+      hp(new THREE.CylinderGeometry(0.5, 0.5, 0.075, 18), BAND, [1, 1, 1.04], null, [0, 0.21, 0]),
+      hp(new THREE.CylinderGeometry(0.05, 0.065, 0.05, 8), K3, null, null, [0, 0.505, 0]),
+      hp(sphere(0.045, 8, 5), K1, [1, 0.6, 1], null, [0, 0.53, 0]),
+      // 小地球徽章
+      hp(new THREE.CylinderGeometry(0.068, 0.068, 0.025, 12), 0xffd25e, null, [Math.PI / 2, 0, 0], [0, 0.215, 0.515]),
+      hp(new THREE.CylinderGeometry(0.05, 0.05, 0.03, 12), 0x4fb3e0, null, [Math.PI / 2, 0, 0], [0, 0.215, 0.522]),
+      hp(sphere(0.024, 6, 4), 0x7fd84f, [1.3, 1, 0.5], null, [-0.012, 0.225, 0.535]),
+      hp(sphere(0.016, 6, 4), 0x7fd84f, [1.2, 1, 0.5], null, [0.02, 0.2, 0.535]),
+    ];
+    return { geo: hmerge(list), tilt: [-0.1, 0, -0.04], sprout: 'hide', top: 0.53 };
+  },
+
+  // 毛線帽：條紋針織帽身、羅紋反摺、大毛球
+  beanie() {
+    const T1 = 0x3fb7ad, T2 = 0x35a199, CR = 0xfff3d6, CR2 = 0xf1e2bf, CUFF1 = 0x2f9a91, CUFF2 = 0x288880;
+    const knit = (x, y, z) => {
+      const band = Math.floor((y - 0.1) / 0.085);
+      const stripe = band === 2 || band === 4;
+      const rib = sector(x, z, 28) % 2;
+      return stripe ? (rib ? CR : CR2) : (rib ? T1 : T2);
+    };
+    const list = [
+      hp(new THREE.SphereGeometry(0.5, 28, 8, 0, Math.PI * 2, 0, Math.PI / 2), knit, [1, 0.88, 1], null, [0, 0.1, 0]),
+      hp(new THREE.CylinderGeometry(0.52, 0.525, 0.14, 28), (x, y, z) => (sector(x, z, 28) % 2 ? CUFF1 : CUFF2), null, null, [0, 0.12, 0]),
+      hp(new THREE.IcosahedronGeometry(0.14, 1), CR, null, null, [0, 0.6, 0]),
+      hp(new THREE.IcosahedronGeometry(0.075, 0), CR2, null, [0.3, 0.5, 0], [0.08, 0.63, 0.05]),
+      hp(new THREE.IcosahedronGeometry(0.07, 0), CR2, null, [0.8, 0.2, 0.4], [-0.07, 0.64, -0.06]),
+      hp(new THREE.IcosahedronGeometry(0.065, 0), CR, null, [0.1, 0.9, 0.2], [0.02, 0.7, -0.02]),
+    ];
+    return { geo: hmerge(list), tilt: [-0.16, 0, 0.06], sprout: 'hide', top: 0.66 };
+  },
+
+  // 花圈：綠色藤圈 + 葉子 + 五顏六色的小花，小芽照常露出來
+  flower() {
+    const V = 0x5aa83e, L1 = 0x76c853, L2 = 0x9ad968;
+    const RX = 0.452, RZ = 0.44, Y = 0.19;
+    const list = [hp(new THREE.TorusGeometry(0.446, 0.042, 5, 26), V, [1, 0.985, 1], [Math.PI / 2, 0, 0], [0, Y, 0])];
+    const mtx = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const e = new THREE.Euler();
+    const pv = new THREE.Vector3();
+    const sv = new THREE.Vector3(1, 1, 1);
+    // 葉子
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2 + 0.11;
+      list.push(hp(sphere(0.06, 6, 4), i % 2 ? L1 : L2, [1.5, 0.3, 0.75], [0.35, a + (i % 2 ? 0.6 : -0.6), 0],
+        [Math.sin(a) * (RX + 0.03), Y + (i % 2 ? 0.02 : -0.015), Math.cos(a) * (RZ + 0.03)]));
+    }
+    // 小花（正面那朵最大）
+    const FL = [
+      [0, 0xff8fb8, 0xffe36b, 0.09], [0.6, 0xffffff, 0xffc93a, 0.074], [-0.6, 0xc7a3ff, 0xfff1a8, 0.074],
+      [1.25, 0xffb36b, 0xfff6d0, 0.07], [-1.25, 0xffffff, 0xff9ab8, 0.07], [2.0, 0xff8fb8, 0xffe36b, 0.066],
+      [-2.0, 0x8fd3ff, 0xfff1a8, 0.066], [Math.PI, 0xffe36b, 0xff8a5c, 0.066],
+    ];
+    for (const [a, petal, center, size] of FL) {
+      pv.set(Math.sin(a) * (RX + 0.035), Y + 0.025, Math.cos(a) * (RZ + 0.035));
+      e.set(-0.45, a, 0, 'YXZ');
+      q.setFromEuler(e);
+      mtx.compose(pv, q, sv);
+      flowerParts(petal, center, size, list, mtx);
+    }
+    return { geo: hmerge(list), tilt: [-0.2, 0, 0.07], sprout: 'show', top: 0.43 };
+  },
+
+  // 企鵝帽：深藍帽身、白色臉斑、黑豆眼、橘色小嘴、兩側小翅膀耳罩、頭頂小呆毛
+  penguin() {
+    const NV = 0x34406a, NV2 = 0x2a3456, W = 0xffffff, TRIM = 0xe6eef8, OR = 0xffa53a, EYE = 0x161a28;
+    const list = [
+      hp(new THREE.SphereGeometry(0.51, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2), NV, [1, 0.92, 1], null, [0, 0.06, 0]),
+      hp(new THREE.TorusGeometry(0.505, 0.045, 5, 22), TRIM, null, [Math.PI / 2, 0, 0], [0, 0.07, 0]),
+      // 白色臉斑（兩個重疊的扁球 → 愛心形）
+      hp(sphere(0.17, 12, 8), W, [1, 0.95, 0.42], [-0.62, 0, 0], [-0.085, 0.26, 0.4]),
+      hp(sphere(0.17, 12, 8), W, [1, 0.95, 0.42], [-0.62, 0, 0], [0.085, 0.26, 0.4]),
+      hp(sphere(0.13, 10, 7), W, [1.35, 0.7, 0.4], [-0.45, 0, 0], [0, 0.17, 0.45]),
+      // 眼睛 + 反光
+      hp(sphere(0.05, 8, 6), EYE, [0.9, 1.15, 0.6], [-0.6, 0, 0], [-0.088, 0.29, 0.462]),
+      hp(sphere(0.05, 8, 6), EYE, [0.9, 1.15, 0.6], [-0.6, 0, 0], [0.088, 0.29, 0.462]),
+      hp(sphere(0.016, 5, 3), W, null, null, [-0.076, 0.31, 0.49]),
+      hp(sphere(0.016, 5, 3), W, null, null, [0.1, 0.31, 0.49]),
+      // 小嘴
+      hp(new THREE.ConeGeometry(0.068, 0.15, 6), OR, [1.25, 1, 0.75], [Math.PI / 2 - 0.25, 0, 0], [0, 0.2, 0.54]),
+      // 腮紅
+      hp(sphere(0.03, 6, 4), 0xff9eb8, [1.3, 0.7, 0.4], [-0.5, 0, 0], [-0.19, 0.2, 0.43]),
+      hp(sphere(0.03, 6, 4), 0xff9eb8, [1.3, 0.7, 0.4], [-0.5, 0, 0], [0.19, 0.2, 0.43]),
+      // 兩側往外翹的小翅膀
+      hp(sphere(0.13, 8, 6), NV, [0.34, 1.2, 0.72], [0.35, 0, 1.05], [0.54, 0.12, -0.1]),
+      hp(sphere(0.13, 8, 6), NV, [0.34, 1.2, 0.72], [0.35, 0, -1.05], [-0.54, 0.12, -0.1]),
+      // 頭頂呆毛
+      hp(new THREE.ConeGeometry(0.04, 0.14, 5), NV2, null, [0.3, 0, 0.35], [-0.03, 0.55, -0.02]),
+      hp(new THREE.ConeGeometry(0.032, 0.11, 5), NV2, null, [-0.2, 0, -0.4], [0.04, 0.54, 0.0]),
+    ];
+    return { geo: hmerge(list), tilt: [-0.06, 0, 0], sprout: 'hide', top: 0.53 };
+  },
+
+  // 皇冠：金色厚邊冠身 + 五個尖角與珍珠 + 正面寶石（通關獎勵），小芽從中間冒出來
+  crown() {
+    const G1 = 0xffcc3a, G2 = 0xf0b322, G3 = 0xe09a18, PEARL = 0xfff8e8;
+    const B = 0.35, H = 0.15;
+    const band = new THREE.LatheGeometry([
+      new THREE.Vector2(0.25, 0), new THREE.Vector2(0.295, 0), new THREE.Vector2(0.315, H),
+      new THREE.Vector2(0.275, H), new THREE.Vector2(0.25, 0),
+    ], 15);
+    const list = [
+      hp(band, (x, y, z) => (sector(x, z, 15) % 2 ? G1 : G2), null, null, [0, B, 0]),
+      hp(new THREE.TorusGeometry(0.296, 0.026, 4, 18), G3, null, [Math.PI / 2, 0, 0], [0, B + 0.01, 0]),
+    ];
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      const x = Math.sin(a) * 0.3, z = Math.cos(a) * 0.3;
+      list.push(hp(new THREE.ConeGeometry(0.075, 0.15, 4), i % 2 ? G2 : G1, [1, 1, 0.55], [0, a + Math.PI / 4, 0], [x, B + H + 0.07, z]));
+      list.push(hp(new THREE.IcosahedronGeometry(0.03, 0), PEARL, null, null, [x * 1.0, B + H + 0.16, z * 1.0]));
+    }
+    // 寶石：正面紅、左右藍綠、後面紫
+    const GEMS = [[0, 0xff4d6d, 0.05], [1.57, 0x4fb3ff, 0.04], [-1.57, 0x5fe08a, 0.04], [Math.PI, 0xb27bff, 0.04]];
+    for (const [a, hex, r] of GEMS) {
+      list.push(hp(new THREE.OctahedronGeometry(r, 0), hex, [1, 1.2, 0.55], [0, a, 0],
+        [Math.sin(a) * 0.31, B + H * 0.48, Math.cos(a) * 0.31]));
+    }
+    const geo = hmerge(list);
+    // 放大一點（通關獎勵要醒目），以冠底為基準縮放後稍微往下坐
+    geo.translate(0, -B, 0);
+    geo.scale(1.12, 1.12, 1.12);
+    geo.translate(0, B - 0.02, 0);
+    geo.computeBoundingSphere();
+    return { geo, tilt: [-0.08, 0, 0.17], sprout: 'show', top: 0.63, gold: true };
+  },
+};
+
+let HAT_MATS = null;
+function hatMats(bodyMat) {
+  if (!HAT_MATS) {
+    HAT_MATS = {
+      body: bodyMat,
+      gold: new THREE.MeshPhongMaterial({
+        vertexColors: true, flatShading: true, shininess: 70, specular: 0x8a7440, emissive: 0x3a2400,
+      }),
+    };
+  }
+  return HAT_MATS;
+}
+
+/** 夜空圍巾上的小星星（只在 'night' 圍巾顯示） */
+function buildScarfStars(mat) {
+  const list = [];
+  const N = 13;
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2 + 0.2;
+    const b = ((i * 7) % 5 - 2) * 0.42;                // 管子截面上的角度（-0.84..0.84，偏外側）
+    const rr = 0.26 + (0.075 + 0.006) * Math.cos(b);
+    const s = i % 3 === 0 ? 0.026 : 0.018;
+    list.push(part(new THREE.OctahedronGeometry(s, 0), i % 4 === 1 ? 0xbfe6ff : 0xfff2a8, {
+      s: [1, 1, 0.6], r: [0, a, 0.785],
+      p: [Math.sin(a) * rr, 0.83 + (0.075 + 0.006) * Math.sin(b), Math.cos(a) * rr],
+    }));
+  }
+  const g = merge(list);
+  const m = new THREE.Mesh(g, mat);
+  m.name = 'player-scarf-stars';
+  // 尾巴上的星星（跟著尾巴擺動）
+  const tl = [[-0.025, -0.07, 0.026, 0.022], [0.035, -0.15, 0.026, 0.017], [0.0, 0.0, 0.055, 0.016], [0.03, -0.04, 0.026, 0.012]]
+    .map(([x, y, z, r], i) => part(new THREE.OctahedronGeometry(r, 0), i === 1 ? 0xbfe6ff : 0xfff2a8,
+      { s: [1, 1, 0.5], r: [0, 0, 0.785], p: [x, y, z] }));
+  const tm = new THREE.Mesh(merge(tl), mat);
+  tm.name = 'player-scarf-tail-stars';
+  return { ring: m, tail: tm };
 }
 
 // ---------------------------------------------------------------------------
@@ -264,6 +558,13 @@ export function createPlayer({ scene, world }) {
   let jumpTime = 0;
   let jumpHeldKnown = false, jumpHeld = true;
   let carryKind = null, carryObj = null, carryScale = 1, carryTarget = 1, carryPop = 0;
+  // v3 裝扮
+  const cosmetics = { hat: null, scarf: 'sunny', trail: null };
+  const hatCache = {};                   // id → { mesh, tilt, sprout, sproutPos, carryPos, extra }
+  let hatInfo = null;                    // 目前戴的帽子（null = 沒戴）
+  let scarfStars = null;
+  const SPROUT_POS = parts.sprout.position.clone();
+  const CARRY_POS = parts.carry.position.clone();
   let coyote = 0;
   let jumpBuffer = 0;
   let airTime = 0;
@@ -282,6 +583,7 @@ export function createPlayer({ scene, world }) {
     turn: 0,
     celebT: -1,
     prevSpeed: 0, accel: 0,
+    tailX: -0.42,
   };
 
   const api = {
@@ -302,6 +604,9 @@ export function createPlayer({ scene, world }) {
     onBounce: noop,
     setCarry,
     setCarryScale,
+    // v3
+    setCosmetics,
+    get cosmetics() { return cosmetics; },
   };
 
   const groundAt = (dir) => {
@@ -460,7 +765,7 @@ export function createPlayer({ scene, world }) {
   }
 
   function getHeadPosition(out = new THREE.Vector3()) {
-    const extra = carryObj ? 0.5 * carryScale : 0;
+    const extra = (carryObj ? 0.5 * carryScale : 0) + (hatInfo ? hatInfo.extra : 0);
     return out.copy(position).addScaledVector(up, HEAD_TOP + parts.rig.position.y + extra);
   }
 
@@ -481,7 +786,99 @@ export function createPlayer({ scene, world }) {
         anim.sq = -0.12; anim.sqV = -1.5; // 頂上去時壓一下
       }
     }
-    parts.sprout.visible = !carryObj;
+    syncHead();
+  }
+
+  // ---- v3 裝扮 ----
+  /** 第一次戴某頂帽子時建立（合併成一個 mesh），之後只切換 visible，不再配置任何東西 */
+  function getHat(id) {
+    if (hatCache[id]) return hatCache[id];
+    const def = HAT_BUILD[id]();
+    const mats = hatMats(parts.bodyMat);
+    const mesh = new THREE.Mesh(def.geo, def.gold ? mats.gold : mats.body);
+    mesh.name = 'hat-' + id;
+    mesh.visible = false;
+    parts.hat.add(mesh);
+    const tilt = new THREE.Euler(def.tilt[0], def.tilt[1], def.tilt[2]);
+    // 帽頂中心（頭部座標）：搬運物放這裡；'raise' 的小芽也從這裡冒出來
+    const top = new THREE.Vector3(0, def.top, 0).applyEuler(tilt).add(parts.hat.position);
+    const info = {
+      id, mesh, tilt, sprout: def.sprout,
+      sproutPos: def.sprout === 'raise' ? top.clone().add(new THREE.Vector3(0, -0.04, 0)) : SPROUT_POS.clone(),
+      carryPos: top.y > CARRY_POS.y ? new THREE.Vector3(top.x, top.y + 0.005, top.z) : CARRY_POS.clone(),
+      extra: Math.max(0, top.y - HAT_TOP_DEFAULT),
+    };
+    hatCache[id] = info;
+    return info;
+  }
+
+  /** 小芽與頭頂搬運物的位置/可見度要配合帽子 */
+  function syncHead() {
+    const { sprout, carry } = parts;
+    const h = hatInfo;
+    sprout.visible = !carryObj && !(h && h.sprout === 'hide');
+    sprout.position.copy(h ? h.sproutPos : SPROUT_POS);
+    const cp = h ? h.carryPos : CARRY_POS;
+    carry.position.set(cp.x, cp.y, cp.z);
+  }
+
+  function setScarfColor(id) {
+    const hex = SCARF_COLORS[id] !== undefined ? SCARF_COLORS[id] : SCARF_COLORS.sunny;
+    _hc.set(hex);
+    const attr = parts.bodyGeo.attributes.color;
+    const arr = attr.array;
+    const a0 = parts.scarfStart * 3, a1 = (parts.scarfStart + parts.scarfCount) * 3;
+    for (let i = a0; i < a1; i += 3) { arr[i] = _hc.r; arr[i + 1] = _hc.g; arr[i + 2] = _hc.b; }
+    attr.needsUpdate = true;
+    const tattr = parts.tailGeo.attributes.color;
+    const tarr = tattr.array;
+    // 尾巴流蘇稍微深一點
+    const fringe = tarr.length - parts.tailFringe * 3;
+    for (let i = 0; i < tarr.length; i += 3) {
+      const k = i >= fringe ? 0.8 : 1;
+      tarr[i] = _hc.r * k; tarr[i + 1] = _hc.g * k; tarr[i + 2] = _hc.b * k;
+    }
+    tattr.needsUpdate = true;
+    if (id === 'night' && !scarfStars) {
+      scarfStars = buildScarfStars(parts.faceMat);
+      parts.torso.add(scarfStars.ring);
+      parts.scarfTail.add(scarfStars.tail);
+    }
+    if (scarfStars) scarfStars.ring.visible = scarfStars.tail.visible = id === 'night';
+  }
+
+  /**
+   * 換裝：{ hat, scarf, trail }。沒給（undefined）的欄位保持不變；
+   * hat: null | HAT_IDS；scarf: SCARF_IDS（null/未知 = 'sunny'）；trail 只記住（粒子由 main 發射）。
+   */
+  function setCosmetics(c) {
+    if (!c || typeof c !== 'object') return;
+    if (c.hat !== undefined) {
+      const id = HAT_BUILD[c.hat] ? c.hat : null;
+      if (id !== cosmetics.hat || (id && !hatInfo)) {
+        if (hatInfo) hatInfo.mesh.visible = false;
+        hatInfo = null;
+        if (id) {
+          try { hatInfo = getHat(id); } catch (e) { console.error(e); hatInfo = null; }
+        }
+        if (hatInfo) {
+          hatInfo.mesh.visible = true;
+          parts.hat.rotation.copy(hatInfo.tilt);
+        }
+        cosmetics.hat = hatInfo ? id : null;
+        syncHead();
+      }
+    }
+    if (c.scarf !== undefined) {
+      const id = SCARF_COLORS[c.scarf] !== undefined ? c.scarf : 'sunny';
+      if (id !== cosmetics.scarf) {
+        setScarfColor(id);
+        cosmetics.scarf = id;
+      }
+    }
+    if (c.trail !== undefined) {
+      cosmetics.trail = typeof c.trail === 'string' && c.trail ? c.trail : null;
+    }
   }
 
   /** 搬運物的大小（1 = 原尺寸，0 = 融化消失），平滑過渡 */
@@ -886,6 +1283,14 @@ export function createPlayer({ scene, world }) {
     sprout.rotation.x = a.sproutX + Math.sin(t * 2.4) * 0.03;
     sprout.rotation.z = a.sproutZ;
 
+    // 圍巾尾巴：垂在胸前，走路時隨步伐彈跳、往外甩，空中往上飄（只往前/外擺，不會穿進身體）
+    const flutter = clamp(spd / RUN_SPEED, 0, 1) * (g ? 1 : 0.5);
+    const tailX = -0.42 - bobWave * 0.35 * a.walk - flutter * 0.25 - a.air * clamp(-vRad * 0.05 + 0.2, 0, 0.7)
+      - Math.max(0, Math.sin(t * 2.4)) * 0.03 * (1 - a.walk);
+    a.tailX = damp(a.tailX, tailX, 12, dt);
+    parts.scarfTail.rotation.x = a.tailX;
+    parts.scarfTail.rotation.z = 0.12 + clamp(a.sproutZ * 0.2, -0.15, 0.15) + flutter * 0.4 + s * 0.12 * a.walk + cheer * 0.5;
+
     // 頭頂搬運物：彈出、融化縮小、跟著走路晃動（用小芽的彈簧值，有一點慣性）
     if (carryObj) {
       carryPop = Math.min(1, carryPop + dt * 3.2);
@@ -898,7 +1303,7 @@ export function createPlayer({ scene, world }) {
       carry.rotation.x = a.sproutX * 0.22 + Math.sin(a.phase * 2) * 0.05 * a.walk;
       carry.rotation.z = a.sproutZ * 0.3;
       carry.rotation.y = 0.45 + a.turn * 0.2;
-      carry.position.y = 0.23 + 0.38 + bobWave * 0.04 * a.walk;
+      carry.position.y = (hatInfo ? hatInfo.carryPos.y : CARRY_POS.y) + bobWave * 0.04 * a.walk;
     }
   }
 
@@ -942,6 +1347,7 @@ export function createPlayer({ scene, world }) {
     shadowMat.opacity = 0.36 * clamp(1 - hgt * 0.16, 0.2, 1) * (api.inWater ? 0.35 : 1);
   }
 
+  setScarfColor('sunny');
   setDirection(up);
   return api;
 }

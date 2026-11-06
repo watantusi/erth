@@ -145,6 +145,16 @@ function mats() {
     }),
     iceCore: new THREE.MeshLambertMaterial({ color: 0xe6f8ff, emissive: 0x6ab4dc, transparent: true, opacity: 0.55, flatShading: true }),
     iceShine: new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, toneMapped: false }),
+    // v3：金色道具（平面著色 + 高光，閃閃發亮）
+    gold: new THREE.MeshPhongMaterial({
+      vertexColors: true, flatShading: true, shininess: 45, specular: 0xd8b860, emissive: 0x7a5200,
+    }),
+    leaf: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x2c5a18, side: THREE.DoubleSide }),
+    goldHalo: new THREE.SpriteMaterial({
+      color: 0xffd45a, map: glowTex, transparent: true, opacity: 0.45, depthWrite: false,
+      blending: THREE.AdditiveBlending, toneMapped: false,
+    }),
+    sparkle: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }),
   };
   return MAT;
 }
@@ -530,6 +540,21 @@ const BUILD = {
     return { body, head, eyes, happyEyes, flipper, flipLamp, leg, H };
   },
 };
+
+/** 依三角面中心上色（非索引幾何）：fn(x, y, z, faceIndex) → 色碼 */
+function colorFaces(g, fn) {
+  const pos = g.attributes.position, col = g.attributes.color;
+  const c = new THREE.Color();
+  for (let i = 0; i < pos.count; i += 3) {
+    const x = (pos.getX(i) + pos.getX(i + 1) + pos.getX(i + 2)) / 3;
+    const y = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3;
+    const z = (pos.getZ(i) + pos.getZ(i + 1) + pos.getZ(i + 2)) / 3;
+    c.set(fn(x, y, z, i / 3));
+    for (let j = 0; j < 3; j++) col.setXYZ(i + j, c.r, c.g, c.b);
+  }
+  return g;
+}
+const lathe = (pts, n) => new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), n);
 
 /** 海龜殼：低多邊形二十面體，每個三角面依「甲片」中心上色（平面著色 → 自然的甲片拼貼感） */
 function shellGeo(r, sc, pos, dark, light, mid) {
@@ -1035,6 +1060,78 @@ const ITEM_BUILD = {
     ]);
     return { outer, core, shine };
   },
+
+  // v3：金色橡實（約 0.6 高）——圓胖的金色果實、鱗片狀殼斗、彎彎的小梗與一片綠葉
+  goldenAcorn() {
+    const G1 = 0xffd84a, G2 = 0xffea8a, C1 = 0xe8a832, C2 = 0xd08f26, C3 = 0xf4bd48;
+    const nut = P(lathe([[0, 0.02], [0.05, 0.035], [0.105, 0.08], [0.15, 0.15], [0.172, 0.22], [0.176, 0.29], [0.16, 0.35], [0, 0.35]], 12), G1);
+    colorFaces(nut, (x, y, z) => (y < 0.12 ? 0xf2bf2e : (Math.floor(Math.atan2(x, z) / TAU * 12 + 12) % 2 ? G1 : G2)));
+    const capG = P(lathe([[0.15, 0.31], [0.2, 0.33], [0.215, 0.37], [0.205, 0.42], [0.165, 0.465], [0.09, 0.495], [0, 0.505]], 12), C1);
+    // 殼斗鱗片：依高度與角度交錯上色
+    colorFaces(capG, (x, y, z) => {
+      const row = Math.floor((y - 0.31) / 0.045);
+      const col = Math.floor((Math.atan2(x, z) / TAU + 1) * 12 + row * 0.5);
+      return (row + col) % 2 ? C1 : (row % 2 ? C2 : C3);
+    });
+    const stem = P(cyl(0.022, 0.03, 0.1, 6), C2, null, [0, 0, -0.35], [0.02, 0.545, 0]);
+    const stemTip = P(sph(0.026, 6, 4), C2, null, null, [0.04, 0.595, 0]);
+    const shine = M([
+      P(sph(0.035, 6, 4), 0xffffff, [0.7, 1.4, 0.4], [0, 0, 0.35], [-0.09, 0.25, 0.135]),
+      P(sph(0.018, 5, 3), 0xffffff, null, null, [-0.06, 0.155, 0.15]),
+    ]);
+    // 葉子：兩半折起的葉片 + 葉脈
+    const leaf = M([
+      P(sph(0.11, 8, 4), 0x7fd84f, [0.5, 0.06, 1], [0.25, 0, 0.35], [0.045, 0, 0.1]),
+      P(sph(0.11, 8, 4), 0x9be860, [0.5, 0.06, 1], [0.25, 0, -0.35], [-0.045, 0, 0.1]),
+      P(box(0.012, 0.012, 0.2), 0x4f9e3a, null, null, [0, 0.012, 0.1]),
+    ]);
+    leaf.rotateX(-0.5);
+    leaf.rotateY(-0.9);
+    leaf.translate(0.04, 0.56, 0.01);
+    // 小星光（十字）
+    const star = (x, y, z, s) => [
+      P(box(s * 0.25, s, s * 0.25), 0xfff6c8, null, [0, 0, 0.785], [x, y, z]),
+      P(box(s, s * 0.25, s * 0.25), 0xfff6c8, null, [0, 0, 0.785], [x, y, z]),
+    ];
+    const sparkle = M([...star(0.22, 0.47, 0.06, 0.07), ...star(-0.21, 0.16, 0.08, 0.05), ...star(0.16, 0.08, -0.12, 0.04)]);
+    return { body: M([nut, capG, stem, stemTip]), shine, leaf, sparkle };
+  },
+
+  // v3：時光晶石——金色多面晶體（六角雙錐 + 小晶簇）+ 繞著它的時鐘環（12 刻度、指針）
+  trialCrystal() {
+    const A = 0xffc93a, B = 0xffe58a, D = 0xe9a21f;
+    const facet = (x, y, z, i) => (i % 3 === 0 ? B : i % 3 === 1 ? A : D);
+    const main = M([
+      colorFaces(P(cyl(0.16, 0.16, 0.26, 6), A, null, null, [0, 0.4, 0]), facet),
+      colorFaces(P(cone(0.16, 0.24, 6), A, null, null, [0, 0.65, 0]), facet),
+      colorFaces(P(cone(0.16, 0.2, 6), A, null, [Math.PI, 0, 0], [0, 0.17, 0]), facet),
+      // 旁邊的小晶簇
+      colorFaces(P(cyl(0.055, 0.06, 0.14, 5), A, null, [0, 0, 0.5], [0.15, 0.2, 0.04]), facet),
+      colorFaces(P(cone(0.055, 0.08, 5), B, null, [0, 0, 0.5], [0.205, 0.3, 0.04]), facet),
+      colorFaces(P(cyl(0.045, 0.05, 0.1, 5), A, null, [0.2, 0, -0.55], [-0.14, 0.2, -0.03]), facet),
+      colorFaces(P(cone(0.045, 0.07, 5), B, null, [0.2, 0, -0.55], [-0.185, 0.27, -0.04]), facet),
+    ]);
+    // 時鐘環（在 XZ 平面，原點 = 晶體中心；由 createItem 傾斜放置）
+    const ringParts = [P(torus(0.36, 0.022, 4, 36), 0xffd65e, null, [Math.PI / 2, 0, 0])];
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * TAU;
+      const big = i % 3 === 0;
+      ringParts.push(P(box(big ? 0.05 : 0.03, big ? 0.05 : 0.03, big ? 0.075 : 0.045), big ? 0xffffff : 0xfff0b8,
+        null, [0, a, 0], [Math.sin(a) * 0.36, 0, Math.cos(a) * 0.36]));
+    }
+    // 12 點鐘位置的小沙漏標記
+    ringParts.push(P(cone(0.035, 0.05, 4), 0xffffff, null, [0, 0, 0], [0, 0.04, 0.36]));
+    ringParts.push(P(cone(0.035, 0.05, 4), 0xffffff, null, [Math.PI, 0, 0], [0, -0.04, 0.36]));
+    const ring = M(ringParts);
+    // 晶體表面的時鐘指針（正面），讓它一眼就是「時間」
+    const hands = M([
+      P(cyl(0.1, 0.1, 0.012, 12), 0xfff8e0, null, [Math.PI / 2, 0, 0], [0, 0.42, 0.142]),
+      P(box(0.018, 0.075, 0.012), 0x8a5a12, null, null, [0, 0.452, 0.152]),
+      P(box(0.055, 0.016, 0.012), 0x8a5a12, null, null, [0.024, 0.42, 0.152]),
+      P(sph(0.014, 6, 4), 0xff6a3d, null, null, [0, 0.42, 0.158]),
+    ]);
+    return { main, ring, hands };
+  },
 };
 
 export const ITEM_KINDS = Object.keys(ITEM_BUILD);
@@ -1072,6 +1169,39 @@ export function createItem(kind) {
       o.renderOrder = 2;
       const s = meshAt(root, G.shine, m.iceShine);
       s.renderOrder = 3;
+      break;
+    }
+    case 'goldenAcorn': {
+      // userData.halo：發光光暈（Sprite，永遠面向鏡頭），呼叫端可依時間改 opacity/scale 做呼吸效果
+      const halo = new THREE.Sprite(m.goldHalo);
+      halo.scale.set(0.95, 0.95, 1);
+      halo.position.y = 0.32;
+      halo.renderOrder = 4;
+      root.add(halo);
+      meshAt(root, G.body, m.gold);
+      meshAt(root, G.leaf, m.leaf);
+      meshAt(root, G.shine, m.sparkle);
+      const sp = meshAt(root, G.sparkle, m.sparkle);
+      root.userData.halo = halo;
+      root.userData.sparkle = sp;
+      break;
+    }
+    case 'trialCrystal': {
+      // 整個物件可以由呼叫端繞 Y 旋轉；userData.ring 是傾斜的時鐘環（子物件，也可另外轉它的 rotation.y）
+      const halo = new THREE.Sprite(m.goldHalo);
+      halo.scale.set(1.1, 1.3, 1);
+      halo.position.y = 0.42;
+      halo.renderOrder = 4;
+      root.add(halo);
+      meshAt(root, G.main, m.gold);
+      meshAt(root, G.hands, m.sparkle);
+      const tilt = new THREE.Group();
+      tilt.position.y = 0.42;
+      tilt.rotation.set(0.42, 0, -0.28);
+      root.add(tilt);
+      const ring = meshAt(tilt, G.ring, m.sparkle);
+      root.userData.halo = halo;
+      root.userData.ring = ring;
       break;
     }
     default: break;
