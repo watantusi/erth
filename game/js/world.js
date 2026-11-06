@@ -45,7 +45,7 @@ const ISLANDS = [
   { dir: dirAt(OCEAN1, 0.37, 215), r: 0.08, h: 3.8 },
   { dir: dirAt(OCEAN2, 0.15, 120), r: 0.095, h: 3.25 },
   // v2：燈塔島（平頂較寬，放燈塔、海龜與海上踏石的起點）
-  { dir: dirAt(OCEAN1, 0.42, 300), r: 0.17, h: 3.3, top: 0.55, lighthouse: true },
+  { dir: dirAt(OCEAN1, 0.42, 300), r: 0.19, h: 3.3, top: 0.6, lighthouse: true },
 ];
 ISLANDS.forEach((I) => { I.cosR = Math.cos(I.r); I.cosTop = Math.cos(I.r * (I.top || 0.3)); });
 const LIGHT_ISLAND = ISLANDS[ISLANDS.length - 1];
@@ -1538,7 +1538,7 @@ void main() {
     const ig = dirAt(POLS, 0.18, 200);
     landmarks.igloo = ig.clone();
     // v2：企鵝一家改由任務居民（企鵝媽媽）登場，這裡只留冰屋
-    iglooM = placeStatic(iglooParts(), ig, 0.3, 1.1, 0.12);
+    iglooM = placeStatic(iglooParts(), ig, 0, 1.1, 0.12, POLS.clone().sub(ig)); // 門口朝向陸地
     addObstacle(ig, 1.6);
   }
   // ---- 海洋：島上的瓶中信 ----
@@ -1667,12 +1667,12 @@ void main() {
   // ---- 草原：乾草堆 → 彈跳蘑菇 → 木桶 → 瞭望台（繞著瞭望台螺旋上升） ----
   const meadowC = buildCourse({
     id: 'meadow-lookout', biome: 'meadow', name: '乾草堆瞭望台', flag: 0xff6f91,
-    center: dirAt(START, 0.6, 58), face: START, start: [7.4, -26],
+    center: dirAt(START, 0.58, 50), face: START, start: [7.4, -26],
     steps: [
       STEP('hay', 1.0, 1.0, [4.7, -26]),
       STEP('hay', 1.0, 2.1, [4.7, 22]),
       STEP('hay', 1.05, 3.2, [4.7, 70]),
-      STEP('mushroom', 0.95, 2.4, [4.7, 118], { bounce: 17 }),
+      STEP('mushroom', 0.95, 2.6, [4.7, 118], { bounce: 17 }),
       STEP('barrel', 1.0, 4.1, [4.7, 166]),
       STEP('barrel', 1.0, 5.4, [4.7, 214]),
       STEP('tower', 1.6, 6.8, [0, 0]),
@@ -1686,7 +1686,7 @@ void main() {
     steps: [
       STEP('stump', 1.0, 1.0, [4.9, 0]),
       STEP('stump', 0.95, 2.2, [4.9, -47]),
-      STEP('mushroom', 0.95, 1.6, [4.9, -94], { bounce: 18 }),
+      STEP('mushroom', 0.95, 1.8, [4.9, -94], { bounce: 18 }),
       STEP('stump', 1.0, 3.3, [4.9, -141]),
       STEP('stump', 0.95, 4.4, [4.9, -188]),
       STEP('stump', 1.0, 5.5, [4.9, -235]),
@@ -1697,7 +1697,7 @@ void main() {
   // ---- 沙漠：砂岩方山柱，向內盤旋到大方山 ----
   const desertC = buildCourse({
     id: 'desert-mesas', biome: 'desert', name: '砂岩方山跳跳', flag: 0xf08a4b,
-    center: dirAt(DESERT, 0.45, 90), face: DESERT, start: [9.2, -30],
+    center: dirAt(DESERT, 0.53, 88), face: DESERT, start: [9.2, -30],
     steps: [
       STEP('mesa', 1.05, 1.1, [6.5, -30]),
       STEP('mesa', 1.0, 2.4, [6.1, 12]),
@@ -1741,15 +1741,15 @@ void main() {
   // ---- 海洋：從燈塔島出發的踏石 → 小海蝕柱 → 高高的海蝕柱 ----
   const oceanC = buildCourse({
     id: 'ocean-stacks', biome: 'ocean', name: '海蝕柱踏石路', flag: 0x3fa7d6,
-    center: LIGHT_ISLAND.dir, face: OCEAN1, base: SEA_LEVEL, start: [2.6, 120], heading: 120,
+    center: LIGHT_ISLAND.dir, face: OCEAN1, base: SEA_LEVEL, start: [2.9, 200], heading: 200,
     steps: [
-      STEP('stone', 0.85, 0.45, [4.6, 120]),
-      CHAIN('stone', 0.8, 0.6, 1.5, 0),
-      CHAIN('stone', 0.85, 0.8, 1.5, -25),
-      CHAIN('stack', 0.9, 2.1, 1.6, -25),
-      CHAIN('stack', 0.95, 3.4, 1.7, -30),
-      CHAIN('stack', 1.0, 4.7, 1.7, -30),
-      CHAIN('stack', 1.5, 5.9, 1.8, -25),
+      STEP('stone', 0.85, 0.45, [5.1, 200]),
+      CHAIN('stone', 0.8, 0.6, 1.75, 0),
+      CHAIN('stone', 0.85, 0.8, 1.75, 25),
+      CHAIN('stack', 0.9, 2.1, 1.8, 25),
+      CHAIN('stack', 0.95, 3.4, 1.85, 30),
+      CHAIN('stack', 1.0, 4.7, 1.9, 30),
+      CHAIN('stack', 1.5, 5.9, 1.95, 25),
     ],
     spots: [[1], [2], [4], [6, 0.55, 90]],
   });
@@ -1769,7 +1769,7 @@ void main() {
     addObstacle(lp(m, 1.75, 0.9), 0.5);
     addObstacle(lp(m, -1.75, 0.9), 0.5);
     reserve(d, 4.5);
-    questSpots.meadow = { npc: spot(lp(m, 2.4, 2.9)), home: spot(lp(m, 0, 2.5)) };
+    questSpots.meadow = { npc: spot(lp(m, -2.4, 2.9)), home: spot(lp(m, 0, 2.5)) };
   }
   // 森林：松鼠的大樹洞
   {
@@ -1779,7 +1779,7 @@ void main() {
     const m = placeStatic(hollowTreeParts(), d, 0, 1.0, 0.1, _look);
     addObstacle(d, 1.45);
     reserve(d, 4.2);
-    questSpots.forest = { npc: spot(lp(m, 0.3, 2.9)) };
+    questSpots.forest = { npc: spot(lp(m, 0.3, 3.2)) };
   }
   // 沙漠：遮陽帳篷 + 小綠洲（駱駝阿沙）
   {
@@ -1823,15 +1823,15 @@ void main() {
     placeStatic(warnSignParts(), sg, 0, 1.0, 0.05, _look);
     addObstacle(sg, 0.25);
     reserve(d, 4.0);
-    questSpots.volcano = { npc: spot(lp(m, 0, 2.6)) };
+    questSpots.volcano = { npc: spot(lp(m, 0, 2.9)) };
   }
   // 海洋：燈塔島（燈塔海龜）
   let lampGroup, lampMat, beamMat, beamPivot;
   {
     const F = oceanC.F;
-    const d = frameDir(F, ...pol(1.1, 285));
+    const d = frameDir(F, ...pol(1.4, 20));
     landmarks.lighthouse = d.clone();
-    _look.copy(frameDir(F, ...pol(2.5, 110))).sub(d);
+    _look.copy(frameDir(F, ...pol(2.5, 200))).sub(d);
     const m = placeStatic(lighthouseParts(), d, 0, 1.0, 0.1, _look);
     addObstacle(d, 1.4);
     reserve(LIGHT_ISLAND.dir, LIGHT_ISLAND.r * R);
@@ -1860,12 +1860,13 @@ void main() {
       g.rotateZ((sgn * Math.PI) / 2 + sgn * -0.06);
       return g;
     };
-    const halo = new THREE.IcosahedronGeometry(0.7, 1);
-    halo.deleteAttribute('uv');
-    const c1 = cone(1), c2 = cone(-1);
-    c1.deleteAttribute('uv'); c2.deleteAttribute('uv');
-    const beamGeo = BufferGeometryUtils.mergeGeometries([c1.toNonIndexed(), c2.toNonIndexed(), halo.toNonIndexed()], false);
-    [c1, c2, halo].forEach((g) => g.dispose());
+    const beamGeo = merge([cone(1), cone(-1), new THREE.IcosahedronGeometry(0.7, 1)].map((g) => {
+      const n = g.index ? g.toNonIndexed() : g;
+      if (n !== g) g.dispose();
+      n.deleteAttribute('uv');
+      n.deleteAttribute('normal');
+      return n;
+    }));
     beamPivot = new THREE.Mesh(beamGeo, beamMat);
     beamPivot.name = 'lighthouseBeam';
     beamPivot.position.set(0, 5.88, 0);

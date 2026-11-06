@@ -897,6 +897,7 @@ export function createPlayer({ scene, world }) {
       const { carry } = parts;
       carry.rotation.x = a.sproutX * 0.22 + Math.sin(a.phase * 2) * 0.05 * a.walk;
       carry.rotation.z = a.sproutZ * 0.3;
+      carry.rotation.y = 0.45 + a.turn * 0.2;
       carry.position.y = 0.23 + 0.38 + bobWave * 0.04 * a.walk;
     }
   }
