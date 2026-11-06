@@ -2854,7 +2854,7 @@ function createPlayer(){
 }
 function spawnClone(roleId, instant){
   const r = ROLE[roleId];
-  const s = makeStaff(roleId, makeStaffChar(r.color), CLONE_SPEED, CLONE_WORK);
+  const s = makeStaff(roleId, makeStaffChar(r.color), CLONE_SPEED*upgVal('train'), CLONE_WORK);   // 🛒 分身訓練: clone move speed
   const p = randomNear(r.home);
   s.agent.pos.set(p.x, 0, p.z);
   s.spawnFx = instant ? 0 : 1;
@@ -2948,7 +2948,7 @@ function useTick(s, dt){
       if (d < bd && (d < 0.9 || (dx*f.x + dz*f.z)/d > 0.35)){ bd = d; tgt = sl; }
     }
     sprayFx(s, dt);
-    if (tgt){ tgt.fire.hp -= dt*1.1*s.work; if (tgt.fire.hp <= 0) extinguish(tgt); return tgt.fire ? 1 - tgt.fire.hp : null; }
+    if (tgt){ tgt.fire.hp -= dt*1.1*s.work; if (tgt.fire.hp <= 0){ extinguish(tgt); metaEvent('extinguish', s); } return tgt.fire ? 1 - tgt.fire.hp : null; }
     return null;
   }
   if (s.hold) return null;
@@ -2960,14 +2960,14 @@ function useTick(s, dt){
     return sl.item.chop/2.5;
   }
   if (sl && sl.broken){
-    sl.fix += dt*s.work;
-    if (sl.fix >= 2){ sl.broken = 0; sl.fix = 0; SFX.ok(s); floatText(sl.x, 1.8, sl.z, '修好了！', 'good txt'); return null; }
+    sl.fix += dt*s.work*upgVal('tools');   // 🛒 專業工具箱
+    if (sl.fix >= 2){ sl.broken = 0; sl.fix = 0; metaEvent('fix', s); SFX.ok(s); floatText(sl.x, 1.8, sl.z, '修好了！', 'good txt'); return null; }
     return sl.fix/2;
   }
   for (const sp of spills){
     if (Math.hypot(sp.x-p.x, sp.z-p.z) < 1.0){
-      sp.prog += dt*s.work;
-      if (sp.prog >= 1.2){ removeSpill(sp); sfxAs(s, SFX.clean); floatText(p.x, 2.2, p.z, '拖乾了', 'good txt'); return null; }
+      sp.prog += dt*s.work*upgVal('tools');   // 🛒 專業工具箱
+      if (sp.prog >= 1.2){ removeSpill(sp); metaEvent('mop', s); sfxAs(s, SFX.clean); floatText(p.x, 2.2, p.z, '拖乾了', 'good txt'); return null; }
       return sp.prog/1.2;
     }
   }
@@ -3094,7 +3094,7 @@ function completeOrder(o, s){
   const oldest = orders.reduce((m, x) => (!m || x.id < m.id) ? x : m, null);
   G.combo = (oldest === o) ? Math.min(4, G.combo + 1) : 1;
   const left = clamp(1 - o.t/o.limit, 0, 1);
-  const tipAmt = Math.round(pts*0.6*left) * Math.max(1, G.combo - 1);
+  const tipAmt = Math.round(pts*0.6*left*upgVal('tray')) * Math.max(1, G.combo - 1);   // 🛒 大托盤: tip bonus
   const total = pts + tipAmt;
   const i = orders.indexOf(o); orders.splice(i,1);
   if (o.claim && o.claim.ai) o.claim.ai.claim = null;
@@ -3102,6 +3102,7 @@ function completeOrder(o, s){
     addMoney(total);
     G.stats.delivered++; G.stats.base += pts; G.stats.tips += tipAmt; G.stats.maxCombo = Math.max(G.stats.maxCombo, G.combo);
     G.stats.byRec[o.rec] = (G.stats.byRec[o.rec]||0) + 1;
+    metaEvent('deliver', o, s);   // 🏆 lifetime stats / achievements
     if (o.vip) G.stats.vip++;
     if (o.qty > 1) G.stats.bulk++;
     floatText(SLOT.pass.x, 2.2, SLOT.pass.z, (o.vip ? '👑 ' : '') + '+' + fmt(total) + (G.combo > 1 ? ' ×' + (G.combo-1) + ' 小費' : ''));
@@ -3122,6 +3123,7 @@ function failOrder(o){
     const pen = o.tut ? 0 : Math.round(R.pts*0.5*(o.vip ? 1.6 : 1)*(o.qty > 1 ? 1.5 : 1));   // tutorial tickets never cost points
     addMoney(-pen); G.stats.failed++; G.stats.penalty += pen; G.fails++;
     if (o.vip) G.stats.vipMiss++;
+    metaEvent('fail', o);   // 🏆 lifetime stats
     floatText(o.cust ? o.cust.agent.pos.x : CHECKOUT_SPOT.x, 2.4, o.cust ? o.cust.agent.pos.z : CHECKOUT_SPOT.z, (pen ? '-' + fmt(pen) + ' ' : '') + '等太久了', 'bad txt');
     SFX.fail(); camShakeAdd(0.2); juiceFail();
     ticketDone(o, false);
@@ -3212,7 +3214,7 @@ function aiUpdate(s, dt){
   ai.t = (ai.t || 0) + dt;
   if (ai.t > 22){ aiReset(s); return; }
   const [op, ref, want] = step;
-  const next = () => { ai.i++; ai.t = 0; ai.pause = CLONE_THINK; if (ai.i >= ai.plan.length){ ai.plan = null; if (ai.claim){ ai.claim.claim = null; ai.claim = null; } } };
+  const next = () => { ai.i++; ai.t = 0; ai.pause = CLONE_THINK*upgVal('train', 'think'); if (ai.i >= ai.plan.length){ ai.plan = null; if (ai.claim){ ai.claim.claim = null; ai.claim = null; } } };
   s.prog = null;
   if (op === 'mop'){
     const sp = ref; if (spills.indexOf(sp) < 0){ next(); return; }
@@ -3499,6 +3501,7 @@ function updatePlayerSlot(k, dt){
   const len = Math.hypot(ix,iz);
   let manual = false;
   a.speed = (s === owner || s.coopPartner) ? 4.4 : 3.4;
+  if (s === owner || s.coopPartner) a.speed *= upgVal('shoes');   // 🛒 跑鞋 upgrade
   if (s.slipCD > 0) s.slipCD -= dt;
   if (s.slip){
     // sliding on a wet floor: momentum carries you, input is ignored
@@ -3521,8 +3524,8 @@ function updatePlayerSlot(k, dt){
       }
     }
     a.rot = Math.atan2(nx,nz); manual = true;
-    if (!(s.slipCD > 0) && m > 0.5 && onSpill(s)){
-      s.slip = {vx:nx*a.speed*1.1, vz:nz*a.speed*1.1, t:0.55};
+    if (!(s.slipCD > 0) && m > 0.5 && onSpill(s) && upgVal('mat') > 0){   // 🛒 防滑地墊 Lv2: no slipping
+      s.slip = {vx:nx*a.speed*1.1, vz:nz*a.speed*1.1, t:0.55*upgVal('mat')};   // 🛒 防滑地墊 Lv1: half the slide
       floatText(a.pos.x, 2.3, a.pos.z, '滑～！', 'bad txt'); SFX.slip(); camShakeAdd(0.12); squash(s, 0.22); haptic(15);
     }
   } else if (a.path.length && onSpill(s)) a.speed *= 0.6;
@@ -4399,6 +4402,7 @@ function showLevels(){
     list.appendChild(h);
     for (const i of g.idx) list.appendChild(levelCard(i));
   }
+  metaMenu();   // 🛒📅🏆📊 nav row; leaving a daily run
   showScreen('levels');
 }
 function levelCard(i){
@@ -4560,7 +4564,9 @@ function clearWorld(){
 function setupWorld(i, team, demo){
   clearWorld();
   G.demo = demo; G.lv = i; G.level = demo ? DEMO_LEVEL : effLevel(LEVELS[i]);
+  if (!demo) G.level = metaLevel(G.level, i);   // 📅 daily challenge: today's modifiers
   applyDiffToMachines(demo ? 1 : DIFF(G.level.diff).burn);
+  metaMachines(demo);   // 🛒 保溫燈 / 快速咖啡機 upgrades + 📅 daily burn modifier on the machine timers
   applyTheme(demo ? 'default' : (G.level.theme || (CHAPTER(G.level.ch) || {}).theme || 'default'));
   const L = G.level;
   G.time = 0; G.money = 0; G.combo = 1; G.fails = 0; G.spawnT = 1; G.gapT = 0; G.stats = newStats();
@@ -4585,6 +4591,7 @@ function startLevel(i, team){
   if (i === 0) showHint(isTouch ? '左手拖曳走路，右下角 ✋ 拿起／放下。把點單上的東西送到黃色的「出餐」台！' : 'WASD 走路，空白鍵拿起／放下。把點單上的東西送到黃色的「出餐」台！');
   if (team.length && !LEVELS[i].script) tip('swap', (isTouch ? '按 🔄' : '按 Q 或 Tab') + ' 可以換成操作分身，其他人會繼續自己工作。');
   showLevelIntro(LEVELS[i], i);
+  metaStartLevel(i, team);   // 📅 daily intro card, team size for achievements
   _hc.r = null;   // refresh the "/next star" target for this level's thresholds
 }
 function bigMsg(text, zh){
@@ -4608,6 +4615,7 @@ function endLevel(){
   for (const s of staff) s.agent.path.length = 0;
 }
 function showResults(){
+  if (dailyOn()) return showDailyResults();   // 📅 daily runs keep their own best (not the base level's)
   hud.big.innerHTML = '';
   G.state = 'results';
   const L = G.level, S = G.stats, score = Math.max(0, Math.round(G.money));
@@ -4643,6 +4651,7 @@ function showResults(){
   showScreen('results');
   const starsAfter = totalStars(), newRoles = ROLES.filter(r => r.need > starsBefore && r.need <= starsAfter);
   if (newRoles.length) setTimeout(() => toast(newRoles.map(r => r.icon + ' ' + r.name).join('、') + ' 解鎖了！', 'good'), 400);
+  metaResults(stars, score, coins);   // 🏆 lifetime stats, achievements, wallet row
 }
 // one line of advice on the receipt: the most useful thing to fix next time
 function coachLine(L, S, stars){
@@ -4661,9 +4670,731 @@ function backToTitle(){
   G.state = 'title'; showScreen('title');
 }
 
+/* =====================================================================
+   PROGRESSION / META — 商店（設備升級＋服裝）、成就、每日挑戰、統計
+   Everything here is new UI + bookkeeping. Gameplay reads the upgrades through
+   one-line hooks marked "🛒" (upgVal) and the daily rules through metaLevel()/metaMachines()
+   in setupWorld; events come in through metaEvent()/metaTick(). Content (LEVELS, CHAPTERS,
+   RECIPES, ROLES, COSMETICS) is read at run time so new levels / cosmetics show up by themselves.
+   Saved fields (saveProgress): life (lifetime stats), upg (upgrade tiers), daily (best per day,
+   streak); achievements go into the existing G.ach {id: time earned}.
+   ===================================================================== */
+const META = {back:'title', daily:null, now:null, teamN:0, saveT:0, tab:'upg', wrRole:'owner', newAch:[], arm:null, armT:0};
+function newLife(){ return {delivered:0, byRec:{}, cloneDelivered:0, failed:0, maxCombo:1, combo4:0, vip:0, bulk:0, fires:0, extinguished:0, sprinkled:0, burnt:0,
+  fixed:0, mopped:0, swaps:0, playTime:0, shifts:0, star3:0, nofail:0, perfect:0, bigTeam:0, endlessTime:0, endlessScore:0, rush:0, coinsEarned:0, coinsSpent:0}; }
+function newDaily(){ return {best:{}, last:'', streak:0, bestStreak:0, days:0}; }
+G.life = newLife(); G.upg = {}; G.daily = newDaily();
+const metaNum = v => (typeof v === 'number' && isFinite(v) && v >= 0) ? v : 0;
+// loadProgress hook: every field is optional and checked, so v1/v2 saves without them load as before
+function metaLoad(d){
+  if (!d || typeof d !== 'object') return;
+  if (!G.ach || typeof G.ach !== 'object' || Array.isArray(G.ach)) G.ach = {};
+  if (d.life && typeof d.life === 'object'){
+    const Lf = newLife();
+    for (const k in Lf){
+      if (k === 'byRec'){ const b = d.life.byRec; if (b && typeof b === 'object') for (const r in b) Lf.byRec[r] = Math.floor(metaNum(b[r])); }
+      else Lf[k] = metaNum(d.life[k]);
+    }
+    Lf.maxCombo = Math.max(1, Lf.maxCombo);
+    G.life = Lf;
+  }
+  if (d.upg && typeof d.upg === 'object'){ G.upg = {}; for (const U of UPGRADES){ const v = Math.floor(metaNum(d.upg[U.id])); if (v) G.upg[U.id] = Math.min(v, U.tiers.length); } }
+  if (d.daily && typeof d.daily === 'object'){
+    const D = newDaily(), s = d.daily;
+    if (s.best && typeof s.best === 'object') for (const k in s.best) if (/^\d{4}-\d{2}-\d{2}$/.test(k)) D.best[k] = metaNum(s.best[k]);
+    if (typeof s.last === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.last)) D.last = s.last;
+    D.streak = Math.floor(metaNum(s.streak)); D.bestStreak = Math.max(D.streak, Math.floor(metaNum(s.bestStreak))); D.days = Math.floor(metaNum(s.days));
+    G.daily = D;
+  }
+}
+
+/* ---------- 設備升級: tiers[k] = {price, v, …}; def = value with no upgrade bought. Read with upgVal(id, key) ---------- */
+const UPGRADES = [
+  {id:'shoes',     n:'跑鞋',       ic:'👟', desc:'老闆走路更快。',                     def:{v:1},          tiers:[{price:180, v:1.08}, {price:520, v:1.16}, {price:1100, v:1.25}],
+   fx:t => '老闆走路速度 +' + Math.round((t.v-1)*100) + '%'},
+  {id:'train',     n:'分身訓練',   ic:'🏋️', desc:'AI 分身走得更快，做完一步後發呆的時間更短。', def:{v:1, think:1}, tiers:[{price:240, v:1.1, think:0.8}, {price:650, v:1.2, think:0.6}, {price:1300, v:1.3, think:0.4}],
+   fx:t => '分身速度 +' + Math.round((t.v-1)*100) + '%・發呆 −' + Math.round((1-t.think)*100) + '%'},
+  {id:'lamp',      n:'保溫燈',     ic:'💡', desc:'做好的東西留在機器上更久才會燒焦、起火。', def:{v:1},          tiers:[{price:200, v:1.3}, {price:560, v:1.6}, {price:1150, v:2}],
+   fx:t => '燒焦／起火時間 ×' + t.v},
+  {id:'sprinkler', n:'自動灑水器', ic:'🚿', desc:'起火燒一陣子後會自己熄掉。',          def:{v:0},          tiers:[{price:320, v:12}, {price:800, v:7}, {price:1500, v:4}],
+   fx:t => t.v ? '火燒 ' + t.v + ' 秒自動熄滅' : '沒有灑水器'},
+  {id:'coffee',    n:'快速咖啡機', ic:'☕', desc:'咖啡機和熱水機更快做好。',            def:{v:1},          tiers:[{price:160, v:0.75}, {price:480, v:0.55}],
+   fx:t => '咖啡／熱水時間 −' + Math.round((1-t.v)*100) + '%'},
+  {id:'tray',      n:'大托盤',     ic:'🍽️', desc:'客人給的小費變多。',                  def:{v:1},          tiers:[{price:260, v:1.15}, {price:700, v:1.3}, {price:1400, v:1.5}],
+   fx:t => '小費 +' + Math.round((t.v-1)*100) + '%'},
+  {id:'mat',       n:'防滑地墊',   ic:'🧽', desc:'踩到水漬不容易滑倒。',                def:{v:1},          tiers:[{price:150, v:0.5}, {price:450, v:0}],
+   fx:t => t.v >= 1 ? '踩到水漬會滑一大段' : t.v > 0 ? '滑行距離減半' : '完全不會滑倒'},
+  {id:'tools',     n:'專業工具箱', ic:'🧰', desc:'拖地、修理跳電機器更快。',            def:{v:1},          tiers:[{price:180, v:1.5}, {price:520, v:2.2}],
+   fx:t => '拖地／修理速度 ×' + t.v},
+];
+const UPG = Object.fromEntries(UPGRADES.map(u => [u.id, u]));
+function upgLevel(id){ const U = UPG[id]; return U ? clamp((G.upg && G.upg[id]) | 0, 0, U.tiers.length) : 0; }
+function upgTier(id, lvl){ const U = UPG[id]; return lvl > 0 ? Object.assign({}, U.def, U.tiers[lvl-1]) : U.def; }
+function upgVal(id, key){ const U = UPG[id]; if (!U) return 1; const v = upgTier(id, upgLevel(id))[key || 'v']; return v === undefined ? 1 : v; }
+// setupWorld hook: re-derive machine timers from their base values (idempotent): difficulty × 保溫燈 × daily 🔥, and 快速咖啡機
+function metaMachines(demo){
+  const k = demo ? 1 : DIFF(G.level.diff).burn*upgVal('lamp')*(G.level.burnMul || 1);
+  for (const id in APPL){
+    const a = APPL[id];
+    if (a._fire) a.fire = a._fire*k;
+    for (const t in a.ins){
+      const r = a.ins[t];
+      if (r._burn) r.burn = r._burn*k;
+      if (!('_t' in r)) r._t = r.t;
+      r.t = r._t*(!demo && (id === 'coffee' || id === 'hotwater') ? upgVal('coffee') : 1);
+    }
+  }
+}
+function buyUpgrade(id){
+  const U = UPG[id], lvl = upgLevel(id), T = U && U.tiers[lvl];
+  if (!T || G.coins < T.price) return false;
+  G.coins -= T.price; G.life.coinsSpent += T.price; G.upg[id] = lvl + 1;
+  saveProgress(); metaCheck();
+  return true;
+}
+
+/* ---------- 服裝: buy from COSMETICS (read at run time), equip per role in G.equip ---------- */
+const SLOT_NAMES = {hat:'🎩 頭上', face:'👓 臉上', back:'🎒 背後'};
+function cosSlots(){ const out = ['hat','face','back'].filter(s => COSMETICS.some(c => c.slot === s)); for (const c of COSMETICS) if (!out.includes(c.slot)) out.push(c.slot); return out; }
+function wardrobeRoles(){ return [{id:'owner', name:'老闆（你）', icon:'🧑‍💼', css:'#ffcf3a', open:true}].concat(ROLES.map(r => ({id:r.id, name:r.name, icon:r.icon, css:r.css, open:roleUnlocked(r), need:r.need}))); }
+function buyCosmetic(id){
+  const c = COSMETIC(id); if (!c || G.owned.has(id) || G.coins < (c.price || 0)) return false;
+  G.coins -= c.price || 0; G.life.coinsSpent += c.price || 0; G.owned.add(id);
+  saveProgress(); metaCheck();
+  return true;
+}
+function equipCosmetic(roleId, id){   // id null → take off whatever is in that slot (pass the slot via id = 'slot:<name>')
+  const c = id && COSMETIC(id);
+  if (c && !G.owned.has(id)) return false;
+  const e = G.equip[roleId] || (G.equip[roleId] = {});
+  if (c){ if (e[c.slot] === id) delete e[c.slot]; else e[c.slot] = id; }
+  else if (id && id.startsWith('slot:')) delete e[id.slice(5)];
+  for (const s of staff) if (s.role === roleId || (roleId === 'owner' && s === owner)) applyCosmetics(s);
+  if (WR.chars[roleId]) applyCosmetics({role:roleId, ch:WR.chars[roleId]});
+  saveProgress(); metaCheck();
+  return true;
+}
+
+/* ---------- lifetime stats + event hooks ---------- */
+function metaEvent(type, o, s){
+  if (G.demo) return;
+  const Lf = G.life;
+  if (type === 'deliver'){
+    Lf.delivered++; Lf.byRec[o.rec] = (Lf.byRec[o.rec] || 0) + 1;
+    if (s && s !== owner) Lf.cloneDelivered++;
+    if (o.vip) Lf.vip++;
+    if (o.qty > 1) Lf.bulk++;
+    Lf.maxCombo = Math.max(Lf.maxCombo, G.combo); if (G.combo >= 4) Lf.combo4++;
+  }
+  else if (type === 'fail') Lf.failed++;
+  else if (type === 'extinguish') Lf.extinguished++;
+  else if (type === 'sprinkler') Lf.sprinkled++;
+  else if (type === 'fix') Lf.fixed++;
+  else if (type === 'mop') Lf.mopped++;
+  else if (type === 'swap') Lf.swaps++;
+  metaCheck();
+}
+function metaTick(dt){
+  G.life.playTime += dt;
+  META.saveT += dt;
+  if (META.saveT > 30){ META.saveT = 0; metaCheck(); saveProgress(); }
+}
+// startLevel hook
+function metaStartLevel(i, team){
+  META.teamN = team ? team.length : 0;
+  META.newAch = [];
+  if (META.daily && dz.intro){ showLevelIntro(G.level, i); const no = dz.intro.querySelector('.no'); if (no) no.textContent = 'DAILY ' + META.daily.key; }
+}
+// end of a shift (normal or daily): fold this shift's stats into the lifetime ones
+function metaShiftEnd(L, S, score, stars, coins){
+  const Lf = G.life;
+  Lf.shifts++; Lf.fires += S.fires || 0; Lf.burnt += S.burnt || 0; Lf.rush += S.rushDone || 0; Lf.coinsEarned += coins;
+  if (META.teamN >= 3) Lf.bigTeam++;
+  if (L.endless){ Lf.endlessTime = Math.max(Lf.endlessTime, G.time); Lf.endlessScore = Math.max(Lf.endlessScore, score); }
+  else {
+    if (stars >= 1 && !S.failed) Lf.nofail++;
+    if (stars === 3) Lf.star3++;
+    if (stars === 3 && !S.failed && !S.burnt && !S.fires) Lf.perfect++;
+  }
+  metaCheck();
+}
+// showResults hook (normal levels)
+function metaResults(stars, score, coins){
+  metaShiftEnd(G.level, G.stats, score, stars, coins);
+  saveProgress();
+  renderResWallet(coins);
+}
+
+/* ---------- achievements ---------- */
+let ACHS = null;
+function crownCount(){ let n = 0; for (const k in G.best) if (G.best[k] && G.best[k].crown) n++; return n; }
+function achList(){
+  if (ACHS) return ACHS;
+  const Lf = () => G.life, A = [];
+  const add = (id, ic, n, d, goal, coin, v) => A.push({id, ic, n, d, goal, coin, v});
+  add('first',   '🛎️', '第一位客人',   '送出第 1 份餐點',                 1,    20,  () => Lf().delivered);
+  add('d50',     '🧾', '熟客越來越多', '累計送出 50 份餐點',              50,   50,  () => Lf().delivered);
+  add('d250',    '📈', '人氣小店',     '累計送出 250 份餐點',             250,  120, () => Lf().delivered);
+  add('d1000',   '🏆', '千份達人',     '累計送出 1000 份餐點',            1000, 300, () => Lf().delivered);
+  add('menu',    '📖', '全菜單制霸',   '每一種餐點都送出過',              Object.keys(RECIPES).length, 80, () => Object.keys(RECIPES).filter(k => Lf().byRec[k] > 0).length);
+  add('combo4',  '⚡', '連擊大師',     '連擊達到 ×4',                     1,    60,  () => Lf().combo4);
+  add('combo25', '🔗', '連擊機器',     '累計 25 次在 ×4 連擊時出餐',      25,   120, () => Lf().combo4);
+  add('star3',   '⭐', '完美的一天',   '任一關拿到 ★★★',                 1,    60,  () => Math.max(Lf().star3, Object.values(G.best).filter(x => x && x.stars >= 3).length));
+  add('stars10', '🌟', '星光店長',     '總共拿到 10 顆星',                10,   60,  () => totalStars());
+  add('stars25', '✨', '滿天星',       '總共拿到 25 顆星',                25,   150, () => totalStars());
+  for (const C of CHAPTERS){
+    const lv = () => LEVELS.filter(L => L.ch === C.id && !L.endless);
+    add('ch' + C.id, C.ic || '🏪', C.n.replace(/^.*?[　\s]/, '') + '全滿星', C.n.replace(/[　\s].*$/, '') + '每一關都 ★★★', Math.max(1, lv().length), 150 + 50*CHAPTERS.indexOf(C),
+      () => lv().filter(L => (G.best[L.id] || {}).stars >= 3).length);
+  }
+  add('hard3',   '👑', '皇冠到手',     '在「挑戰」難度拿到 ★★★',          1,    100, () => crownCount());
+  add('crown5',  '💎', '皇冠收藏家',   '拿到 5 頂皇冠',                   5,    250, () => crownCount());
+  add('nofail',  '🎯', '零客訴',       '一關裡沒有任何一張單逾時（至少 ★）', 1,  50,  () => Lf().nofail);
+  add('perfect', '💯', '無懈可擊',     '★★★，而且沒有逾時、燒焦、起火',   1,    120, () => Lf().perfect);
+  add('ext1',    '🧯', '第一次滅火',   '用滅火器撲滅一場火',              1,    20,  () => Lf().extinguished);
+  add('ext10',   '🚒', '消防隊長',     '用滅火器撲滅 10 場火',            10,   60,  () => Lf().extinguished);
+  add('fix10',   '🔧', '水電師傅',     '修好 10 台跳電的機器',            10,   50,  () => Lf().fixed);
+  add('mop20',   '🧹', '地板亮晶晶',   '拖乾 20 攤水漬',                  20,   50,  () => Lf().mopped);
+  add('vip20',   '🎩', '貴賓服務',     '服務 20 位 👑 VIP',               20,   60,  () => Lf().vip);
+  add('bulk20',  '📦', '團購之王',     '完成 20 張團購單',                20,   60,  () => Lf().bulk);
+  add('clones',  '👥', '分身全員到齊', '解鎖全部 AI 分身',                ROLES.length, 100, () => ROLES.filter(r => roleUnlocked(r)).length);
+  add('team3',   '🤝', '大家一起上班', '帶 3 個以上分身上場',             1,    40,  () => Lf().bigTeam);
+  add('clone200','🤖', '分身好幫手',   '分身們累計送出 200 份餐點',       200,  80,  () => Lf().cloneDelivered);
+  add('swap50',  '🔄', '分身切換術',   '換人操作 50 次',                  50,   40,  () => Lf().swaps);
+  add('endless', '🌙', '通宵營業',     '無限營業撐過 10 分鐘',            10,   150, () => Math.floor(Lf().endlessTime/60));
+  add('daily1',  '📅', '每日報到',     '完成第一次每日挑戰',              1,    30,  () => G.daily.days);
+  add('daily10', '🗓️', '十日店長',     '玩 10 天每日挑戰',                10,   150, () => G.daily.days);
+  add('streak7', '🔥', '一週全勤',     '每日挑戰連續 7 天',               7,    200, () => G.daily.bestStreak);
+  add('shop1',   '🛒', '第一筆投資',   '買下第一個設備升級',              1,    20,  () => UPGRADES.reduce((t, U) => t + upgLevel(U.id), 0));
+  add('maxed',   '🏗️', '頂級設備',     '把任一項升級買到滿級',            1,    80,  () => UPGRADES.filter(U => upgLevel(U.id) >= U.tiers.length).length);
+  add('fashion5','👗', '時尚分身',     '擁有 5 件服裝',                   5,    60,  () => G.owned.size);
+  add('dressall','🎭', '全員換裝',     '老闆和每個分身都穿戴了服裝',      1 + ROLES.length, 80, () => ['owner'].concat(ROLES.map(r => r.id)).filter(id => G.equip[id] && Object.values(G.equip[id]).some(Boolean)).length);
+  add('shifts25','🗂️', '資深店長',     '營業 25 個班次',                  25,   80,  () => Lf().shifts);
+  add('hour1',   '⏰', '認真上班',     '累計營業 60 分鐘',                60,   100, () => Math.floor(Lf().playTime/60));
+  add('rich',    '💰', '小富翁',       '累計賺到 5000 金幣',              5000, 150, () => Lf().coinsEarned);
+  return ACHS = A;
+}
+function achProgress(a){ let v = 0; try { v = a.v() || 0; } catch(e){} return Math.min(a.goal, v); }
+function metaCheck(){
+  let got = 0;
+  for (const a of achList()){
+    if (G.ach[a.id]) continue;
+    if (achProgress(a) < a.goal) continue;
+    G.ach[a.id] = Date.now(); G.coins += a.coin; got++;
+    META.newAch.push(a.id);
+    achPopup(a);
+  }
+  if (got) saveProgress();
+  return got;
+}
+const achQ = [];
+function achPopup(a){
+  achQ.push(a);
+  if (achQ.length === 1) achShowNext();
+}
+function achShowNext(){
+  const a = achQ[0]; if (!a) return;
+  const box = $('#achPop'); if (!box){ achQ.length = 0; return; }
+  const d = document.createElement('div'); d.className = 'achp';
+  d.innerHTML = `<span class="ai"></span><span class="at"><small>🏆 成就解鎖！</small><b></b></span><span class="ac"></span>`;
+  d.querySelector('.ai').textContent = a.ic; d.querySelector('b').textContent = a.n; d.querySelector('.ac').textContent = '💰+' + a.coin;
+  box.appendChild(d);
+  try { fanfare(); } catch(e){}
+  setTimeout(() => { d.remove(); achQ.shift(); achShowNext(); }, achQ.length > 3 ? 1400 : 3000);
+}
+
+/* ---------- 每日挑戰: date-seeded level + 1–2 gameplay modifiers ---------- */
+function metaHash(s){ let h = 2166136261; for (let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+function metaRng(a){ return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function metaDate(){ return META.now ? new Date(META.now) : new Date(); }
+function dayKey(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+function todayKey(){ return dayKey(metaDate()); }
+function shiftKey(key, n){ const [y,m,d] = key.split('-').map(Number); return dayKey(new Date(y, m-1, d + n)); }
+const avgPts = rec => rec.reduce((t, r) => t + RECIPES[r].pts, 0)/Math.max(1, rec.length);
+// apply(L, m) edits a copy of the level; star = factor for the ★ thresholds; x = modifiers it never pairs with
+const DAILY_MODS = [
+  {id:'only',   ic:'🎯', n:m => '只有' + RECIPES[m.rec].n, d:m => '今天客人只點' + RECIPES[m.rec].ic + RECIPES[m.rec].n + '。',
+   apply(L, m){ L.rec = [m.rec]; if (L.bulk) L.bulk = Object.assign({}, L.bulk, {rec:[m.rec]}); }, star:(L, m, B) => clamp(RECIPES[m.rec].pts/avgPts(B.rec), 0.5, 1.6)},
+  {id:'burn',   ic:'🔥', n:() => '全部燒得快', d:() => '機器上做好的東西燒焦、起火都快了 40%。', apply(L){ L.burnMul = 0.6; }, star:() => 0.9},
+  {id:'crowd',  ic:'😌', n:() => '客人超有耐心但兩倍多', d:() => '點單時間多 80%，可是客人來得快一倍，同時最多多 2 張單。',
+   apply(L){ L.timeMul = (L.timeMul || 1)*1.8; L.every = L.every.map(x => x*0.5); L.max += 2; }, star:() => 1.35, x:['quick','rush']},
+  {id:'quick',  ic:'⏩', n:() => '急性子的客人', d:() => '每張點單的時間只有平常的 75%。', apply(L){ L.timeMul = (L.timeMul || 1)*0.75; }, star:() => 0.85, x:['crowd']},
+  {id:'vip',    ic:'👑', n:() => 'VIP 之夜', d:() => '三分之一的客人是 VIP：分數兩倍、時間六成。', apply(L){ L.vip = 0.35; }, star:() => 1.15},
+  {id:'bulk',   ic:'🧾', n:() => '團購日', d:() => '每種餐點都可能來一次要 2 份的團購單。', apply(L){ L.bulk = {p:0.35, rec:L.rec.slice()}; }, star:() => 1.2},
+  {id:'rain',   ic:'☔', n:() => '午後雷陣雨', d:() => '每 30 秒左右一群客人帶著濕雨傘進來，地上一次濕三攤。', apply(L){ L.rain = {every:32, n:3}; L.spills = Math.max(L.spills || 0, 0.6); }, star:() => 0.9},
+  {id:'outage', ic:'⚡', n:() => '電壓不穩', d:() => '大約每 30 秒就有一台機器跳電。', apply(L){ L.outage = 32; }, star:() => 0.9},
+  {id:'rush',   ic:'📣', n:() => '整點尖峰', d:() => '每 60 秒來一波 22 秒的尖峰，客人特別多。', apply(L){ L.rush = [{every:60, len:22, k:0.5, add:1, ic:'📣', name:'整點尖峰'}]; }, star:() => 1.15, x:['crowd']},
+];
+const DAILY_MOD = Object.fromEntries(DAILY_MODS.map(m => [m.id, m]));
+function dailyDef(key){
+  const rng = metaRng(metaHash('clonemart-daily|' + key));
+  const pool = []; LEVELS.forEach((L, i) => { if (!L.endless && !L.script) pool.push(i); });
+  if (!pool.length) LEVELS.forEach((L, i) => { if (!L.endless) pool.push(i); });
+  const lv = pool[Math.floor(rng()*pool.length)], base = LEVELS[lv];
+  const n = rng() < 0.45 ? 1 : 2, mods = [];
+  for (let guard = 0; mods.length < n && guard < 60; guard++){
+    const M = DAILY_MODS[Math.floor(rng()*DAILY_MODS.length)];
+    if (mods.some(m => m.id === M.id || (M.x || []).includes(m.id) || (DAILY_MOD[m.id].x || []).includes(M.id))) continue;
+    const m = {id:M.id};
+    if (M.id === 'only'){ const recs = base.rec.filter(r => RECIPES[r]); if (recs.length < 2) continue; m.rec = recs[Math.floor(rng()*recs.length)]; }
+    mods.push(m);
+  }
+  mods.sort((a, b) => (b.id === 'only') - (a.id === 'only'));   // 只有… first, so 團購日 uses the narrowed menu
+  return {key, lv, lvId:base.id, mods};
+}
+function dailyModText(m){ const M = DAILY_MOD[m.id]; return M.ic + ' ' + M.n(m); }
+function dailyLevel(effL, def){
+  const L = Object.assign({}, effL, {every:effL.every.slice(), rec:effL.rec.slice(), daily:def.key});
+  delete L.script;
+  let k = 1;
+  for (const m of def.mods){ const M = DAILY_MOD[m.id]; M.apply(L, m); k *= M.star(L, m, effL); }
+  L.stars = effL.stars.map(t => Math.max(10, Math.round(t*k/10)*10));
+  L.n = '每日挑戰 · ' + effL.n;
+  L.tw = '📅 每日挑戰';
+  L.twist = '📅 ' + def.mods.map(dailyModText).join('＋');
+  L.desc = def.mods.map(m => DAILY_MOD[m.id].d(m)).join(' ');
+  return L;
+}
+// setupWorld hook: while today's challenge is running, the level gets its modifiers
+function metaLevel(effL, i){ return (META.daily && META.daily.lv === i) ? dailyLevel(effL, META.daily) : effL; }
+function dailyOn(){ return !!(META.daily && G.level && G.level.daily); }
+function dailyOpen(){ return totalStars() >= 1; }
+function dailyStreakNow(){ const D = G.daily; return (D.last === todayKey() || D.last === shiftKey(todayKey(), -1)) ? D.streak : 0; }
+function dailyBonus(streak){ return 40 + 10*Math.min(6, Math.max(0, streak - 1)); }
+function startDaily(){
+  if (!dailyOpen()) return;
+  const def = dailyDef(todayKey());
+  META.daily = def; $('#hud').hidden = true;
+  showPrep(def.lv);
+  const L = dailyLevel(effLevel(LEVELS[def.lv]), def);
+  $('#prepTitle').textContent = '📅 每日挑戰 · ' + def.key.slice(5).replace('-', '/');
+  $('#prepDesc').textContent = LEVELS[def.lv].n + '　' + DIFF(L.diff).ic + DIFF(L.diff).n + '　營業 ' + mmss(L.len) + '，★ ' + L.stars[0] + ' / ★★ ' + L.stars[1] + ' / ★★★ ' + L.stars[2];
+  const tw = $('#prepTwist'); if (tw){ tw.textContent = L.twist + '　' + L.desc; tw.hidden = false; }
+  const rl = $('#prepRec'); if (rl) [...rl.children].forEach((el, k) => { const r = LEVELS[def.lv].rec[k]; if (r && !L.rec.includes(r)) el.remove(); });
+  prepTeam = defaultTeam(L); renderPrepTeam();
+}
+function showDailyResults(){
+  hud.big.innerHTML = '';
+  G.state = 'results';
+  const L = G.level, S = G.stats, score = Math.max(0, Math.round(G.money)), stars = starsFor(score, L.stars), D = G.daily, key = META.daily.key;
+  const first = !(key in D.best), prev = D.best[key] || 0;
+  D.best[key] = Math.max(prev, score);
+  const keys = Object.keys(D.best).sort(); while (keys.length > 60) delete D.best[keys.shift()];
+  let bonus = 0;
+  if (first){
+    D.days++;
+    D.streak = D.last === shiftKey(key, -1) ? D.streak + 1 : 1;
+    D.last = key; D.bestStreak = Math.max(D.bestStreak, D.streak);
+    bonus = dailyBonus(D.streak);
+  }
+  const coins = Math.max(0, Math.round(score/10*DIFF(L.diff).coin)) + bonus; G.coins += coins; G.stats.coins = coins;
+  metaShiftEnd(L, S, score, stars, coins);
+  saveProgress();
+  const row = (a,b,cls) => `<div class="r ${cls||''}"><span>${a}</span><span>${b}</span></div>`;
+  $('#resTitle').textContent = '📅 每日挑戰 ' + key + ' · ' + LEVELS[G.lv].n + ' · ' + DIFF(L.diff).ic + DIFF(L.diff).n;
+  $('#resStars').innerHTML = '★'.repeat(stars) + '<i>' + '★'.repeat(3 - stars) + '</i>'; juiceStars(stars);
+  $('#resBest').hidden = !(score > prev) || score === 0;
+  const recRows = Object.keys(S.byRec).map(k => row(RECIPES[k].ic + ' ' + RECIPES[k].n, S.byRec[k] + ' 份')).join('');
+  $('#receipt').innerHTML =
+    `<div class="hd">分身便利店 CLONE MART<small>每日挑戰 · ${key}<br>${META.daily.mods.map(dailyModText).join('　')}</small></div><hr>` +
+    row('送出餐點', S.delivered + ' 份') + recRows + row('最高連擊', '×' + S.maxCombo) +
+    (S.failed ? row('逾時沒送到', S.failed + ' 張', 'neg') : '') + (S.burnt ? row('燒焦／失敗品', S.burnt + ' 個', 'neg') : '') + (S.fires ? row('起火', S.fires + ' 次', 'neg') : '') + '<hr>' +
+    row('本次分數', fmt(score), 'tot pos') + row('今日最佳', fmt(D.best[key])) +
+    row('獲得金幣', '💰 +' + coins + (bonus ? '（含每日獎勵 ' + bonus + '）' : '')) +
+    row('連續挑戰', '🔥 ' + D.streak + ' 天') + row('星星門檻', '★' + L.stars[0] + '　★★' + L.stars[1] + '　★★★' + L.stars[2]) +
+    `<div class="coach"></div><div class="bar"></div>`;
+  $('#receipt .coach').textContent = first ? '📅 今天的挑戰完成了！明天會換新的關卡和規則。' : '📅 再挑戰一次，刷新今天的最佳分數！';
+  const nb = $('#btnNextLv'); nb.hidden = true; nb.disabled = true;
+  renderResWallet(coins);
+  showScreen('results');
+}
+
+/* ---------- screens ---------- */
+const META_CSS = `
+.metanav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.metanav button{border:2px solid var(--ink);background:#fff;color:var(--ink);border-radius:12px;padding:6px 4px;font-weight:900;font-size:13px;min-height:52px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;box-shadow:0 3px 0 var(--ink);position:relative;line-height:1.2}
+.metanav button b{font-size:20px;font-weight:400;line-height:1.1}
+.metanav button small{font-size:10.5px;font-weight:700;color:var(--muted);font-family:var(--f-display)}
+.metanav button:active{transform:translateY(2px);box-shadow:0 1px 0 var(--ink)}
+.metanav button .dot{position:absolute;top:-6px;right:-6px;background:var(--coral);color:#fff;border:2px solid var(--ink);border-radius:999px;font-size:10px;font-weight:900;padding:0 5px;line-height:15px}
+#metaBar{margin:0 0 10px}
+.coinchip{display:inline-flex;align-items:center;gap:5px;background:var(--ink);color:var(--sign);border-radius:999px;padding:3px 12px 3px 9px;font-weight:900;white-space:nowrap}
+.coinchip b{font-family:var(--f-display);font-weight:400;font-size:17px;font-variant-numeric:tabular-nums}
+.coinchip.bump{animation:coinBump .4s ease-out}
+@keyframes coinBump{40%{transform:scale(1.18)}}
+.mhead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px}
+.mhead h2{margin:0}
+.mtabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0 12px;background:#f4efe4;border-radius:14px;padding:4px}
+.mtabs button{border:0;border-radius:11px;background:transparent;color:var(--muted);font-weight:900;font-size:15px;min-height:42px}
+.mtabs button.on{background:var(--ink);color:var(--sign)}
+.screen.meta .sheet{max-width:680px}
+.screen.meta .btns{position:sticky;bottom:-20px;z-index:2;margin:12px -20px -20px;padding:12px 20px 16px;background:linear-gradient(rgba(255,250,240,0),var(--paper) 12px)}
+.upg-list{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(290px,1fr))}
+.upg-list .card{grid-template-columns:46px minmax(0,1fr) auto}
+.upg-list .av{background:#fff4cc}
+.pips{display:inline-flex;gap:3px;margin-left:2px}
+.pips i{width:9px;height:9px;border-radius:50%;border:2px solid var(--ink);background:#fff}
+.pips i.on{background:var(--mint)}
+.card .wg .nx{color:#11885f}
+.card button.arm,.wtile.arm{background:var(--coral)!important;color:#fff!important}
+.card button.poor{background:#e8e2d3}
+.wardrobe{display:grid;grid-template-columns:minmax(0,220px) minmax(0,1fr);gap:14px;align-items:start}
+.wprev{position:relative;background:radial-gradient(circle at 50% 40%,#fff 0,#f4efe4 70%);border:2px solid var(--ink);border-radius:16px;overflow:hidden;aspect-ratio:4/5;touch-action:none}
+.wprev canvas{width:100%;height:100%;display:block}
+.wprev .fallback{position:absolute;inset:0;display:grid;place-items:center;font-size:64px;line-height:1.1;text-align:center}
+.wprev .wname{position:absolute;left:8px;bottom:8px;right:8px;text-align:center;font-weight:900;font-size:13px;background:rgba(255,250,240,.9);border-radius:9px;padding:2px 6px}
+.wroles{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.wroles button{width:44px;height:44px;border-radius:12px;border:2px solid #cfc6b2;background:#fff;font-size:21px;padding:0;position:relative}
+.wroles button.on{border-color:var(--ink);box-shadow:0 3px 0 var(--ink)}
+.wroles button:disabled{opacity:.35}
+.wroles button .sw{position:absolute;left:4px;right:4px;bottom:3px;height:4px;border-radius:2px}
+.wslot{margin:0 0 10px}
+.wslot h4{margin:0 0 5px;font-size:13px;font-weight:900;color:var(--muted)}
+.wgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:7px}
+.wtile{border:2px solid #cfc6b2;border-radius:12px;background:#fff;color:var(--ink);padding:6px 4px 5px;display:flex;flex-direction:column;align-items:center;gap:1px;min-height:84px;font-weight:900;font-size:12.5px;line-height:1.2;text-align:center}
+.wtile b{font-size:28px;font-weight:400;line-height:1.15}
+.wtile small{font-size:11px;font-weight:700;color:var(--muted)}
+.wtile.own small{color:#11885f}
+.wtile.on{border-color:var(--ink);background:#e6fff6;box-shadow:0 3px 0 var(--ink)}
+.wtile.on small{color:var(--ink)}
+.wtile.poor{opacity:.55}
+.ach-sum{display:flex;align-items:center;gap:10px;margin:2px 0 12px;font-weight:900}
+.ach-sum .pbar{flex:1}
+.pbar{height:8px;border-radius:4px;background:#e3dccb;overflow:hidden}
+.pbar i{display:block;height:100%;background:var(--mint);border-radius:4px}
+.ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
+.ach{display:grid;grid-template-columns:40px minmax(0,1fr);gap:8px;align-items:center;border:2px solid #e3dccb;border-radius:12px;background:#fff;padding:7px 9px}
+.ach .ai{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;font-size:22px;background:#f4efe4;filter:grayscale(1);opacity:.55}
+.ach .nm{font-weight:900;font-size:14px}
+.ach .ds{font-size:11.5px;color:var(--muted);line-height:1.35}
+.ach .ft{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:3px;font-size:11px;font-weight:900}
+.ach .ft .pbar{flex:1;height:6px}
+.ach.got{border-color:var(--ink);background:#fff9e3}
+.ach.got .ai{filter:none;opacity:1;background:var(--sign);border:2px solid var(--ink)}
+.dcard{background:#fff;border:2px solid var(--ink);border-radius:16px;padding:12px 14px;box-shadow:0 3px 0 var(--ink)}
+.dcard .no{font-family:var(--f-display);font-size:11px;color:var(--muted);letter-spacing:.06em}
+.dcard .lvn{font-size:20px;font-weight:900;display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.dcard .lvn span{font-size:20px;letter-spacing:1px}
+.dmods{display:grid;gap:6px;margin:10px 0}
+.dmod{background:#fff4cc;border:2px solid var(--sign);border-radius:11px;padding:6px 10px}
+.dmod b{font-size:15px;font-weight:900;display:block}
+.dmod small{font-size:12.5px;font-weight:700;color:var(--ink);line-height:1.4}
+.dstat{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:10px 0 0}
+.dstat div{background:#f4efe4;border-radius:10px;padding:6px 4px;text-align:center;font-size:11.5px;font-weight:700;color:var(--muted)}
+.dstat b{display:block;font-family:var(--f-display);font-weight:400;font-size:17px;color:var(--ink)}
+.dweek{display:flex;justify-content:space-between;gap:4px;margin:12px 0 2px}
+.dweek span{flex:1;text-align:center;font-size:11px;font-weight:700;color:var(--muted)}
+.dweek span i{display:grid;place-items:center;margin:0 auto 2px;width:30px;height:30px;border-radius:50%;border:2px dashed #cfc6b2;font-style:normal;font-size:14px}
+.dweek span.ok i{border:2px solid var(--ink);background:var(--mint)}
+.dweek span.today i{border-color:var(--coral);border-style:solid}
+.dnote{font-size:13px;font-weight:700;margin:10px 0 0;line-height:1.5}
+.stat-sec{margin:0 0 12px}
+.stat-sec h4{margin:0 0 6px;font-size:14px;font-weight:900;display:flex;justify-content:space-between}
+.stat-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:6px}
+.stat-tiles div{background:#fff;border:2px solid #e3dccb;border-radius:11px;padding:6px 9px;font-size:12px;font-weight:700;color:var(--muted)}
+.stat-tiles b{display:block;font-family:var(--f-display);font-weight:400;font-size:19px;color:var(--ink);font-variant-numeric:tabular-nums}
+.rbars{display:grid;gap:5px}
+.rbar{display:grid;grid-template-columns:26px 70px minmax(0,1fr) 44px;gap:6px;align-items:center;font-size:13px;font-weight:900}
+.rbar .ic{font-size:19px;text-align:center}
+.rbar .pbar{height:12px;border-radius:6px}
+.rbar .pbar i{background:var(--sign);border-right:2px solid var(--ink)}
+.rbar .n{text-align:right;font-family:var(--f-display);font-weight:400;font-size:13px}
+#resWallet{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:4px 0 8px}
+#resWallet .newach{flex-basis:100%;display:flex;gap:5px;flex-wrap:wrap}
+#resWallet .newach span{background:#fff9e3;border:2px solid var(--ink);border-radius:999px;font-size:12px;font-weight:900;padding:1px 8px}
+#resWallet button{border:2px solid var(--ink);background:var(--sign);color:var(--ink);font-weight:900;border-radius:10px;padding:4px 10px;min-height:36px;box-shadow:0 2px 0 var(--ink)}
+#achPop{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 12px);transform:translateX(-50%);z-index:60;pointer-events:none;display:flex;flex-direction:column;gap:6px;align-items:center;width:max-content;max-width:calc(100% - 24px)}
+.achp{display:flex;align-items:center;gap:10px;background:var(--paper);color:var(--ink);border:3px solid var(--ink);border-radius:16px;box-shadow:0 4px 0 var(--ink);padding:6px 12px 6px 8px;animation:achIn 3s ease-out forwards}
+.achp .ai{width:38px;height:38px;border-radius:11px;background:var(--sign);border:2px solid var(--ink);display:grid;place-items:center;font-size:21px}
+.achp small{display:block;font-size:11px;font-weight:900;color:var(--muted)}
+.achp b{font-size:15px;font-weight:900}
+.achp .ac{font-family:var(--f-display);font-size:14px;color:#c9971a}
+@keyframes achIn{0%{opacity:0;transform:translateY(-14px) scale(.9)}10%{opacity:1;transform:none}85%{opacity:1}100%{opacity:0;transform:translateY(-8px)}}
+@media (max-width:560px){
+  .wardrobe{grid-template-columns:1fr}
+  .wprev{aspect-ratio:auto;height:210px}
+  .wprev .wname{bottom:auto;top:8px;right:auto}
+  .metanav button{font-size:12px;min-height:50px}
+  .upg-list{grid-template-columns:1fr}
+  .ach-grid{grid-template-columns:1fr 1fr}
+  .ach{grid-template-columns:1fr;justify-items:start;padding:7px}
+  .ach .ai{width:34px;height:34px;font-size:19px}
+}
+@media (max-height:500px) and (min-width:560px){
+  .wardrobe{grid-template-columns:minmax(0,180px) minmax(0,1fr)}
+}
+@media (prefers-reduced-motion:reduce){ .achp,.coinchip.bump{animation:none} }
+`;
+function metaScreen(id, title, extraHead){
+  const s = document.createElement('div'); s.id = id; s.className = 'screen meta'; s.hidden = true;
+  s.innerHTML = `<div class="sheet wide"><div class="mhead"><h2>${title}</h2>${extraHead || ''}</div><div class="mbody"></div>` +
+    `<div class="btns"><button class="btn alt" type="button" data-back>返回</button></div></div>`;
+  document.body.appendChild(s);
+  screens[id] = s;
+  s.querySelector('[data-back]').onclick = () => { SFX.pick(); metaBack(); };
+  return s;
+}
+const coinChipHTML = () => `<span class="coinchip">💰 <b>${G.coins.toLocaleString('en-US')}</b></span>`;
+function metaUI(){
+  const st = document.createElement('style'); st.id = 'metaCss'; st.textContent = META_CSS; document.head.appendChild(st);
+  const pop = document.createElement('div'); pop.id = 'achPop'; pop.setAttribute('aria-live', 'polite'); document.body.appendChild(pop);
+  metaScreen('shop', '🛒 商店', '<span class="coinchip" id="shopCoins">💰 <b>0</b></span>');
+  const tabs = document.createElement('div'); tabs.className = 'mtabs'; tabs.setAttribute('role', 'tablist');
+  tabs.innerHTML = '<button type="button" role="tab" data-tab="upg">🔧 設備升級</button><button type="button" role="tab" data-tab="wear">👕 服裝</button>';
+  screens.shop.querySelector('.mhead').after(tabs);
+  tabs.querySelectorAll('button').forEach(b => b.onclick = () => { SFX.pick(); META.tab = b.dataset.tab; renderShop(); });
+  metaScreen('trophy', '🏆 成就');
+  metaScreen('daily', '📅 每日挑戰');
+  metaScreen('stats', '📊 營業統計');
+  const nav = document.createElement('div'); nav.className = 'metanav'; nav.id = 'titleNav';
+  $('#title .btns').appendChild(nav);
+  // previews never steal focus or keys: Esc goes back from any of these screens
+  addEventListener('keydown', e => { if (e.code === 'Escape' && ['shop','trophy','daily','stats'].some(k => screens[k] && !screens[k].hidden)) metaBack(); });
+  renderMetaNav(nav);
+  metaCheck();   // achievements reachable from an old save (stars, clones…) are granted on boot
+}
+function renderMetaNav(nav){
+  const total = achList().length, got = achList().filter(a => G.ach[a.id]).length;
+  const dailyDone = G.daily.best[todayKey()] !== undefined;
+  nav.innerHTML = `<button type="button" data-go="shop"><b>🛒</b>商店<small>💰${G.coins.toLocaleString('en-US')}</small></button>` +
+    `<button type="button" data-go="daily"><b>📅</b>每日挑戰${!dailyDone && dailyOpen() ? '<span class="dot">NEW</span>' : ''}<small>🔥${dailyStreakNow()}</small></button>` +
+    `<button type="button" data-go="trophy"><b>🏆</b>成就<small>${got}/${total}</small></button>` +
+    `<button type="button" data-go="stats"><b>📊</b>統計<small>${G.life.delivered}份</small></button>`;
+  nav.querySelectorAll('button').forEach(b => b.onclick = () => { initAudio(); SFX.pick(); openMeta(b.dataset.go); });
+}
+// showLevels hook: leaving a daily run; the level select gets the same nav row
+function metaMenu(){
+  META.daily = null;
+  let bar = $('#metaBar');
+  if (!bar){ bar = document.createElement('div'); bar.id = 'metaBar'; bar.className = 'metanav'; $('#lvStars').before(bar); }
+  renderMetaNav(bar);
+  const tn = $('#titleNav'); if (tn) renderMetaNav(tn);
+}
+function openMeta(name){
+  const from = Object.keys(screens).find(k => !screens[k].hidden);
+  if (['title','levels','results'].includes(from)) META.back = from;
+  if (name === 'shop') renderShop();
+  else if (name === 'trophy') renderTrophies();
+  else if (name === 'daily') renderDaily();
+  else if (name === 'stats') renderStats();
+  showScreen(name);
+  const sh = screens[name].querySelector('.sheet'); if (sh) sh.scrollTop = 0;
+  if (name === 'shop' && META.tab === 'wear') wrStart();
+}
+function metaBack(){
+  wrStop();
+  const b = META.back;
+  if (b === 'levels') showLevels();
+  else if (b === 'results'){ showScreen('results'); renderResWallet(); }
+  else { G.state = 'title'; const tn = $('#titleNav'); if (tn) renderMetaNav(tn); showScreen('title'); }
+}
+function bumpCoins(){ document.querySelectorAll('#shopCoins').forEach(el => { el.querySelector('b').textContent = G.coins.toLocaleString('en-US'); el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }); }
+// two taps to buy: the first arms the button (it turns red and asks), the second within 3 s buys
+function armed(key, btn){
+  if (META.arm === key && performance.now() - META.armT < 3000){ META.arm = null; return true; }
+  META.arm = key; META.armT = performance.now();
+  btn.classList.add('arm'); btn.innerHTML = '確定購買？<small>再按一次</small>';
+  setTimeout(() => { if (META.arm === key && btn.isConnected){ META.arm = null; renderShop(); } }, 3000);
+  SFX.pick();
+  return false;
+}
+function renderShop(){
+  const s = screens.shop, body = s.querySelector('.mbody');
+  s.querySelectorAll('.mtabs button').forEach(b => { const on = b.dataset.tab === META.tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });
+  $('#shopCoins').querySelector('b').textContent = G.coins.toLocaleString('en-US');
+  if (META.tab === 'wear'){ renderWardrobe(body); return; }
+  wrStop();
+  body.innerHTML = '<p class="sub">金幣在每關結算時拿到（分數 ÷ 10），成就和每日挑戰也有獎勵。升級永久有效，下一班開始生效。</p><div class="upg-list"></div>';
+  const list = body.querySelector('.upg-list');
+  for (const U of UPGRADES){
+    const lvl = upgLevel(U.id), max = U.tiers.length, nx = U.tiers[lvl];
+    const d = document.createElement('div'); d.className = 'card'; d.dataset.upg = U.id;
+    d.innerHTML = `<div class="av" style="background:${lvl ? 'var(--sign)' : '#fff4cc'}">${U.ic}</div><div><div class="nm">${U.n}<span class="pips">${Array.from({length:max}, (_, k) => `<i class="${k < lvl ? 'on' : ''}"></i>`).join('')}</span></div>` +
+      `<div class="ds">${U.desc}</div><div class="wg">${lvl ? '現在：' + U.fx(upgTier(U.id, lvl)) : '還沒購買'}${nx ? `<br><span class="nx">下一級：${U.fx(upgTier(U.id, lvl + 1))}</span>` : ''}</div></div>`;
+    const b = document.createElement('button'); b.type = 'button';
+    if (!nx){ b.className = 'max'; b.disabled = true; b.innerHTML = '滿級<small>MAX</small>'; }
+    else {
+      const poor = G.coins < nx.price;
+      if (poor) b.className = 'poor';
+      b.innerHTML = (lvl ? '升級' : '購買') + `<small>💰${nx.price}</small>`;
+      b.setAttribute('aria-label', U.n + (lvl ? ' 升級 ' : ' 購買 ') + nx.price + ' 金幣');
+      b.onclick = () => {
+        if (G.coins < nx.price){ SFX.bad(); toast('💰 還差 ' + (nx.price - G.coins) + ' 金幣', 'bad'); return; }
+        if (!armed('u:' + U.id, b)) return;
+        if (buyUpgrade(U.id)){ SFX.hire(); toast(U.ic + ' ' + U.n + ' 升到 Lv' + (lvl + 1) + '！', 'good'); bumpCoins(); renderShop(); }
+      };
+    }
+    d.appendChild(b);
+    list.appendChild(d);
+  }
+}
+function renderWardrobe(body){
+  const roles = wardrobeRoles();
+  if (!roles.some(r => r.id === META.wrRole && r.open)) META.wrRole = 'owner';
+  const R = roles.find(r => r.id === META.wrRole), eq = G.equip[R.id] || {};
+  body.innerHTML = `<div class="wardrobe"><div><div class="wprev" id="wrPrev"><span class="wname"></span></div><div class="wroles"></div></div><div class="wslots"></div></div>`;
+  const prev = body.querySelector('#wrPrev');
+  prev.querySelector('.wname').textContent = R.icon + ' ' + R.name;
+  if (wrCanvas()){ prev.prepend(WR.canvas); wrShow(R.id); }
+  else { const f = document.createElement('div'); f.className = 'fallback'; f.textContent = [R.icon].concat(Object.values(eq).map(id => (COSMETIC(id) || {}).ic || '')).join(''); prev.prepend(f); }
+  wrDrag(prev);
+  const rb = body.querySelector('.wroles');
+  for (const r of roles){
+    const b = document.createElement('button'); b.type = 'button'; b.className = r.id === R.id ? 'on' : '';
+    b.innerHTML = (r.open ? r.icon : '🔒') + `<span class="sw" style="background:${r.css}"></span>`;
+    b.title = r.open ? r.name : r.name + '（★' + r.need + ' 解鎖）'; b.setAttribute('aria-label', b.title);
+    b.disabled = !r.open;
+    b.onclick = () => { SFX.pick(); META.wrRole = r.id; renderShop(); };
+    rb.appendChild(b);
+  }
+  const ws = body.querySelector('.wslots');
+  for (const slot of cosSlots()){
+    const sec = document.createElement('div'); sec.className = 'wslot';
+    sec.innerHTML = `<h4>${SLOT_NAMES[slot] || slot}</h4><div class="wgrid"></div>`;
+    const grid = sec.querySelector('.wgrid');
+    for (const c of COSMETICS.filter(x => x.slot === slot)){
+      const own = G.owned.has(c.id), on = eq[slot] === c.id, price = c.price || 0;
+      const b = document.createElement('button'); b.type = 'button'; b.dataset.cos = c.id;
+      b.className = 'wtile' + (on ? ' on' : own ? ' own' : G.coins < price ? ' poor' : '');
+      b.innerHTML = `<b>${c.ic || '🎁'}</b>${c.n}<small>${on ? '✓ 穿著中' : own ? '穿上' : '💰' + price}</small>`;
+      b.onclick = () => {
+        if (!own){
+          if (G.coins < price){ SFX.bad(); toast('💰 還差 ' + (price - G.coins) + ' 金幣', 'bad'); return; }
+          if (!armed('c:' + c.id, b)) return;
+          if (!buyCosmetic(c.id)) return;
+          SFX.hire(); toast((c.ic || '🎁') + ' 買了「' + c.n + '」！', 'good'); bumpCoins();
+          equipCosmetic(R.id, c.id);
+        } else { SFX.pick(); equipCosmetic(R.id, c.id); }
+        renderShop();
+      };
+      grid.appendChild(b);
+    }
+    ws.appendChild(sec);
+  }
+  wrStart();
+}
+/* live 3D preview: its own small renderer + scene; the model is a normal staff character moved out of the store scene */
+const WR = {renderer:null, canvas:null, scene:null, cam:null, chars:{}, cur:null, raf:0, yaw:0.5, last:0, drag:null, failed:false};
+function wrCanvas(){
+  if (WR.renderer) return true;
+  if (WR.failed) return false;
+  try {
+    WR.canvas = document.createElement('canvas'); WR.canvas.setAttribute('aria-label', '服裝預覽');
+    WR.renderer = new THREE.WebGLRenderer({canvas:WR.canvas, antialias:true, alpha:true});
+    WR.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  } catch(e){ WR.failed = true; WR.renderer = null; return false; }
+  WR.scene = new THREE.Scene();
+  WR.scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa6b8, 0.8));
+  const d = new THREE.DirectionalLight(0xffffff, 0.65); d.position.set(2.5, 5, 4); WR.scene.add(d);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.9, 0.08, 32), new THREE.MeshLambertMaterial({color:0xe3dccb})); base.position.y = -0.04; WR.scene.add(base);
+  WR.cam = new THREE.PerspectiveCamera(30, 0.8, 0.1, 50); WR.cam.position.set(0, 1.55, 5.2); WR.cam.lookAt(0, 1.08, 0);
+  return true;
+}
+function wrShow(roleId){
+  let ch = WR.chars[roleId];
+  if (!ch){
+    const r = ROLE[roleId];
+    ch = makeStaffChar(r ? r.color : 0);
+    scene.remove(ch.g);   // makeChar adds to the store scene; the preview has its own
+    ch.g.position.set(0, 0, 0);
+    WR.chars[roleId] = ch;
+  }
+  if (WR.cur && WR.cur !== ch) WR.scene.remove(WR.cur.g);
+  WR.scene.add(ch.g); WR.cur = ch;
+  applyCosmetics({role:roleId, ch});
+}
+function wrDrag(el){
+  el.onpointerdown = e => { WR.drag = {x:e.clientX, yaw:WR.yaw}; try { el.setPointerCapture(e.pointerId); } catch(_){} };
+  el.onpointermove = e => { if (WR.drag) WR.yaw = WR.drag.yaw + (e.clientX - WR.drag.x)*0.012; };
+  el.onpointerup = el.onpointercancel = () => { WR.drag = null; };
+}
+function wrFrame(now){
+  WR.raf = 0;
+  if (!WR.renderer || !WR.cur || !WR.canvas.isConnected || screens.shop.hidden) return;
+  const dt = Math.min(0.1, (now - (WR.last || now))/1000); WR.last = now;
+  if (!WR.drag) WR.yaw += dt*0.5;
+  WR.cur.g.rotation.y = WR.yaw;
+  try { animChar(WR.cur, dt, false, 0, false); } catch(e){}
+  const w = WR.canvas.clientWidth | 0, h = WR.canvas.clientHeight | 0;
+  if (w && h){
+    if (WR.canvas.width !== Math.round(w*WR.renderer.getPixelRatio()) || WR.canvas.height !== Math.round(h*WR.renderer.getPixelRatio())){ WR.renderer.setSize(w, h, false); WR.cam.aspect = w/h; WR.cam.updateProjectionMatrix(); }
+    WR.renderer.render(WR.scene, WR.cam);
+  }
+  WR.raf = requestAnimationFrame(wrFrame);
+}
+function wrStart(){ if (!WR.raf && WR.renderer){ WR.last = 0; WR.raf = requestAnimationFrame(wrFrame); } }
+function wrStop(){ if (WR.raf){ cancelAnimationFrame(WR.raf); WR.raf = 0; } }
+
+function renderTrophies(){
+  const body = screens.trophy.querySelector('.mbody'), list = achList();
+  const got = list.filter(a => G.ach[a.id]).length;
+  body.innerHTML = `<div class="ach-sum"><span>${got} / ${list.length}</span><span class="pbar"><i style="width:${Math.round(got/list.length*100)}%"></i></span>${coinChipHTML()}</div><div class="ach-grid"></div>`;
+  const grid = body.querySelector('.ach-grid');
+  const order = list.slice().sort((a, b) => (!!G.ach[b.id] - !!G.ach[a.id]) || (achProgress(b)/b.goal - achProgress(a)/a.goal));
+  for (const a of order){
+    const done = !!G.ach[a.id], p = achProgress(a);
+    const d = document.createElement('div'); d.className = 'ach' + (done ? ' got' : ''); d.dataset.ach = a.id;
+    const when = done ? new Date(G.ach[a.id]) : null;
+    d.innerHTML = `<div class="ai"></div><div><div class="nm"></div><div class="ds"></div><div class="ft">` +
+      (done ? `<span>✓ ${when && isFinite(when) ? (when.getMonth()+1) + '/' + when.getDate() : '已達成'}</span>` : `<span class="pbar"><i style="width:${Math.round(p/a.goal*100)}%"></i></span><span>${a.goal > 1 ? p + '/' + a.goal : ''}</span>`) +
+      `<span>💰${a.coin}</span></div></div>`;
+    d.querySelector('.ai').textContent = a.ic; d.querySelector('.nm').textContent = a.n; d.querySelector('.ds').textContent = a.d;
+    grid.appendChild(d);
+  }
+}
+const WEEKDAY = '日一二三四五六';
+function renderDaily(){
+  const body = screens.daily.querySelector('.mbody'), key = todayKey(), def = dailyDef(key), base = LEVELS[def.lv];
+  const L = dailyLevel(effLevel(base), def), D = G.daily, best = D.best[key], streak = dailyStreakNow();
+  const nd = metaDate(), mid = new Date(nd.getFullYear(), nd.getMonth(), nd.getDate() + 1), left = Math.max(0, mid - nd);
+  let week = '';
+  for (let k = -6; k <= 0; k++){
+    const kk = shiftKey(key, k), [y, m, d] = kk.split('-').map(Number), wd = new Date(y, m-1, d).getDay();
+    week += `<span class="${D.best[kk] !== undefined ? 'ok' : ''}${k === 0 ? ' today' : ''}"><i>${D.best[kk] !== undefined ? '✓' : k === 0 ? '?' : ''}</i>${k === 0 ? '今天' : WEEKDAY[wd]}</span>`;
+  }
+  body.innerHTML = `<p class="sub">${key.replace(/-/g, '/')}（${WEEKDAY[nd.getDay()]}）· 每天一關，加上 1–2 條特別規則。${Math.floor(left/3600000)} 小時 ${Math.floor(left%3600000/60000)} 分後換新挑戰。</p>` +
+    `<div class="dcard"><div class="no">TODAY · ${lvLabel(def.lv)} · ${DIFF(L.diff).ic}${DIFF(L.diff).n}</div><div class="lvn"><b></b><span>${L.rec.map(r => RECIPES[r].ic).join('')}</span></div>` +
+    `<div class="dmods">${def.mods.map(m => `<div class="dmod" data-mod="${m.id}"><b>${dailyModText(m)}</b><small>${DAILY_MOD[m.id].d(m)}</small></div>`).join('')}</div>` +
+    `<div class="dstat"><div><b>${best !== undefined ? fmt(best) : '—'}</b>今日最佳</div><div><b>🔥${streak}</b>連續天數</div><div><b>${D.days}</b>總共天數</div></div>` +
+    `<div class="dweek">${week}</div>` +
+    `<p class="dnote">★ ${L.stars[0]}　★★ ${L.stars[1]}　★★★ ${L.stars[2]}<br>` +
+    (best === undefined ? `今天第一次完成：💰 +${dailyBonus(D.last === shiftKey(key, -1) ? D.streak + 1 : 1)} 每日獎勵（連續天數越多越多），外加分數換的金幣。` : '今天的獎勵已領取，可以一直挑戰刷新最佳分數。') + `</p></div>`;
+  body.querySelector('.lvn b').textContent = base.n;
+  let go = screens.daily.querySelector('#btnDailyGo');
+  if (!go){ go = document.createElement('button'); go.className = 'btn'; go.type = 'button'; go.id = 'btnDailyGo'; screens.daily.querySelector('.btns').prepend(go); go.onclick = () => { initAudio(); SFX.pick(); startDaily(); }; }
+  go.disabled = !dailyOpen();
+  go.textContent = dailyOpen() ? (best === undefined ? '開始今天的挑戰！' : '再挑戰一次') : '🔒 先在任一關拿到 ★ 才能挑戰';
+}
+function renderStats(){
+  const body = screens.stats.querySelector('.mbody'), Lf = G.life;
+  const t = Math.floor(Lf.playTime), hm = Math.floor(t/3600) + ' 時 ' + Math.floor(t%3600/60) + ' 分';
+  const tile = (n, v) => `<div><b>${v}</b>${n}</div>`;
+  const maxR = Math.max(1, ...Object.values(Lf.byRec));
+  body.innerHTML =
+    `<div class="stat-sec"><h4>🏪 營業</h4><div class="stat-tiles">${tile('營業時間', hm)}${tile('班次', Lf.shifts)}${tile('總星星', '★' + totalStars())}${tile('皇冠', '👑' + crownCount())}${tile('每日挑戰天數', G.daily.days + ' 天')}${tile('最長連續', '🔥' + G.daily.bestStreak)}</div></div>` +
+    `<div class="stat-sec"><h4>🛎️ 出餐<span>${Lf.delivered} 份</span></h4><div class="stat-tiles">${tile('總共送出', Lf.delivered)}${tile('分身送出', Lf.cloneDelivered)}${tile('最高連擊', '×' + Lf.maxCombo)}${tile('×4 連擊出餐', Lf.combo4)}${tile('VIP 服務', Lf.vip)}${tile('團購單', Lf.bulk)}${tile('逾時', Lf.failed)}${tile('撐過尖峰', Lf.rush)}</div></div>` +
+    `<div class="stat-sec"><h4>📋 每種餐點</h4><div class="rbars">${Object.keys(RECIPES).map(k => { const n = Lf.byRec[k] || 0; return `<div class="rbar"><span class="ic">${RECIPES[k].ic}</span><span>${RECIPES[k].n}</span><span class="pbar"><i style="width:${Math.round(n/maxR*100)}%"></i></span><span class="n">${n}</span></div>`; }).join('')}</div></div>` +
+    `<div class="stat-sec"><h4>🔥 意外</h4><div class="stat-tiles">${tile('起火', Lf.fires)}${tile('滅火', Lf.extinguished)}${tile('灑水器滅火', Lf.sprinkled)}${tile('燒焦／失敗品', Lf.burnt)}${tile('修好機器', Lf.fixed)}${tile('拖乾水漬', Lf.mopped)}${tile('換人操作', Lf.swaps)}</div></div>` +
+    `<div class="stat-sec"><h4>💰 金幣</h4><div class="stat-tiles">${tile('現在', G.coins)}${tile('營業賺到', Lf.coinsEarned)}${tile('花掉', Lf.coinsSpent)}${tile('無限營業最久', mmss(Lf.endlessTime))}${tile('無限營業最高', fmt(Lf.endlessScore))}</div></div>`;
+}
+// results screen: wallet + this shift's new achievements + a shortcut to the shop
+function renderResWallet(coins){
+  let w = $('#resWallet');
+  if (!w){ w = document.createElement('div'); w.id = 'resWallet'; $('#receipt').before(w); }
+  if (coins !== undefined) META.resCoins = coins;
+  const news = META.newAch.map(id => achList().find(a => a.id === id)).filter(Boolean);
+  w.innerHTML = `<span class="coinchip">💰 <b>${G.coins.toLocaleString('en-US')}</b>${META.resCoins ? `<small>（+${META.resCoins}）</small>` : ''}</span><button type="button">🛒 商店</button>` +
+    (news.length ? `<div class="newach">${news.map(a => `<span>🏆 ${a.ic} ${a.n} +💰${a.coin}</span>`).join('')}</div>` : '');
+  w.querySelector('button').onclick = () => { SFX.pick(); openMeta('shop'); };
+}
+// test hook (the main __cloneMart hook stays as it is)
+window.__cloneMartMeta = {META, UPGRADES, DAILY_MODS, upgVal, upgLevel, buyUpgrade, buyCosmetic, equipCosmetic, achList, metaCheck, dailyDef, dailyLevel, startDaily, todayKey, openMeta, metaBack,
+  setNow(t){ META.now = t; }, get WR(){ return WR; }};
+
 /* ---------------- save / load ---------------- */
 const SAVE_KEY_RUSH = 'clonemart-rush-v1';
-function saveProgress(){ try { localStorage.setItem(SAVE_KEY_RUSH, JSON.stringify({v:2, best:G.best, diff:G.diff, coins:G.coins, owned:[...G.owned], equip:G.equip, ach:G.ach, tips:[...G.tips], team:G.team, muted})); } catch(e){} }
+function saveProgress(){ try { localStorage.setItem(SAVE_KEY_RUSH, JSON.stringify({v:2, best:G.best, diff:G.diff, coins:G.coins, owned:[...G.owned], equip:G.equip, ach:G.ach, tips:[...G.tips], team:G.team, muted, life:G.life, upg:G.upg, daily:G.daily})); } catch(e){} }
 function normBestKey(k){ return /^\d+$/.test(k) ? (LEVEL_IDS_V1[+k] || null) : k; }   // v1 saves keyed best by level index
 function mergeBest(src){
   if (!src || typeof src !== 'object') return;
@@ -4685,6 +5416,7 @@ function loadProgress(){
     if (Array.isArray(d.tips)) G.tips = new Set(d.tips);
     if (Array.isArray(d.team)) G.team = d.team.filter(id => ROLE[id]);
     if (typeof d.muted === 'boolean') muted = d.muted;
+    metaLoad(d);   // life / upg / daily (absent in older saves)
   } catch(e){}
 }
 function getSaveData(){ return {best:G.best, team:G.team}; }
@@ -4695,6 +5427,7 @@ function updateMachines(dt){
   for (const sl of SLOTS){
     if (sl.fire){
       const f = sl.fire; f.t += dt; f.hp = Math.min(1, f.hp + dt*0.12);
+      if (!G.demo && upgVal('sprinkler') && f.t >= upgVal('sprinkler')){ extinguish(sl); metaEvent('sprinkler'); continue; }   // 🛒 自動灑水器
       f.g.children.forEach((m,i) => { m.scale.set(1, 0.7 + 0.5*Math.abs(Math.sin(f.t*9 + m.userData.ph)), 1); });
       if (sl.isl){
         f.spread += dt;
@@ -4796,6 +5529,7 @@ function situationTips(){
 function simulate(dt){
   const L = G.level;
   if (G.tut < 0) G.time += dt;   // the tutorial pauses the level clock
+  if (!G.demo) metaTick(dt);   // 🏆 lifetime play time
   // tickets
   for (const o of orders.slice()){ o.t += dt; if (o.t >= o.limit) failOrder(o); else if (!o._dec || o._bx) decorateTicket(o); }
   G.spawnT -= dt; G.gapT -= dt;
@@ -4915,6 +5649,7 @@ function switchChar(dir, k){
   aiReset(nx); nx.agent.path.length = 0; nx.prog = null;
   if (nx.spawnFx > 0){ nx.spawnFx = 0; nx.ch.g.scale.setScalar(1.12); }   // the pop-in only advances under AI control
   if (k) coop.p2 = nx; else player = nx;
+  metaEvent('swap');   // 🏆 lifetime stats
   SFX.pick(); haptic(10); squash(nx, 0.18);
   floatText(nx.agent.pos.x, 2.5, nx.agent.pos.z, other ? (k ? '2P 換我！' : '1P 換我！') : '換我！', 'txt');
 }
@@ -4971,6 +5706,7 @@ function boot(hotData){
   buildKitchenExtra(); designUI();
   createPlayer();
   buildDeviceUX();
+  metaUI();   // shop / trophies / daily / stats screens
   setupWorld(0, ROLES.map(r => r.id), true);
   resize();
   requestAnimationFrame(t => { last = t; frame(t); });
