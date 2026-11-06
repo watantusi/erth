@@ -1,0 +1,143 @@
+/* 操控元件（分身 3）：浮動搖桿與跳躍鈕。只在觸控模式且啟用時顯示。 */
+
+.tew-controls {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.35s ease, visibility 0s linear 0.35s;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.tew-controls.is-touch.is-enabled {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.35s ease, visibility 0s linear 0s;
+}
+
+/* 讀取 safe-area 用的隱形探針 */
+.tew-safe-probe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  visibility: hidden;
+  pointer-events: none;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+}
+
+/* ---- 浮動搖桿 ---- */
+.tew-joy {
+  position: absolute;
+  width: 128px;
+  height: 128px;
+  margin: -64px 0 0 -64px; /* left/top 是中心點 */
+  border-radius: 50%;
+  pointer-events: none; /* 觸控由畫布接收，這裡只是視覺 */
+  background: radial-gradient(circle at 50% 50%,
+    rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0.22) 62%, rgba(255, 255, 255, 0.34) 100%);
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 6px 20px rgba(30, 40, 70, 0.22),
+    inset 0 0 0 1px rgba(47, 59, 82, 0.14),
+    inset 0 2px 10px rgba(47, 59, 82, 0.12);
+  transition: opacity 0.25s ease, border-color 0.2s ease;
+}
+/* 待機時在左下角顯示淡淡的提示位置 */
+.tew-joy.idle {
+  left: calc(36px + 64px + env(safe-area-inset-left, 0px));
+  top: calc(100% - 44px - 64px - env(safe-area-inset-bottom, 0px));
+  opacity: 0.42;
+}
+.tew-joy.active { opacity: 1; }
+.tew-joy::before,
+.tew-joy::after {
+  /* 四個方向的小刻度 */
+  content: '';
+  position: absolute;
+  inset: 10px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 4px, rgba(255, 255, 255, 0.85) 0 2.5px, transparent 3px),
+    radial-gradient(circle at 50% calc(100% - 4px), rgba(255, 255, 255, 0.85) 0 2.5px, transparent 3px),
+    radial-gradient(circle at 4px 50%, rgba(255, 255, 255, 0.85) 0 2.5px, transparent 3px),
+    radial-gradient(circle at calc(100% - 4px) 50%, rgba(255, 255, 255, 0.85) 0 2.5px, transparent 3px);
+}
+.tew-joy::after { display: none; }
+
+.tew-joy-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 58px;
+  height: 58px;
+  margin: -29px 0 0 -29px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #ffffff 0%, rgba(255, 255, 255, 0.92) 45%, rgba(228, 236, 248, 0.9) 100%);
+  border: 1px solid rgba(47, 59, 82, 0.12);
+  box-shadow: 0 4px 12px rgba(30, 40, 70, 0.3), inset 0 -3px 6px rgba(47, 59, 82, 0.1);
+  will-change: transform;
+}
+.tew-joy.idle .tew-joy-knob { transition: transform 0.18s ease-out; }
+/* 推到底 = 跑步：暖色光暈 */
+.tew-joy.running { border-color: rgba(255, 214, 120, 0.95); }
+.tew-joy.running .tew-joy-knob {
+  background: radial-gradient(circle at 38% 32%, #fff8e6 0%, #ffe3a3 55%, #ffc56b 100%);
+  box-shadow: 0 0 0 5px rgba(255, 200, 100, 0.28), 0 4px 12px rgba(30, 40, 70, 0.3);
+}
+
+/* ---- 跳躍鈕 ---- */
+.tew-jump {
+  position: absolute;
+  right: calc(24px + env(safe-area-inset-right, 0px));
+  bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  color: #2f3b52;
+  background: radial-gradient(circle at 40% 30%, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0.5) 70%, rgba(255, 255, 255, 0.42) 100%);
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 6px 18px rgba(30, 40, 70, 0.28),
+    inset 0 0 0 1px rgba(47, 59, 82, 0.1),
+    inset 0 -4px 10px rgba(47, 59, 82, 0.1);
+  transition: transform 0.08s ease-out, background 0.12s ease, box-shadow 0.12s ease;
+}
+.tew-jump svg { display: block; margin-top: 2px; filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.6)); }
+.tew-jump-label {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  margin-top: 1px;
+  letter-spacing: 0.05em;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.tew-jump.pressed {
+  transform: scale(0.9);
+  background: radial-gradient(circle at 40% 30%, #ffffff 0%, rgba(255, 244, 214, 0.92) 100%);
+  box-shadow:
+    0 2px 8px rgba(30, 40, 70, 0.3),
+    0 0 0 6px rgba(255, 255, 255, 0.25),
+    inset 0 2px 8px rgba(47, 59, 82, 0.16);
+}
+
+/* 小螢幕橫放：按鈕稍微靠內，避免貼邊 */
+@media (max-height: 420px) and (orientation: landscape) {
+  .tew-joy.idle { top: calc(100% - 30px - 64px - env(safe-area-inset-bottom, 0px)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tew-controls, .tew-joy, .tew-jump, .tew-joy-knob { transition: none !important; }
+}
