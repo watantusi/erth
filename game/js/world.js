@@ -779,7 +779,7 @@ function platDeck(r, h) {
     const a = Math.PI * (0.62 + i * 0.19);
     parts.push(part(new THREE.BoxGeometry(0.07, 0.48, 0.07), 0xfff1dc, Math.sin(a) * r * 0.93, 0.24, Math.cos(a) * r * 0.93));
   }
-  parts.push(cyl(r * 0.95, r * 0.95, 0.44, 0.5, 12, 0xe2574c, Math.PI * 0.62 - Math.PI / 2 + Math.PI, Math.PI * 0.76, true));
+  parts.push(cyl(r * 0.93, r * 0.93, 0.44, 0.52, 12, 0xe2574c, Math.PI * 0.62, Math.PI * 0.76, true));
   // 小旗
   const fx = -r * 0.62, fz = -r * 0.62;
   parts.push(part(new THREE.CylinderGeometry(0.035, 0.045, 1.5, 5), 0xfff1dc, fx, 0.75, fz));
@@ -1483,8 +1483,21 @@ void main() {
   const staticParts = [];
   function placeStatic(parts, dir, yaw, scale, sink, lookDir = null) {
     const m = surfaceMatrix(dir, yaw, scale, scale, scale, sink, new THREE.Matrix4(), lookDir);
-    for (const g of parts) { g.applyMatrix4(m); staticParts.push(g); }
+    for (const g of parts) { g.applyMatrix4(m); pushGlowable(g, staticParts); }
     return m;
+  }
+  // v3：窗戶零件（頂點色 = 窗色）另外收集成一個「夜裡會亮」的網格
+  const glowParts = [];
+  const GLOW_COLS = [0xffe08a, 0x7cc6ff].map((h) => new THREE.Color(h));
+  function pushGlowable(g, list) {
+    const c = g.attributes.color;
+    if (c) {
+      const r = c.getX(0), gg = c.getY(0), b = c.getZ(0);
+      for (const k of GLOW_COLS) {
+        if (Math.abs(k.r - r) < 1e-4 && Math.abs(k.g - gg) < 1e-4 && Math.abs(k.b - b) < 1e-4) { glowParts.push(g); return; }
+      }
+    }
+    list.push(g);
   }
 
   const COS_START_CLEAR = Math.cos(0.3);
@@ -1576,6 +1589,7 @@ void main() {
     _look.copy(START).sub(d);
     const m = placeStatic(windmillParts(), d, 0, 1.15, 0.12, _look);
     addObstacle(d, 1.15);
+    obstacles[obstacles.length - 1].height = 4.4; // v3：高過屋頂（站在頂上的瞭望台）就不再推人
     bladePivot = new THREE.Object3D();
     const hub = new THREE.Vector3(0, 2.95, 0.98).applyMatrix4(m);
     bladePivot.position.copy(hub);
@@ -1684,9 +1698,9 @@ void main() {
    * h = 頂面高出 base（預設 = 第一階中心的地面半徑）多少
    */
   function buildCourse(def) {
-    const F = courseFrame(def.center, def.face);
+    const F = def.F || courseFrame(def.center, def.face);
     const steps = def.steps;
-    const maxH = Math.max(...steps.map((s) => s.h));
+    const maxH = Math.max(...steps.map((s) => (s.h != null ? s.h : s.hg || 0)));
     const pts = [];
     let x = 0, y = 0, hd = ((def.heading || 0) * Math.PI) / 180;
     steps.forEach((s, i) => {
@@ -1703,7 +1717,7 @@ void main() {
     const list = [];
     steps.forEach((s, i) => {
       const dir = frameDir(F, pts[i][0], pts[i][1], Rs);
-      const top = base + s.h;
+      const top = s.hg != null ? getGroundRadius(dir) + s.hg : base + s.h; // v3：hg = 高出柱心地面多少
       const { right, forward } = tangentBasis(dir, _cr, _cf);
       let gmin = Infinity, gmax = -Infinity;
       for (let k = 0; k < 17; k++) {
@@ -1713,8 +1727,10 @@ void main() {
         const sb = seabed(_cv.x, _cv.y, _cv.z);
         gmin = Math.min(gmin, sb); gmax = Math.max(gmax, Math.max(sb, WADE));
       }
-      const p = { id: `${def.id}-${i}`, kind: s.k, dir, radius: s.r, top, bottom: gmin - 0.45, course: def.id, index: i };
+      // v3：float = 浮空平台的厚度（底面在頂面下方 float 處）
+      const p = { id: `${def.id}-${i}`, kind: s.k, dir, radius: s.r, top, bottom: s.float ? top - s.float : gmin - 0.45, course: def.id, index: i };
       if (s.bounce) p.bounce = s.bounce;
+      if (def.secret) p.secret = true;
       // 內部快取（getSupportRadius 用；sinθ < r/top ⇔ cosθ > √(1-(r/top)²)）
       Object.defineProperties(p, {
         _x: { value: dir.x }, _y: { value: dir.y }, _z: { value: dir.z },
@@ -1732,6 +1748,19 @@ void main() {
     list.forEach((p) => { maxA = Math.max(maxA, Math.acos(clamp(c.dot(p.dir), -1, 1)) + p.radius / p.top); });
     courseZones.push({ x: c.x, y: c.y, z: c.z, cos: Math.cos(maxA + 0.01), list });
     reserved.push({ x: c.x, y: c.y, z: c.z, ang: maxA + 1.0 / R });
+
+    // v3 祕密點：沒有入口牌與挑戰資料；每根柱子的正面朝向「上一階」（從哪裡跳上來）
+    if (def.secret) {
+      list.forEach((p, i) => {
+        if (i > 0) _look.copy(list[i - 1].dir).sub(p.dir);
+        else if (def.from) _look.copy(def.from).sub(p.dir);
+        else if (list[1]) _look.copy(p.dir).sub(list[1].dir);
+        else _look.copy(F.f);
+        const m = surfaceMatrix(p.dir, 0, 1, 1, 1, 0, new THREE.Matrix4(), _look, p.top);
+        for (const g of platParts(p, p._gc - p.top, SEA_LEVEL - p.top)) { g.applyMatrix4(m); pushGlowable(g, platParts3); }
+      });
+      return { F, list, base };
+    }
 
     // 入口、終點、任務點
     const sd = frameDir(F, ...pol(def.start[0], def.start[1]));
@@ -1752,7 +1781,7 @@ void main() {
     for (const p of list) {
       _look.copy(start).sub(p.dir.clone().multiplyScalar(p.top));
       const m = surfaceMatrix(p.dir, 0, 1, 1, 1, 0, new THREE.Matrix4(), _look, p.top);
-      for (const g of platParts(p, p._gc - p.top, SEA_LEVEL - p.top)) { g.applyMatrix4(m); platParts3.push(g); }
+      for (const g of platParts(p, p._gc - p.top, SEA_LEVEL - p.top)) { g.applyMatrix4(m); pushGlowable(g, platParts3); }
     }
     // 入口小木牌（站在入口旁邊，面向來的人）
     const p0 = list[0].dir;
@@ -1762,7 +1791,7 @@ void main() {
     const sgd = sd.clone().addScaledVector(side, (sgn * 1.25) / R).normalize();
     placeStatic(signParts(def.flag), sgd, 0, 1, 0.05, _look);
     addObstacle(sgd, 0.22);
-    return { F, list, start, sd };
+    return { F, list, start, sd, base };
   }
 
   const STEP = (k, r, h, at, extra) => Object.assign({ k, r, h, at }, extra || {});
@@ -1784,7 +1813,7 @@ void main() {
     spots: [[1], [2], [4], [5]],
   });
   // ---- 森林：巨大樹樁螺旋梯 → 樹屋平台 ----
-  buildCourse({
+  const forestC = buildCourse({
     id: 'forest-stumps', biome: 'forest', name: '樹樁螺旋梯', flag: 0x6cbf58,
     center: dirAt(FOREST, 0.3, 290), face: FOREST, start: [7.6, 0],
     steps: [
@@ -1966,6 +1995,76 @@ void main() {
     beamPivot.renderOrder = 3;
     lampGroup.add(beamPivot);
     root.add(lampGroup);
+  }
+
+  // =========================================================================
+  // v3：金色橡實祕密點（每個生態區 1 個；看得到但不好拿）
+  // =========================================================================
+  const secretSpots = [];
+  {
+    const fwdOf = (c) => tangentBasis(c, new THREE.Vector3(), new THREE.Vector3()).forward.clone();
+    const XY = (x, y) => [Math.hypot(x, y), (Math.atan2(y, x) * 180) / Math.PI]; // 課程平面座標 → [d, a]
+    const add = (biome, c, hint, nightOnly = false) => {
+      const p = c.list[c.list.length - 1];
+      secretSpots.push({ id: 'acorn-' + biome, biome, position: p.dir.clone().multiplyScalar(p.top + 0.5), nightOnly, hint });
+    };
+    // 草原：風車屋頂上的小瞭望台（從風車背面：乾草堆 → 乾草堆 → 木桶 → 瞭望台）
+    const wm = landmarks.windmill;
+    add('meadow', buildCourse({
+      id: 'secret-meadow', secret: true, center: wm, face: START, base: getGroundRadius(wm),
+      steps: [
+        STEP('hay', 1.0, 1.1, [7.5, 248]),
+        STEP('hay', 1.0, 2.4, [6.0, 220]),
+        STEP('barrel', 0.85, 3.7, [3.6, 185]),
+        STEP('deck', 0.95, 5.3, [0.3, 180], { float: 0.32 }),
+      ],
+    }), '風車最高的地方，風最喜歡在那裡休息。');
+    // 森林：樹屋隔壁的小木屋屋頂（要先爬到樹屋平台，再跳過去）
+    add('forest', buildCourse({
+      id: 'secret-forest', secret: true, F: forestC.F, base: forestC.base, from: forestC.list[forestC.list.length - 1].dir,
+      steps: [STEP('treehut', 0.8, 8.4, [4.3, 62])],
+    }), '樹屋的隔壁還有一間小木屋，它的屋頂比誰都高。');
+    // 沙漠：遠離路線的孤單高方山，只能靠旁邊的彈跳蘑菇
+    add('desert', buildCourse({
+      id: 'secret-desert', secret: true, center: DESERT, face: fwdOf(DESERT),
+      steps: [
+        STEP('mushroom', 0.9, 1.2, XY(-7, 10.3), { bounce: 19 }),
+        STEP('mesa', 1.15, 5.8, XY(-8, 14)),
+      ],
+    }), '孤零零的高方山爬不上去？問問旁邊會彈跳的紅蘑菇吧！');
+    // 極地（北）：極光正下方的冰晶城堡，夜晚才會出現
+    add('polar', buildCourse({
+      id: 'secret-polar', secret: true, center: POLN, face: fwdOf(POLN),
+      steps: [
+        STEP('ice', 0.9, 1.2, XY(-5.72, 0.93)),
+        STEP('ice', 0.85, 2.6, XY(-2.67, 2.04)),
+        STEP('ice', 0.8, 4.0, XY(-3.75, 5.0)),
+        STEP('icecrown', 0.9, 5.4, XY(-7.0, 5.0)),
+      ],
+    }), '夜空跳起綠色的舞時，冰晶城堡的頂端會藏著寶物。', true);
+    // 火山：火山口外緣的高岩台（玄武岩柱螺旋往上，遠離熔岩與煙）
+    add('volcano', buildCourse({
+      id: 'secret-volcano', secret: true, F: volcanoC.F, base: R,
+      steps: [
+        STEP('basalt', 0.95, 2.2, [9.9, 160]),
+        STEP('basalt', 0.9, 3.6, [8.0, 180]),
+        STEP('basalt', 0.85, 5.0, [6.0, 200]),
+        STEP('basalt', 1.0, 6.4, [4.9, 228]),
+      ],
+    }), '沿著火山口外緣往上找，最高的那塊岩台一點都不怕熱。');
+    // 海洋：從瓶中信小島踩著踏石往外，最遠最高的海蝕柱
+    const I0 = ISLANDS[0];
+    add('ocean', buildCourse({
+      id: 'secret-ocean', secret: true, center: I0.dir, face: dirAt(I0.dir, 0.1, 120), base: SEA_LEVEL, // 往外海（避開沙漠與鯨魚）
+      steps: [
+        STEP('stone', 0.75, 0.5, [4.6, 0]),
+        CHAIN('stone', 0.7, 0.75, 1.7, 15),
+        CHAIN('stone', 0.65, 1.0, 1.9, -20),
+        CHAIN('stack', 0.8, 2.3, 1.8, -10),
+        CHAIN('stack', 0.75, 3.6, 1.8, 25),
+        CHAIN('stack', 1.05, 4.9, 1.9, 0),
+      ],
+    }), '踩著海上的小石頭一路往外走，最遠最高的海蝕柱在等你。');
   }
 
   // 平台網格（全部一個 draw call）
@@ -2325,6 +2424,8 @@ void main() {
     challenges,         // [{ id, biome, name, start, goal, spots[], platforms[], center }]（每個生態區一個，順序同 BIOMES）
     questSpots,
     setLighthouseLit,
+    // ---- v3 ----
+    secretSpots,        // [{ id, biome, position, nightOnly, hint }]（順序同 BIOMES）
   };
   return api;
 }

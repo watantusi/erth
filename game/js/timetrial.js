@@ -19,6 +19,7 @@ const BEAM_HEIGHT = 16;
 const BEAM_BASE = HOVER + 0.4;
 const GOLD = 0xffc93c;
 const GOLD_DEEP = 0xd98c00;
+const BEAM_GOLD = 0xffa81e;
 const GOLD_BRIGHT = 0xfff2a8;
 const ELEVATED = 2;          // 放在平台挑戰上的數量
 const MIN_SPACING = 8;       // 晶石之間最小距離
@@ -96,7 +97,7 @@ export function createTimeTrial({ scene, world, player, ui, audio, effects } = {
 
   const M = {
     beam: new THREE.MeshBasicMaterial({
-      color: GOLD, vertexColors: true, transparent: true, opacity: 0.34,
+      color: BEAM_GOLD, vertexColors: true, transparent: true, opacity: 0.32,
       blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
     }),
     ring: new THREE.MeshBasicMaterial({
