@@ -222,6 +222,12 @@ button{touch-action:manipulation}
 .coinfx{position:absolute;left:0;top:0;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;pointer-events:none;will-change:transform,opacity;
   background:radial-gradient(circle at 35% 30%,#fff6c4 0 18%,#ffd84d 42%,#e6a817 100%);border:2px solid var(--ink);
   font:400 11px/16px var(--f-display);color:var(--ink);text-align:center}
+.failflash{position:absolute;inset:0;opacity:0;pointer-events:none;box-shadow:inset 0 0 0 5px rgba(255,72,64,.85),inset 0 0 80px 22px rgba(255,72,64,.6)}
+#resStars .rs{display:inline-block}
+#resStars .rs.wait{color:#d8d0bf;text-shadow:none}
+#resStars .rs.pop{animation:starPop .55s cubic-bezier(.3,1.7,.5,1) both}
+@keyframes starPop{0%{transform:scale(.25) rotate(-35deg)}55%{transform:scale(1.4) rotate(10deg)}100%{transform:none}}
+@media (prefers-reduced-motion:reduce){ #resStars .rs.pop{animation:none} }
 
 @media (max-width:420px){
   .money b{font-size:17px}
@@ -1356,8 +1362,8 @@ function tone(f, dur, type, vol, when, slideTo){
     const o = actx.createOscillator(), g = actx.createGain();
     o.type = type || 'sine'; o.frequency.setValueAtTime(f, t0);
     if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0+dur);
-    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol||0.12, t0+0.012); g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
-    o.connect(g); g.connect(audioOut()); o.start(t0); o.stop(t0+dur+0.02);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime((vol||0.12)*AUD.vs, t0+0.012); g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+    o.connect(g); g.connect(audioOut()); o.start(t0); o.stop(t0+dur+0.02); audTrack(o, g);
   } catch(e){}
 }
 const SFX = {
@@ -1384,7 +1390,8 @@ let musicOn = true;
 const SETTINGS_KEY = 'clonemart-settings-v1';   // audio prefs survive game over / restart; old saves simply lack it
 const MUSIC_VOL = 0.6;
 const AUD = {master:null, sfx:null, music:null, mfilter:null, hp:null, bp:null, sfxF:null, noise:null,
-  live:0, made:0, steps:0, timer:0, level:-1, stopAt:0, next:0, step:0, mode:'day', phrase:0, mel:null, gate:{}};
+  live:0, made:0, steps:0, timer:0, level:-1, stopAt:0, next:0, step:0, mode:'day', phrase:0, mel:null, gate:{},
+  vs:1, rush:0, bpm:86, melMode:'', spray:{until:0, me:false}, beepAt:{}, urgAt:0};
 (function loadAudioSettings(){
   try { const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
     if (s && typeof s.music === 'boolean') musicOn = s.music;
@@ -1414,9 +1421,9 @@ function audioBuses(){
 }
 function audioOut(){ return audioBuses() ? AUD.sfx : actx.destination; }
 /* every scheduled source goes through here so the debug counter stays honest and nodes get released */
-function audTrack(src, g){
+function audTrack(src, g, extra){
   AUD.live++; AUD.made++;
-  src.onended = () => { AUD.live--; try { src.disconnect(); g.disconnect(); } catch(e){} };
+  src.onended = () => { AUD.live--; try { src.disconnect(); g.disconnect(); if (extra) extra.disconnect(); } catch(e){} };
 }
 function audVoice(type, f, t, dur, vol, atk, dest, detune){
   const o = actx.createOscillator(), g = actx.createGain();
@@ -1433,8 +1440,8 @@ function audNoise(t, dur, vol, dest, rate){
 }
 const sfxOK = () => actx && !muted && audioBuses();
 function sfxGate(key, gap){ if (!actx) return false; const now = actx.currentTime; if (AUD.gate[key] > now - gap) return false; AUD.gate[key] = now; return true; }
-function sfxVoice(type, f, when, dur, vol, atk){ if (!sfxOK()) return; try { audVoice(type, f, actx.currentTime + (when||0), dur, vol, atk || 0.005, AUD.sfx); } catch(e){} }
-function sfxNoise(when, dur, vol, filter){ if (!sfxOK()) return; try { audNoise(actx.currentTime + (when||0), dur, vol, AUD.sfxF[filter] || AUD.sfx); } catch(e){} }
+function sfxVoice(type, f, when, dur, vol, atk){ if (!sfxOK()) return; try { audVoice(type, f, actx.currentTime + (when||0), dur, vol*AUD.vs, atk || 0.005, AUD.sfx); } catch(e){} }
+function sfxNoise(when, dur, vol, filter){ if (!sfxOK()) return; try { audNoise(actx.currentTime + (when||0), dur, vol*AUD.vs, AUD.sfxF[filter] || AUD.sfx); } catch(e){} }
 /* small-bell timbre: inharmonic partials (1 : 2.76 : 5.4) that decay faster as they go up */
 function bell(f, when, dur, vol){
   sfxVoice('sine', f, when, dur, vol, 0.003);
@@ -1442,11 +1449,206 @@ function bell(f, when, dur, vol){
   sfxVoice('sine', f*5.4, when, dur*0.2, vol*0.12, 0.002);
 }
 
+/* ---------------- kitchen SFX: one-shots for the order rush ----------------
+   World sounds go through sfxAs(who, fn): silent in the attract demo, and a clone's actions play
+   softer than yours so a full team doesn't drown the mix. */
+function sfxAs(who, fn){
+  if (G.demo || !sfxOK()) return;
+  AUD.vs = (!who || who === player) ? 1 : 0.42;
+  try { fn(); } catch(e){} finally { AUD.vs = 1; }
+}
+/* filtered-noise sweep (whooshes, pours, zaps): src → biquad (freq f0→f1) → gain → sfx bus */
+function sfxSweep(when, dur, vol, type, f0, f1, q){
+  if (!sfxOK()) return;
+  try {
+    const t = actx.currentTime + (when||0), s = actx.createBufferSource(), b = actx.createBiquadFilter(), g = actx.createGain();
+    s.buffer = AUD.noise; b.type = type; b.Q.value = q || 1;
+    b.frequency.setValueAtTime(f0, t); b.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol*AUD.vs, t + dur*0.3); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(b); b.connect(g); g.connect(AUD.sfx); s.start(t, Math.random()*0.5, dur + 0.05); audTrack(s, g, b);
+  } catch(e){}
+}
+/* referee pea-whistle: sine carrier with a fast trill LFO on its pitch */
+function whistle(when, dur, vol, f){
+  if (!sfxOK()) return;
+  try {
+    f = f || 2350;
+    const t = actx.currentTime + (when||0), o = actx.createOscillator(), g = actx.createGain(), l = actx.createOscillator(), lg = actx.createGain();
+    o.frequency.setValueAtTime(f, t); l.frequency.setValueAtTime(34, t); lg.gain.setValueAtTime(f*0.06, t);
+    l.connect(lg); lg.connect(o.frequency);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol*AUD.vs, t + 0.02); g.gain.setValueAtTime(vol*AUD.vs, t + dur - 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(AUD.sfx);
+    o.start(t); o.stop(t + dur + 0.02); l.start(t); l.stop(t + dur + 0.02);
+    audTrack(o, g); audTrack(l, lg);
+  } catch(e){}
+}
+const ITEM_PITCH = {drink:1.25, snack:1.15, cup:1.3, fruit:1.1, fruitcup:1.2, coffee:0.95, noodle_raw:1.05, noodle:0.9,
+  bento_cold:0.95, bento:0.85, sausage:0.9, sausage_cooked:0.85, bun:1.1, hotdog:0.8, oden_raw:1, oden:0.85, burnt:0.7};
+Object.assign(SFX, {
+  // pick up: quick rising "pop", pitched by what you grabbed; the extinguisher clanks
+  grab(who, type){ sfxAs(who, () => {
+    if (type === 'ext'){ sfxVoice('square', 520, 0, 0.05, 0.03); bell(880*rand(0.97,1.03), 0.01, 0.25, 0.04); return; }
+    const k = (ITEM_PITCH[type] || 1)*rand(0.94, 1.07);
+    tone(430*k, 0.075, 'sine', 0.09, 0, 860*k); sfxNoise(0, 0.025, 0.03, 'hp');
+  }); },
+  // put down: the surface decides the knock (metal machine / wooden board / counter)
+  put(who, sl){ sfxAs(who, () => {
+    const j = rand(0.93, 1.08), k = sl && sl.kind;
+    if (k === 'appl'){ sfxVoice('square', 1250*j, 0, 0.03, 0.025); tone(420*j, 0.09, 'triangle', 0.07, 0, 300*j); }
+    else if (k === 'board'){ tone(260*j, 0.08, 'sine', 0.1, 0, 150*j); sfxNoise(0, 0.04, 0.04, 'lp'); }
+    else { tone(330*j, 0.07, 'triangle', 0.07, 0, 230*j); sfxNoise(0, 0.03, 0.03, 'lp'); }
+  }); },
+  // combine (sausage into bun): paper rustle + two quick rising notes
+  combine(who){ sfxAs(who, () => { sfxNoise(0, 0.09, 0.05, 'bp'); tone(660, 0.08, 'triangle', 0.07, 0.02); tone(990, 0.12, 'triangle', 0.07, 0.09); }); },
+  // trash: lid flap + low thunk
+  trash(who){ sfxAs(who, () => { sfxVoice('square', 820*rand(0.95,1.05), 0, 0.03, 0.02); tone(150, 0.2, 'sine', 0.16, 0.05, 55); sfxNoise(0.05, 0.12, 0.08, 'lp'); }); },
+  // knife on the chopping board
+  chop(who){ sfxAs(who, () => { const j = rand(0.9, 1.12); tone(190*j, 0.08, 'sine', 0.13, 0, 85); sfxNoise(0, 0.03, 0.06, 'bp'); sfxVoice('triangle', 1700*j, 0, 0.02, 0.012); }); },
+  // chopped / repaired: short bright "done" flourish
+  ok(who){ sfxAs(who, () => { tone(660, 0.08, 'triangle', 0.08, 0.02); tone(880, 0.08, 'triangle', 0.08, 0.09); tone(1100, 0.12, 'triangle', 0.07, 0.16); }); },
+  // a machine finished: each station has its own "ready" call
+  done(id){ sfxAs(null, () => {
+    if (id === 'micro'){ bell(1760, 0, 1.1, 0.085); }
+    else if (id === 'grill'){ sfxNoise(0, 0.22, 0.06, 'hp'); tone(880, 0.08, 'triangle', 0.06, 0.04); tone(1319, 0.14, 'triangle', 0.06, 0.11); }
+    else if (id === 'pot'){ bell(1319, 0, 0.6, 0.05); bell(1760, 0.11, 0.8, 0.05); }
+    else if (id === 'hotwater'){ tone(1568, 0.06, 'square', 0.025); tone(1568, 0.06, 'square', 0.025, 0.1); }
+    else { bell(1175, 0, 0.5, 0.05); bell(1568, 0.08, 0.7, 0.05); }       // coffee
+  }); },
+  // something burnt / boiled over: sad poof
+  burnt(){ sfxAs(null, () => { sfxSweep(0, 0.4, 0.12, 'lowpass', 1800, 220, 0.8); tone(300, 0.35, 'sawtooth', 0.04, 0.02, 90); }); },
+  // fire! whoomp + a short two-tone alarm (throttled so spreading fires don't stack it)
+  fire(){ sfxAs(null, () => {
+    if (!sfxGate('fireAlarm', 0.5)) return;
+    sfxSweep(0, 0.5, 0.2, 'lowpass', 300, 2400, 0.7); tone(90, 0.35, 'sine', 0.18, 0, 40);
+    for (let i=0;i<4;i++) sfxVoice('square', i%2 ? 740 : 988, 0.12 + i*0.15, 0.14, 0.035, 0.01);
+  }); },
+  // fire out: steam hiss tail + relieved chime
+  extinguish(){ sfxAs(null, () => { if (G.state !== 'play') return; sfxSweep(0, 0.6, 0.07, 'highpass', 5000, 1800, 0.7); bell(1568, 0.1, 0.5, 0.045); bell(2093, 0.2, 0.7, 0.045); }); },
+  // power cut: falling electric zap with crackle
+  zap(){ sfxAs(null, () => { tone(1400, 0.32, 'sawtooth', 0.05, 0, 70); tone(60, 0.4, 'square', 0.04, 0.05, 40); for (let i=0;i<4;i++) sfxNoise(i*0.05 + rand(0,0.03), 0.02, 0.08, 'hp'); }); },
+  // a puddle appears
+  splash(){ sfxAs(null, () => { sfxSweep(0, 0.22, 0.07, 'bandpass', 2200, 500, 2); tone(700, 0.12, 'sine', 0.05, 0.03, 260); }); },
+  // you slipped: whoosh + cartoon slide whistle
+  slip(){ sfxAs(null, () => { sfxSweep(0, 0.45, 0.12, 'bandpass', 500, 3200, 1.6); tone(1100, 0.4, 'sine', 0.05, 0.02, 330); }); },
+  // a new ticket prints
+  ticket(){ sfxAs(null, () => { if (!sfxGate('ticket', 0.15)) return; sfxNoise(0, 0.07, 0.03, 'bp'); bell(1319, 0.02, 0.35, 0.05); bell(1976, 0.1, 0.45, 0.045); }); },
+  // urgent ticket: woodblock tick, louder as it runs out
+  urgent(f){ sfxAs(null, () => { const k = 1 - clamp(f/0.22, 0, 1); sfxVoice('sine', 1900, 0, 0.035, 0.03 + 0.03*k, 0.002); sfxVoice('triangle', 950, 0, 0.05, 0.02 + 0.02*k, 0.002); }); },
+  // burn warning: short beeps from the machine
+  burnBeep(k){ sfxAs(null, () => sfxVoice('square', 2100 + k*400, 0, 0.05, 0.018 + k*0.017, 0.003)); },
+  // delivery fanfare: register ding + a major arpeggio whose key climbs with the combo
+  deliver(combo){ sfxAs(null, () => {
+    const c = clamp(combo || 1, 1, 6), b = 784*Math.pow(2, (c - 1)*2/12);
+    sfxNoise(0, 0.03, 0.05, 'hp');
+    [1, 1.26, 1.5, 2].forEach((m, i) => sfxVoice('triangle', b*m, 0.03 + i*0.065, 0.2 + (i === 3 ? 0.25 : 0), 0.06, 0.006));
+    bell(b*2, 0.3, 0.7, 0.05);
+    if (c >= 3) bell(b*3, 0.38, 0.6, 0.035);
+  }); },
+  // ticket failed: low two-note buzzer
+  fail(){ sfxAs(null, () => { sfxVoice('sawtooth', 146, 0, 0.42, 0.05, 0.01); sfxVoice('sawtooth', 155, 0, 0.42, 0.04, 0.01); tone(330, 0.35, 'square', 0.03, 0.05, 160); }); },
+  // countdown: 3 · 2 · 1 beeps, then the opening whistle
+  count(n){ sfxAs(null, () => { if (n >= 1){ sfxVoice('triangle', 880, 0, 0.14, 0.1); sfxVoice('sine', 1760, 0, 0.08, 0.03); } else { whistle(0, 0.16, 0.06); whistle(0.22, 0.45, 0.07); } }); },
+  // time up: long whistle + falling chime
+  timeUp(){ sfxAs(null, () => { whistle(0, 0.85, 0.07, 2200); [1568, 1319, 1047, 784].forEach((f, i) => bell(f, 0.9 + i*0.14, 0.6, 0.045)); }); },
+  // results: one ding per star, climbing
+  star(i){ if (!sfxOK()) return; const f = [1319, 1661, 1976][i] || 1976; bell(f, 0, 0.9, 0.08); sfxVoice('triangle', f/2, 0, 0.2, 0.05); if (i === 2) bell(2637, 0.12, 1.0, 0.05); },
+  noStars(){ tone(392, 0.3, 'triangle', 0.06, 0, 370); tone(330, 0.5, 'triangle', 0.06, 0.28, 300); },
+});
+
+/* ---------------- kitchen loops: one voice per station ----------------
+   Driven from the music scheduler tick (every 50 ms, no per-frame cost). A loop is 1–2 sources
+   → filter → gain → sfx bus; it fades in, is modulated from the tick, and is stopped (not just
+   muted) as soon as its station goes idle, the level is paused/ends, or sound is muted. */
+const LOOPS = {};
+function loopOn(key, vol, build){
+  let L = LOOPS[key];
+  if (L) return L;
+  const t = actx.currentTime, g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t); g.gain.setTargetAtTime(vol, t, 0.05); g.connect(AUD.sfx);
+  L = LOOPS[key] = {g, vol, srcs:[], nodes:[], left:0, f:null};
+  const filt = (type, f, q) => { const b = actx.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; b.connect(g); L.nodes.push(b); return b; };
+  const noise = (type, f, q) => { const b = filt(type, f, q), s = actx.createBufferSource(); s.buffer = AUD.noise; s.loop = true; s.connect(b); L.srcs.push(s); return b; };
+  const osc = (type, f, dest) => { const o = actx.createOscillator(); o.type = type; o.frequency.value = f; o.connect(dest); L.srcs.push(o); return o; };
+  L.f = build(noise, osc, filt);
+  L.left = L.srcs.length;
+  for (const s of L.srcs){
+    AUD.live++; AUD.made++;
+    s.onended = () => { AUD.live--; try { s.disconnect(); } catch(e){} if (--L.left === 0){ try { L.nodes.forEach(n => n.disconnect()); g.disconnect(); } catch(e){} } };
+    s.start(t, s.buffer ? Math.random()*0.9 : 0);
+  }
+  return L;
+}
+function loopOff(key){
+  const L = LOOPS[key]; if (!L) return;
+  delete LOOPS[key];
+  try { const t = actx.currentTime; L.g.gain.cancelScheduledValues(t); L.g.gain.setTargetAtTime(0.0001, t, 0.05); for (const s of L.srcs) s.stop(t + 0.3); } catch(e){}
+}
+function loopsOff(){ for (const k in LOOPS) loopOff(k); }
+function loopLevel(L, k, tc){ L.g.gain.setTargetAtTime(Math.max(0.0001, L.vol*k), actx.currentTime, tc || 0.03); }
+const LOOP_BUILD = {
+  micro:   (n, o, f) => { const b = f('lowpass', 480, 1.2); o('sawtooth', 96, b); o('sawtooth', 97.4, b); return b; },   // transformer hum (beating pair)
+  grill:   (n) => n('highpass', 2600, 0.7),     // sizzle
+  pot:     (n) => n('lowpass', 260, 0.9),       // simmer rumble (+ bubble blips from the tick)
+  hotwater:(n) => n('bandpass', 600, 3),        // pour: band rises as the cup fills
+  coffee:  (n) => n('bandpass', 1500, 1.4),     // grinder, then drips
+  fire:    (n) => n('lowpass', 750, 0.6),       // roar (+ crackles from the tick)
+  spray:   (n) => n('highpass', 1400, 0.6),     // extinguisher hiss
+};
+const LOOP_VOL = {micro:0.028, grill:0.03, pot:0.05, hotwater:0.05, coffee:0.045, fire:0.07, spray:0.075};
+/* the extinguisher keeps the "spray" loop alive while someone holds the button */
+function sprayHiss(s){ if (!actx) return; AUD.spray.until = actx.currentTime + 0.16; if (s === player) AUD.spray.me = true; }
+function kitchenAudio(){
+  const now = actx.currentTime;
+  const live = actx.state === 'running' && sfxOK() && G.state === 'play' && !G.demo;
+  const want = {};
+  if (live){
+    let fires = 0;
+    for (const sl of SLOTS){
+      if (sl.fire){ fires++; continue; }
+      if (sl.kind !== 'appl' || !sl.item || sl.broken) continue;
+      const it = sl.item, inR = APPL[sl.id].ins[it.type];
+      if (inR){ want[sl.id] = clamp(it.cook/inR.t, 0, 1); continue; }
+      const outR = applOutRule(sl.id, it.type);
+      if (outR && outR.burn){
+        const b = it.cook/outR.burn;
+        if (b < 1) want[sl.id] = 1 + b;                                  // still on the heat: keeps humming/sizzling/bubbling
+        if (b > 0.4 && b < 1){                                           // burn warning: beeps speed up toward the burn
+          const k = (b - 0.4)/0.6, gap = lerp(0.7, 0.14, k);
+          if (!(AUD.beepAt[sl.id] > now - gap)){ AUD.beepAt[sl.id] = now; SFX.burnBeep(k); }
+        }
+      }
+    }
+    if (fires) want.fire = fires;
+    if (AUD.spray.until > now) want.spray = AUD.spray.me ? 1 : 0.5; else AUD.spray.me = false;
+    // the most urgent ticket ticks like a clock, faster as it runs out
+    let fmin = 1;
+    for (const o of orders) fmin = Math.min(fmin, 1 - o.t/o.limit);
+    if (fmin < 0.22){ const gap = lerp(0.26, 0.6, clamp(fmin/0.22, 0, 1)); if (now - AUD.urgAt > gap){ AUD.urgAt = now; SFX.urgent(fmin); } }
+  }
+  for (const k in LOOPS) if (!(k in want)) loopOff(k);
+  for (const k in want){
+    const v = want[k], L = loopOn(k, LOOP_VOL[k], LOOP_BUILD[k]), r = Math.random();
+    if (k === 'micro') loopLevel(L, 0.85 + 0.3*r, 0.05);
+    else if (k === 'grill'){ loopLevel(L, (v > 1 ? 1.3 : 0.55 + 0.45*v)*(0.6 + 0.7*r), 0.02); if (Math.random() < 0.3) sfxNoise(Math.random()*0.05, 0.012, 0.05 + 0.04*Math.random(), 'hp'); }
+    else if (k === 'pot'){ loopLevel(L, 0.6 + 0.4*Math.min(v, 1)); if (r < 0.3 + 0.25*Math.min(v, 1)){ const f = rand(150, 300); tone(f, 0.07, 'sine', 0.05, Math.random()*0.05, f*2.4); } }
+    else if (k === 'hotwater'){ L.f.frequency.setTargetAtTime(500 + 1500*Math.min(v, 1), now, 0.1); loopLevel(L, 0.75 + 0.5*r, 0.02); if (Math.random() < 0.12) tone(rand(220, 330), 0.06, 'sine', 0.04, Math.random()*0.05, 160); }
+    else if (k === 'coffee'){
+      if (v < 0.45){ L.f.frequency.setTargetAtTime(rand(1100, 1900), now, 0.01); loopLevel(L, 0.5 + 0.8*r, 0.008); }                     // grinding
+      else { loopLevel(L, 0.12, 0.08); if (r < 0.3) tone(rand(1250, 1500), 0.06, 'sine', 0.035, Math.random()*0.05, 700); }              // dripping
+    }
+    else if (k === 'fire'){ loopLevel(L, Math.min(1.6, 0.7 + 0.3*v)*(0.75 + 0.5*r), 0.04); for (let i=0;i<Math.min(v, 3);i++) if (Math.random() < 0.45) sfxNoise(Math.random()*0.05, rand(0.008, 0.03), rand(0.04, 0.11), 'hp'); }
+    else if (k === 'spray') loopLevel(L, v*(0.85 + 0.3*r), 0.02);
+  }
+}
+
 /* ---------------- music engine: procedural lo-fi "store radio" loop ----------------
    Original material: 4-bar progressions, swung 8th-note grid, seeded pentatonic melody that
    regenerates every two phrases. Lookahead scheduler (setInterval 50 ms, 0.3 s ahead).
-   Day: 86 BPM with soft boom-bap kit. Night (>=19:00 / closing): 70 BPM, darker filter, pad-like
-   chords, almost no drums. Plays only in play/closing, ducks while paused, fades out elsewhere. */
+   Day: 86 BPM with soft boom-bap kit. Night (>=19:00, and the calm menu radio): 70 BPM, darker
+   filter, pad-like chords, almost no drums. Countdown/play: full; paused: ducked; title/menus: quiet
+   and calm (title only after a gesture, since there is no AudioContext before one); ending/results:
+   fades out. Rush: in the last 30 s of a timed level the tempo climbs ~16%, the filter opens and
+   the kit doubles up (four-on-the-floor kick, 16th hats, octave bass). */
 const MUSIC = {
   day:  {bpm:86, cut:2600, swing:0.17, vol:1,
     prog:[[41,[53,57,60,64]], [45,[55,60,64,69]], [46,[57,62,65,69]], [48,[55,58,62,65]]],   // Fmaj7 Am7 Bbmaj7 C9sus4
@@ -1470,22 +1672,33 @@ function musicMelody(M, seed){
   for (let i=24;i<32;i+=2) if (r() < M.dens*0.7){ idx = clamp(idx - 1 + Math.round(r()), 0, n-1); out[i] = idx; }
   return out;
 }
-function musicIsNight(){ return G.state === 'closing' || hourNow() >= 19; }
+function musicIsNight(){ return G.state === 'title' || G.state === 'menu' || G.demo || hourNow() >= 19; }
 function musicTarget(){
   if (!musicOn || document.hidden) return 0;
-  if (G.state === 'play' || G.state === 'closing') return 1;
-  if (G.state === 'paused') return 0.28;            // duck under the pause / team sheets
-  return 0;                                         // title, summary, game over: silence
+  const s = G.state;
+  if (s === 'play' || s === 'countdown') return 1;
+  if (s === 'paused') return 0.28;                  // duck under the pause sheet
+  if (s === 'title' || s === 'menu') return 0.38;   // calm radio in the menus
+  return 0;                                         // ending, results: fade out (whistle + star dings stay clear)
+}
+/* 0..1: how deep into the last 30 s of a timed level we are (ramps in over ~3 s) */
+function musicRush(){
+  const L = G.level;
+  if (G.demo || !L || L.endless || !(G.state === 'play' || G.state === 'paused')) return 0;
+  return clamp((30 - (L.len - G.time))/3, 0, 1);
 }
 function musicStep(step, t){
   const i = step & 31, bar = i >> 3, s8 = i & 7;
-  if (i === 0){
-    AUD.mode = musicIsNight() ? 'night' : 'day';
-    if (AUD.phrase % 2 === 0 || !AUD.mel) AUD.mel = musicMelody(MUSIC[AUD.mode], 1013 + AUD.phrase*7919 + (AUD.mode === 'night' ? 31 : 0));
-    AUD.phrase++;
-    AUD.mfilter.frequency.setTargetAtTime(MUSIC[AUD.mode].cut, t, 1.5);
+  const rush = AUD.rush = musicRush();
+  if (s8 === 0 || (rush && AUD.mode !== 'day')){                    // mode follows the game at every bar (menu → level is quick)
+    AUD.mode = !rush && musicIsNight() ? 'night' : 'day';
+    if ((i === 0 && AUD.phrase % 2 === 0) || !AUD.mel || AUD.melMode !== AUD.mode){ AUD.mel = musicMelody(MUSIC[AUD.mode], 1013 + AUD.phrase*7919 + (AUD.mode === 'night' ? 31 : 0)); AUD.melMode = AUD.mode; }
+    if (i === 0) AUD.phrase++;
   }
-  const M = MUSIC[AUD.mode], beat = 60/M.bpm, sd = beat/2, v = M.vol;
+  if (i % 8 === 0) AUD.mfilter.frequency.setTargetAtTime(MUSIC[AUD.mode].cut*(1 + 0.7*rush), t, rush ? 0.4 : 1.5);
+  const M = MUSIC[AUD.mode], v = M.vol;
+  AUD.bpm = M.bpm*(1 + 0.16*rush);
+  const beat = 60/AUD.bpm, sd = beat/2;
   if (s8 % 2) t += M.swing*sd;
   const [root, chord] = M.prog[bar], night = AUD.mode === 'night';
   const out = AUD.mfilter;
@@ -1512,8 +1725,12 @@ function musicStep(step, t){
     const bn = s8 === 0 ? root : s8 === 3 ? root : s8 === 4 ? root + 7 : s8 === 6 ? root + 12 : 0;
     if (bn) audVoice('triangle', midiHz(bn), t, s8 === 0 ? beat*1.3 : beat*0.45, (s8 === 0 ? 0.13 : 0.085)*v, 0.012, out);
   }
-  // drums
-  const kv = M.kick[s8], rv = M.rim[s8], hv = M.hat[s8];
+  // drums (rush: kick on every beat, 16th hats, pumping octave bass)
+  const kv = rush && s8 % 2 === 0 ? Math.max(M.kick[s8], 0.7*rush) : M.kick[s8], rv = M.rim[s8], hv = M.hat[s8];
+  if (rush){
+    audNoise(t + sd*0.5, 0.025, 0.03*rush, AUD.hp, 1.2);
+    if (s8 % 2) audVoice('square', midiHz(root + 12), t, sd*0.6, 0.03*rush, 0.006, out);
+  }
   if (kv){
     const o = actx.createOscillator(), g = actx.createGain();
     o.frequency.setValueAtTime(115, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.13);
@@ -1527,12 +1744,13 @@ function musicStep(step, t){
   const mi = AUD.mel[i];
   if (mi >= 0){
     let len = 1; while (len < 3 && AUD.mel[(i + len) & 31] < 0) len++;
-    audVoice(night ? 'sine' : 'triangle', midiHz(M.scale[mi]), t, sd*len*0.95 + 0.08, (night ? 0.03 : 0.026)*v, 0.015, out, rand(-4,4));
+    audVoice(night ? 'sine' : 'triangle', midiHz(M.scale[Math.min(mi, M.scale.length - 1)]), t, sd*len*0.95 + 0.08, (night ? 0.03 : 0.026)*v, 0.015, out, rand(-4,4));
   }
   AUD.steps++;
 }
 function musicTick(){
   if (!actx || !AUD.master) return;
+  try { kitchenAudio(); } catch(e){ loopsOff(); }
   const now = actx.currentTime, want = musicTarget();
   if (want !== AUD.level){
     const wasSilent = AUD.level <= 0;
@@ -1546,7 +1764,7 @@ function musicTick(){
   try {
     while (AUD.next < now + 0.3){
       musicStep(AUD.step, AUD.next);
-      AUD.next += 30/MUSIC[AUD.mode].bpm; AUD.step++;
+      AUD.next += 30/AUD.bpm; AUD.step++;
     }
   } catch(e){ AUD.next = now + 0.5; }
 }
@@ -1563,7 +1781,7 @@ function syncAudioToggles(){
 const RMQ = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : null;
 const reducedMotion = () => !!(RMQ && RMQ.matches);
 const camShake = new THREE.Vector3();            // additive camera offset, applied at the end of updateCamera
-const JUICE = {trauma:0, t:0, squash:[], coins:0, pending:0, shown:null, lastTarget:null, popAt:0, raf:0, last:0};
+const JUICE = {trauma:0, t:0, squash:[], coins:0, pending:0, shown:null, lastTarget:null, popAt:0, raf:0, last:0, starTok:0, flash:null};
 const _jv = new THREE.Vector3();
 let moneyB = null, moneyChip = null;
 function juiceKick(){ if (!JUICE.raf){ JUICE.last = performance.now(); JUICE.raf = requestAnimationFrame(juiceLoop); } }
@@ -1647,7 +1865,36 @@ function moneyPop(sign){
 /* event bundles (one-line hooks at the event sites) */
 function juiceCheckout(who, total){ squash(who, 0.2); coinBurst(CHECKOUT_SPOT.x + 0.7, 1.5, CHECKOUT_SPOT.z, total); }
 function juiceCatch(staffer, thief, total){ squash(thief, 0.26); squash(staffer, 0.14); camShakeAdd(0.55); coinBurst(thief.agent.pos.x, 1.6, thief.agent.pos.z, total); }
-window.__cloneMartAudio = {AUD, JUICE, camShake, musicTick, get musicOn(){ return musicOn; }, get muted(){ return muted; }};
+/* fire: a heavier shake + buzz (the alarm is SFX.fire) */
+function juiceFire(){ if (G.demo) return; camShakeAdd(0.5); haptic(30); }
+/* delivered ticket: mint flash + the dish icon pops (bigger with the combo) while the ticket flies off */
+function juiceTicket(o, combo){
+  const el = o.el; if (!el || !el.animate) return;
+  try {
+    el.animate([{background:'#b8ffe4', boxShadow:'0 0 0 4px #34d6a6,0 3px 0 rgba(15,29,51,.6)'}, {background:'#e6fff6', boxShadow:'0 3px 0 rgba(15,29,51,.6)'}], {duration:420, easing:'ease-out'});
+    const ic = el.querySelector('.ic');
+    if (ic && !reducedMotion()) ic.animate([{transform:'scale(1)'}, {transform:'scale(' + (1.45 + 0.12*clamp(combo||1, 1, 4)) + ') rotate(-12deg)', offset:0.35}, {transform:'scale(1)'}],
+      {duration:400, easing:'cubic-bezier(.3,1.6,.5,1)'});
+  } catch(e){}
+}
+/* failed ticket: quick red flash around the screen edge (gentler, still visible, under reduced motion) */
+function juiceFail(){
+  if (!JUICE.flash){ JUICE.flash = document.createElement('div'); JUICE.flash.className = 'failflash'; fxLayer.appendChild(JUICE.flash); }
+  if (!JUICE.flash.isConnected) fxLayer.appendChild(JUICE.flash);
+  try { JUICE.flash.animate([{opacity:0}, {opacity: reducedMotion() ? 0.45 : 1, offset:0.18}, {opacity:0}], {duration:560, easing:'ease-out'}); } catch(e){}
+}
+/* results: the earned stars land one by one with a bounce and a climbing ding each */
+function juiceStars(n){
+  const box = $('#resStars'), tok = ++JUICE.starTok;
+  box.innerHTML = '<span class="rs wait">★</span>'.repeat(n) + '<i>' + '<span class="rs">★</span>'.repeat(3 - n) + '</i>';
+  box.querySelectorAll('.rs.wait').forEach((e, i) => setTimeout(() => {
+    e.classList.remove('wait');
+    if (tok !== JUICE.starTok || G.state !== 'results') return;
+    e.classList.add('pop'); SFX.star(i);
+  }, 450 + i*380));
+  if (!n) setTimeout(() => { if (tok === JUICE.starTok && G.state === 'results') SFX.noStars(); }, 500);
+}
+window.__cloneMartAudio = {AUD, JUICE, LOOPS, camShake, musicTick, kitchenAudio, get musicOn(){ return musicOn; }, get muted(){ return muted; }};
 
 /* =====================================================================
    CLONE MART RUSH — co-op order-rush gameplay
@@ -1901,14 +2148,14 @@ function ignite(sl){
   sl.fire = {t:0, hp:1, g, spread:0};
   if (sl.item && sl.item.type !== 'ext') setItemType(sl.item, 'burnt');
   G.stats.fires++;
-  SFX.bad(); camShakeAdd(0.35);
+  SFX.fire(); juiceFire();
   toast('🔥 ' + sl.n + '起火了！', 'bad');
   tip('fire', '起火了！到牆上拿 🧯 滅火器，對著火長按「動作」。火會延燒到旁邊的台子！');
 }
 function extinguish(sl){
   if (!sl.fire) return;
   scene.remove(sl.fire.g); sl.fire = null;
-  floatText(sl.x, sl.y + 0.8, sl.z, '滅火了！', 'good txt'); SFX.clean();
+  floatText(sl.x, sl.y + 0.8, sl.z, '滅火了！', 'good txt'); SFX.extinguish();
 }
 function spawnSpill(){
   if (spills.length >= 6) return;
@@ -1920,7 +2167,7 @@ function spawnSpill(){
     const m = new THREE.Mesh(new THREE.CircleGeometry(0.5,20).rotateX(-Math.PI/2), new THREE.MeshLambertMaterial({color:0x7fc8ff, transparent:true, opacity:0.6, depthWrite:false}));
     m.position.y = 0.012; m.scale.set(rand(0.8,1.25),1,rand(0.7,1.1)); g.add(m);
     const sp = {x:p.x, z:p.z, g, prog:0, tag:new Tag('')}; sp.tag.icon('💧');
-    spills.push(sp);
+    spills.push(sp); SFX.splash();
     tip('spill', '地上濕了會滑倒！空手站在水漬旁長按「動作」可以拖乾。');
     return;
   }
@@ -1930,7 +2177,7 @@ function breakRandomMachine(){
   const cand = ['coffee','hotwater','micro','grill','pot'].map(id => SLOT[id]).filter(s => !s.broken && !s.fire);
   if (!cand.length) return;
   const sl = pick(cand); sl.broken = 1; sl.fix = 0;
-  toast('⚡ 停電！' + sl.n + '故障了', 'bad'); SFX.bad();
+  toast('⚡ 停電！' + sl.n + '故障了', 'bad'); SFX.zap(); camShakeAdd(0.15);
   tip('outage', '機器故障 ⚡ 時不會運作。空手站在旁邊長按「動作」就能修好。');
 }
 
@@ -1998,20 +2245,20 @@ function grab(s, sl){
   if (!h){
     if (sl.item){
       if (sl.kind === 'appl' && sl.item.type === APPL_IN(sl) && s === player) tip('early', '還沒好喔！拿起來會中斷加熱，等進度條跑完再拿。');
-      holdItem(s, takeFromSlot(sl)); SFX.pick(); squash(s, 0.1); return true;
+      holdItem(s, takeFromSlot(sl)); SFX.grab(s, s.hold.type); squash(s, 0.1); return true;
     }
-    if (sl.kind === 'src'){ holdItem(s, newItem(sl.give)); SFX.pick(); squash(s, 0.1); return true; }
+    if (sl.kind === 'src'){ holdItem(s, newItem(sl.give)); SFX.grab(s, sl.give); squash(s, 0.1); return true; }
     return false;
   }
   if (sl.kind === 'trash'){
     if (h.type === 'ext') return nope(s, '滅火器不能丟');
-    releaseHold(s); SFX.clean(); if (h.type === 'burnt') G.stats.burnt++;
+    releaseHold(s); SFX.trash(s); squash(s, 0.12); if (h.type === 'burnt') G.stats.burnt++;
     return true;
   }
   if (sl.kind === 'pass') return deliver(s);
   if (sl.kind === 'src'){
     const r = combine(h.type, sl.give);
-    if (r){ setItemType(h, r); SFX.stock(); squash(s, 0.12); return true; }
+    if (r){ setItemType(h, r); SFX.combine(s); squash(s, 0.12); return true; }
     return nope(s, '手上已經有東西了');
   }
   if (sl.item){
@@ -2020,7 +2267,7 @@ function grab(s, sl){
       const it = takeFromSlot(sl); dropItem(it);
       setItemType(h, r);
       if (sl.kind === 'counter' || sl.kind === 'board'){ const res = releaseHold(s); placeOnSlot(sl, res); }
-      SFX.stock(); squash(s, 0.12); return true;
+      SFX.combine(s); squash(s, 0.12); return true;
     }
     return nope(s, sl.n + '上已經有東西');
   }
@@ -2030,7 +2277,7 @@ function grab(s, sl){
     if (!a.ins[h.type] && !applOutRule(sl.id, h.type)) return nope(s, a.n + '不能放' + ITEMS[h.type].n);
   }
   if (sl.kind === 'board' && h.type === 'ext') return nope(s, '砧板不能放滅火器');
-  placeOnSlot(sl, releaseHold(s)); SFX.pick(); squash(s, 0.08);
+  placeOnSlot(sl, releaseHold(s)); SFX.put(s, sl); squash(s, 0.08);
   return true;
 }
 function APPL_IN(sl){ const a = APPL[sl.id]; return a ? Object.keys(a.ins)[0] : null; }
@@ -2051,19 +2298,19 @@ function useTick(s, dt){
   const sl = findTarget(s);
   if (sl && sl.kind === 'board' && sl.item && sl.item.type === 'fruit' && !sl.fire){
     sl.item.chop += dt*s.work;
-    if (Math.floor(sl.item.chop*4) !== Math.floor((sl.item.chop - dt*s.work)*4)) tone(900 + Math.random()*200, 0.04, 'square', 0.03);
-    if (sl.item.chop >= 2.5){ setItemType(sl.item, 'fruitcup'); SFX.stock(); floatText(sl.x, 1.6, sl.z, '切好了！', 'good txt'); return null; }
+    if (Math.floor(sl.item.chop*4) !== Math.floor((sl.item.chop - dt*s.work)*4)){ SFX.chop(s); squash(s, 0.07); }
+    if (sl.item.chop >= 2.5){ setItemType(sl.item, 'fruitcup'); SFX.ok(s); floatText(sl.x, 1.6, sl.z, '切好了！', 'good txt'); return null; }
     return sl.item.chop/2.5;
   }
   if (sl && sl.broken){
     sl.fix += dt*s.work;
-    if (sl.fix >= 2){ sl.broken = 0; sl.fix = 0; SFX.stock(); floatText(sl.x, 1.8, sl.z, '修好了！', 'good txt'); return null; }
+    if (sl.fix >= 2){ sl.broken = 0; sl.fix = 0; SFX.ok(s); floatText(sl.x, 1.8, sl.z, '修好了！', 'good txt'); return null; }
     return sl.fix/2;
   }
   for (const sp of spills){
     if (Math.hypot(sp.x-p.x, sp.z-p.z) < 1.0){
       sp.prog += dt*s.work;
-      if (sp.prog >= 1.2){ removeSpill(sp); SFX.clean(); floatText(p.x, 2.2, p.z, '拖乾了', 'good txt'); return null; }
+      if (sp.prog >= 1.2){ removeSpill(sp); sfxAs(s, SFX.clean); floatText(p.x, 2.2, p.z, '拖乾了', 'good txt'); return null; }
       return sp.prog/1.2;
     }
   }
@@ -2075,7 +2322,7 @@ function sprayFx(s, dt){
   if (!s.spray){ s.spray = new THREE.Mesh(sprayGeo, sprayMat); s.spray.position.set(0, 1.0, 0.3); s.ch.g.add(s.spray); }
   s.spray.visible = true; s.sprayT = 0.12;
   s.spray.scale.setScalar(0.85 + Math.random()*0.3);
-  if (sfxGate('spray', 0.12)) sfxNoise(0, 0.14, 0.05, 2400);
+  sprayHiss(s);
 }
 
 /* ---------------- orders & customers ---------------- */
@@ -2103,7 +2350,7 @@ function spawnOrder(){
       oden:'關東煮：拿關東煮料放進湯鍋，煮好再盛起來送出去。',
       fruitcup:'水果杯：把水果放上砧板，空手長按「動作」切好，再拿起來送出去。',
       drink:'飲料：到後面的冰箱拿一瓶，直接送到出餐台。', snack:'零食：到零食貨架拿一包，直接送到出餐台。'}[rec];
-    tip('rec_' + rec, first);
+    tip('rec_' + rec, first); SFX.ticket();
   }
   return o;
 }
@@ -2181,8 +2428,8 @@ function completeOrder(o, s){
     G.stats.delivered++; G.stats.base += R.pts; G.stats.tips += tipAmt; G.stats.maxCombo = Math.max(G.stats.maxCombo, G.combo);
     G.stats.byRec[o.rec] = (G.stats.byRec[o.rec]||0) + 1;
     floatText(SLOT.pass.x, 2.2, SLOT.pass.z, '+' + fmt(total) + (G.combo > 1 ? ' ×' + (G.combo-1) + ' 小費' : ''));
-    SFX.ding(); haptic(20);
-    juiceCheckout(s, total);
+    SFX.deliver(G.combo); haptic(20);
+    juiceCheckout(s, total); juiceTicket(o, G.combo);
     ticketDone(o, true);
   }
   if (o.cust) customerLeave(o.cust, true);
@@ -2196,7 +2443,7 @@ function failOrder(o){
     const pen = Math.round(R.pts*0.5);
     addMoney(-pen); G.stats.failed++; G.stats.penalty += pen; G.fails++;
     floatText(o.cust ? o.cust.agent.pos.x : CHECKOUT_SPOT.x, 2.4, o.cust ? o.cust.agent.pos.z : CHECKOUT_SPOT.z, '-' + fmt(pen) + ' 等太久了', 'bad txt');
-    SFX.bad(); camShakeAdd(0.2);
+    SFX.fail(); camShakeAdd(0.2); juiceFail();
     ticketDone(o, false);
   }
   if (o.cust) customerLeave(o.cust, false);
@@ -2447,7 +2694,7 @@ function updatePlayer(dt){
     a.rot = Math.atan2(nx,nz); manual = true;
     if (!(s.slipCD > 0) && m > 0.5 && onSpill(s)){
       s.slip = {vx:nx*a.speed*1.1, vz:nz*a.speed*1.1, t:0.55};
-      floatText(a.pos.x, 2.3, a.pos.z, '滑～！', 'bad txt'); tone(500, 0.3, 'sine', 0.06, 0, 220); camShakeAdd(0.12); haptic(15);
+      floatText(a.pos.x, 2.3, a.pos.z, '滑～！', 'bad txt'); SFX.slip(); camShakeAdd(0.12); squash(s, 0.22); haptic(15);
     }
   } else if (a.path.length && onSpill(s)) a.speed *= 0.6;
   a.carrying = !!s.hold;
@@ -3023,7 +3270,7 @@ function countdownTick(dt){
   G.cdT -= dt;
   const n = Math.ceil(G.cdT - 0.4);
   const show = n >= 1 ? String(n) : '開店！';
-  if (G.cdShown !== show){ G.cdShown = show; bigMsg(show, n < 1); tone(n >= 1 ? 660 : 990, n >= 1 ? 0.12 : 0.3, 'triangle', 0.1); }
+  if (G.cdShown !== show){ G.cdShown = show; bigMsg(show, n < 1); SFX.count(n); }
   if (G.cdT <= 0){ G.state = 'play'; setTimeout(() => { if (G.state !== 'countdown') hud.big.innerHTML = ''; }, 700); }
 }
 function endLevel(){
@@ -3031,7 +3278,7 @@ function endLevel(){
   G.state = 'ending'; G.endT = 1.6;
   for (const o of orders) ticketDone(o, false);
   bigMsg(G.level.endless ? '打烊！' : '時間到！', true);
-  SFX.close();
+  SFX.timeUp(); loopsOff();
   for (const s of staff) s.agent.path.length = 0;
 }
 function showResults(){
@@ -3045,7 +3292,7 @@ function showResults(){
   saveProgress();
   const row = (a,b,cls) => `<div class="r ${cls||''}"><span>${a}</span><span>${b}</span></div>`;
   $('#resTitle').textContent = (L.endless ? '無限營業 · 撐了 ' + mmss(G.time) : '第 ' + (G.lv+1) + ' 關 · ' + L.n);
-  $('#resStars').innerHTML = '★'.repeat(stars) + '<i>' + '★'.repeat(3 - stars) + '</i>';
+  $('#resStars').innerHTML = '★'.repeat(stars) + '<i>' + '★'.repeat(3 - stars) + '</i>'; juiceStars(stars);
   $('#resBest').hidden = !isBest || score === 0;
   const recRows = Object.keys(S.byRec).map(k => row(RECIPES[k].ic + ' ' + RECIPES[k].n, S.byRec[k] + ' 份')).join('');
   $('#receipt').innerHTML =
@@ -3099,13 +3346,13 @@ function updateMachines(dt){
     }
     if (sl.kind !== 'appl' || !sl.item || sl.broken) continue;
     const it = sl.item, a = APPL[sl.id], inR = a.ins[it.type];
-    if (inR){ it.cook += dt; if (it.cook >= inR.t){ setItemType(it, inR.out); if (!G.demo){ tone(1175, 0.12, 'triangle', 0.07); tone(1568, 0.16, 'triangle', 0.06, 0.08); } } }
+    if (inR){ it.cook += dt; if (it.cook >= inR.t){ setItemType(it, inR.out); SFX.done(sl.id); } }
     else {
       const outR = applOutRule(sl.id, it.type);
       if (outR && outR.burn){
         it.cook += dt;
         if (it.cook > outR.burn*0.4) tip('burn', '⚠️ 快燒焦了！做好的東西要趕快從機器拿出來。');
-        if (it.cook >= outR.burn){ setItemType(it, 'burnt'); if (!G.demo){ SFX.bad(); floatText(sl.x, sl.y + 0.8, sl.z, sl.id === 'pot' ? '煮爛了！' : '燒焦了！', 'bad txt'); } }
+        if (it.cook >= outR.burn){ setItemType(it, 'burnt'); if (!G.demo){ SFX.burnt(); floatText(sl.x, sl.y + 0.8, sl.z, sl.id === 'pot' ? '煮爛了！' : '燒焦了！', 'bad txt'); } }
       } else if (it.type === 'burnt' && a.fire){
         it.cook += dt; if (it.cook >= a.fire) ignite(sl);
       }
