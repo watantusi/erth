@@ -121,13 +121,37 @@ function start() {
       },
       onReset() {
         clearSave();
+        if (gameplay.cancelTimeTrial) gameplay.cancelTimeTrial();
         gameplay.reset();
         player.setDirection(startDir);
         cameraRig.snap();
         save();
       },
+      // ---- v3 ----
+      getWardrobe: () => (gameplay.getWardrobe ? gameplay.getWardrobe() : { slots: [], items: [], equipped: {} }),
+      onEquip(slot, id) { if (gameplay.equip) { gameplay.equip(slot, id); save(); } },
+      onWardrobeOpen(open) {
+        if (!playing) return;
+        cameraRig.setMode(open ? 'closeup' : 'follow');
+      },
+      getJournal: () => (gameplay.getJournal ? gameplay.getJournal() : { facts: [] }),
+      onRetryQuiz(id) { if (gameplay.retryQuiz) gameplay.retryQuiz(id); },
+      getDayNight: () => dayNight,
+      onDayNight(on) {
+        dayNight = !!on;
+        try { localStorage.setItem(SAVE_KEY + ':daynight', dayNight ? '1' : '0'); } catch { /* 忽略 */ }
+        if (world.setDayNightEnabled) world.setDayNightEnabled(dayNight);
+      },
+      canTimeTrial: () => !!(playing && gameplay.canTimeTrial && gameplay.canTimeTrial()),
+      onTimeTrial() { if (playing && gameplay.startTimeTrial && gameplay.canTimeTrial()) gameplay.startTimeTrial(); },
+      onCancelTrial() { if (gameplay.cancelTimeTrial) gameplay.cancelTimeTrial(); },
     },
   });
+
+  // 日夜循環偏好（預設開）
+  let dayNight = true;
+  try { dayNight = localStorage.getItem(SAVE_KEY + ':daynight') !== '0'; } catch { /* 忽略 */ }
+  if (world.setDayNightEnabled) world.setDayNightEnabled(dayNight);
 
   gameplay = createGameplay({ scene, world, player, ui, audio, effects });
   ui.updateProgress(gameplay.getProgress());
@@ -138,6 +162,7 @@ function start() {
     const data = gameplay.getSaveData() || {};
     const d = player.getDirection(new THREE.Vector3());
     data.__player = [d.x, d.y, d.z];
+    if (world.getTimeOfDay) data.__time = world.getTimeOfDay();
     writeSave(data);
   }
   const origLoad = gameplay.loadSaveData.bind(gameplay);
@@ -147,12 +172,21 @@ function start() {
       const v = new THREE.Vector3(...data.__player);
       if (v.lengthSq() > 0.5) player.setDirection(v.normalize());
     }
+    if (data && Number.isFinite(data.__time) && world.setTimeOfDay && dayNight) world.setTimeOfDay(data.__time);
   };
 
   // 角色事件 → 音效
   player.onJump = () => audio.play('jump');
   player.onLand = () => audio.play(player.inWater ? 'splash' : 'land');
-  player.onStep = () => audio.play(player.inWater ? 'splash' : 'step');
+  const _trailPos = new THREE.Vector3();
+  player.onStep = () => {
+    audio.play(player.inWater ? 'splash' : 'step');
+    const eq = gameplay.getEquipped ? gameplay.getEquipped() : null;
+    if (eq && eq.trail && effects.trail) {
+      _trailPos.copy(player.position).addScaledVector(player.up, 0.1);
+      effects.trail(_trailPos, player.up, eq.trail);
+    }
+  };
   player.onBounce = () => audio.play('bounce');
 
   const radar = createRadar({ root: touchRoot });
@@ -167,6 +201,7 @@ function start() {
   const clock = new THREE.Clock();
   let t = 0;
   let wasModal = false;
+  let wasNight = null;
 
   renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 1 / 20);
@@ -188,6 +223,10 @@ function start() {
 
     cameraRig.update(dt);
     world.update(dt, t, camera);
+    if (world.isNight && audio.setNight) {
+      const night = world.isNight();
+      if (night !== wasNight) { audio.setNight(night); wasNight = night; }
+    }
     effects.update(dt);
 
     // v2：互動提示、導航（指南針等級）與雷達
