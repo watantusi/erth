@@ -230,7 +230,7 @@ function prep(geo, color) {
   g.computeVertexNormals();
   const n = g.attributes.position.count;
   const arr = new Float32Array(n * 3);
-  _col.set(color);
+  if (Array.isArray(color)) _col.set(color[0]).multiplyScalar(color[1]); else _col.set(color);
   for (let i = 0; i < n; i++) { arr[i * 3] = _col.r; arr[i * 3 + 1] = _col.g; arr[i * 3 + 2] = _col.b; }
   g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
   return g;
@@ -263,6 +263,7 @@ function lumpy(geo, amt, freq, seed) {
 
 // ---- 道具模型（本地 +Y 向上，+Z 向前，底部在 y=0） ----
 const C = (h) => h;
+const SNOW = [0xf6fbff, 1.25];
 function geoPine() {
   return merge([
     part(new THREE.CylinderGeometry(0.11, 0.16, 0.7, 5), C(0x8a5a3c), 0, 0.2, 0),
@@ -417,9 +418,9 @@ function rocketParts() {
 }
 function snowmanParts() {
   return [
-    part(new THREE.IcosahedronGeometry(0.72, 1), 0xffffff, 0, 0.5, 0),
-    part(new THREE.IcosahedronGeometry(0.52, 1), 0xfbfdff, 0, 1.3, 0),
-    part(new THREE.IcosahedronGeometry(0.38, 1), 0xffffff, 0, 1.95, 0),
+    part(new THREE.IcosahedronGeometry(0.72, 1), SNOW, 0, 0.5, 0),
+    part(new THREE.IcosahedronGeometry(0.52, 1), SNOW, 0, 1.3, 0),
+    part(new THREE.IcosahedronGeometry(0.38, 1), SNOW, 0, 1.95, 0),
     part(new THREE.ConeGeometry(0.08, 0.42, 5), 0xff8a3d, 0, 1.94, 0.52, Math.PI / 2, 0, 0),
     part(new THREE.IcosahedronGeometry(0.055, 0), 0x2c3440, 0.13, 2.05, 0.33),
     part(new THREE.IcosahedronGeometry(0.055, 0), 0x2c3440, -0.13, 2.05, 0.33),
@@ -470,8 +471,8 @@ function bottleParts() {
 // 彩蛋 3：南極的冰屋與企鵝一家
 function iglooParts() {
   return [
-    part(new THREE.SphereGeometry(1.35, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), 0xf4faff, 0, -0.05, 0),
-    part(new THREE.BoxGeometry(0.95, 0.9, 1.0), 0xeaf5fc, 0, 0.4, 1.3),
+    part(new THREE.SphereGeometry(1.35, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), SNOW, 0, -0.05, 0),
+    part(new THREE.BoxGeometry(0.95, 0.9, 1.0), [0xeaf5fc, 1.2], 0, 0.4, 1.3),
     part(new THREE.BoxGeometry(0.55, 0.6, 0.06), 0x3b5a7a, 0, 0.32, 1.81),
     part(new THREE.IcosahedronGeometry(0.16, 0), 0xa8d8f0, 0.5, 1.15, 0.6),
   ];
@@ -479,7 +480,7 @@ function iglooParts() {
 function penguinParts(s, x, z, yaw) {
   const parts = [
     part(new THREE.IcosahedronGeometry(0.34, 1), 0x2c3440, 0, 0.45, 0, 0, 0, 0, 1, 1.35, 0.92),
-    part(new THREE.IcosahedronGeometry(0.27, 1), 0xffffff, 0, 0.4, 0.13, 0, 0, 0, 0.92, 1.2, 0.62),
+    part(new THREE.IcosahedronGeometry(0.27, 1), SNOW, 0, 0.4, 0.13, 0, 0, 0, 0.92, 1.2, 0.62),
     part(new THREE.ConeGeometry(0.07, 0.2, 4), 0xff9a3d, 0, 0.78, 0.33, Math.PI / 2, 0, 0),
     part(new THREE.IcosahedronGeometry(0.045, 0), 0xffffff, 0.11, 0.86, 0.26),
     part(new THREE.IcosahedronGeometry(0.045, 0), 0xffffff, -0.11, 0.86, 0.26),
@@ -562,7 +563,7 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
   // ---- 材質 ----
   const terrainMat = patch(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
   const propMat = patch(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
-  const cloudMat = patch(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x8a96aa, emissiveIntensity: 0.55 }));
+  const cloudMat = patch(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0xa9b6c8, emissiveIntensity: 0.85 }));
   const lavaMat = patch(new THREE.MeshBasicMaterial({ color: 0xff7a3d, toneMapped: false }));
   const spoutMat = patch(new THREE.MeshBasicMaterial({ vertexColors: true, color: 0xe8f8ff, transparent: true, opacity: 0.85, depthWrite: false }));
 
@@ -587,7 +588,7 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
     meadowA: CL(0x8fd16a), meadowB: CL(0xa9df7c), meadowY: CL(0xd9e98a),
     forestA: CL(0x4f9e5a), forestB: CL(0x3f8a4f), forestH: CL(0x6cb565),
     desertA: CL(0xe9c77b), desertB: CL(0xf3d891), desertC: CL(0xdcb168),
-    polarA: CL(0xf4f9fc), polarB: CL(0xc2e2f4),
+    polarA: CL(0xf4f9fc).multiplyScalar(1.22), polarB: CL(0xc8e6f6).multiplyScalar(1.12),
     volcGlow: CL(0xe8643a), volcDark: CL(0x4f4242), volcLow: CL(0x8a6c60), volcMoss: CL(0x8f9a62), volcStreak: CL(0xf08a3c),
     sand: CL(0xf3e3ae), seabed: CL(0xd8c79a), seabedDeep: CL(0xa9b79a), islandGreen: CL(0x9bd46e),
     ice: CL(0x9fd8f2),
@@ -802,7 +803,7 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
     wg.computeBoundingSphere();
     const waterMat = new THREE.MeshPhongMaterial({
       vertexColors: true, flatShading: true, transparent: true, opacity: 1,
-      shininess: 45, specular: 0x4a6070, depthWrite: false,
+      shininess: 90, specular: 0x34444e, depthWrite: false,
     });
     waterMat.onBeforeCompile = (shader) => {
       shader.uniforms.uSat = uSat;
@@ -940,6 +941,13 @@ void main() {
   }
 
   const COS_START_CLEAR = Math.cos(0.27);
+  // 各生態區中心附近保持空曠（方便放晶石等目標）
+  const COS_CENTER_CLEAR = Math.cos(0.07);
+  const allCenters = BC.flat();
+  function nearBiomeCenter(d) {
+    for (let i = 0; i < allCenters.length; i++) if (d.dot(allCenters[i]) > COS_CENTER_CLEAR) return true;
+    return false;
+  }
   const _d = new THREE.Vector3();
   /** 在某生態區隨機撒道具 */
   function scatter(rng, count, biome, opt, cb) {
@@ -960,6 +968,7 @@ void main() {
       if (opt.maxAbove != null && g > SEA_LEVEL + opt.maxAbove) continue;
       if (opt.avoidStart !== false && _d.dot(START) > COS_START_CLEAR) continue;
       if (opt.exclude && opt.exclude(_d)) continue;
+      if (opt.radius && nearBiomeCenter(_d)) continue;
       if (opt.maxSlope && slopeAt(_d) > opt.maxSlope) continue;
       if (!freeAt(_d, g, (opt.radius || 0) * scale + (opt.clearance ?? 0.35))) continue;
       cb(_d, g, scale, rng);
@@ -976,9 +985,9 @@ void main() {
 
   // ---- 地標：村莊 ----
   const houses = [
-    { ang: 0.33, az: 20, roof: 0xe8655a, wall: 0xfff4e0 },
+    { ang: 0.34, az: 20, roof: 0xe8655a, wall: 0xfff4e0 },
     { ang: 0.36, az: 78, roof: 0x5a8fe8, wall: 0xfff0f0 },
-    { ang: 0.31, az: 140, roof: 0xf0a04b, wall: 0xfff8e6 },
+    { ang: 0.335, az: 140, roof: 0xf0a04b, wall: 0xfff8e6 },
     { ang: 0.37, az: 198, roof: 0xa77be0, wall: 0xf4f0ff },
     { ang: 0.335, az: 255, roof: 0x4fbfa8, wall: 0xfffbe8 },
   ];

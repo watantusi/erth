@@ -54,8 +54,7 @@
   opacity: 0.42;
 }
 .tew-joy.active { opacity: 1; }
-.tew-joy::before,
-.tew-joy::after {
+.tew-joy::before {
   /* 四個方向的小刻度 */
   content: '';
   position: absolute;
@@ -67,7 +66,6 @@
     radial-gradient(circle at 4px 50%, rgba(255, 255, 255, 0.85) 0 2.5px, transparent 3px),
     radial-gradient(circle at calc(100% - 4px) 50%, rgba(255, 255, 255, 0.85) 0 2.5px, transparent 3px);
 }
-.tew-joy::after { display: none; }
 
 .tew-joy-knob {
   position: absolute;
