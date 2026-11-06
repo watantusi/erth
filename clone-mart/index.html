@@ -297,6 +297,89 @@ body.touch #hint{bottom:calc(env(safe-area-inset-bottom,0px) + 186px);font-size:
 .bigstars{text-align:center;font-size:48px;letter-spacing:8px;color:var(--sign);text-shadow:0 3px 0 var(--ink);margin:2px 0 4px;line-height:1.1}
 .newbest{display:block;text-align:center;font-weight:900;color:var(--coral);margin-bottom:6px}
 @media (prefers-reduced-motion:reduce){ .tk.urgent{animation:none} #bigmsg span{animation:none} }
+
+/* ---------- controls UX: hold ring, target label, compact tickets, small-screen sheets ---------- */
+.act{position:relative}
+#btnUse::before{content:'';position:absolute;inset:-8px;border-radius:50%;pointer-events:none;opacity:0;transition:opacity .12s;
+  background:conic-gradient(var(--mint) calc(var(--p,0)*1turn), rgba(255,255,255,.28) 0);
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 6px),#000 calc(100% - 5px));mask:radial-gradient(farthest-side,transparent calc(100% - 6px),#000 calc(100% - 5px))}
+#btnUse.prog::before{opacity:1}
+#btnUse.auto{box-shadow:0 4px 0 var(--ink),0 0 0 3px var(--mint)}
+#btnGrab.go{animation:grabGo 1s ease-in-out infinite}
+@keyframes grabGo{0%,100%{box-shadow:0 4px 0 var(--ink),0 0 0 0 rgba(255,207,58,.75)}50%{box-shadow:0 4px 0 var(--ink),0 0 0 9px rgba(255,207,58,0)}}
+#tlabel{position:absolute;left:0;top:0;white-space:nowrap;pointer-events:none;font-size:12px;font-weight:900;line-height:1.25;color:var(--ink);background:rgba(255,250,240,.94);
+  border:2px solid var(--ink);border-radius:9px;padding:1px 7px;box-shadow:0 2px 0 rgba(15,29,51,.45);will-change:transform;display:flex;gap:6px;align-items:center}
+#tlabel.dim{background:rgba(15,29,51,.78);color:rgba(255,255,255,.85);border-color:rgba(255,255,255,.35);box-shadow:none}
+#tlabel kbd{font:inherit;font-size:10px;background:var(--ink);color:var(--sign);border-radius:5px;padding:0 4px;line-height:1.4}
+#tlabel .sep{opacity:.35}
+body.pad button:focus{outline:4px solid var(--sky);outline-offset:3px}
+#viewbtns{display:flex;gap:inherit;align-items:stretch}
+#viewbtns:not(:has(button:not([hidden]))){display:none}
+.tk .si{display:none;font-size:12px;line-height:1.1;white-space:nowrap;overflow:hidden;max-width:100%;letter-spacing:-1px}
+#prep .btns,#results .btns{flex-direction:row;flex-wrap:wrap}
+#prep .btns .btn,#results .btns .btn{flex:1 1 0;min-width:0;padding-left:8px;padding-right:8px}
+#results .btns #btnNextLv{flex-basis:100%}
+@media (max-height:820px){
+  /* keep the main buttons of long sheets on screen while the content scrolls */
+  #prep .btns,#results .btns,#title .btns{position:sticky;bottom:-20px;z-index:2;margin:12px -20px -20px;padding:12px 20px 16px;
+    background:linear-gradient(rgba(255,250,240,0),var(--paper) 12px)}
+}
+/* narrow portrait phones: icon-only recipe steps on tickets, one less HUD button (🔄 sits next to ✋) */
+@media (max-width:540px){
+  .tk{padding:2px 3px 4px}
+  .tk .ic{font-size:22px}
+  .tk .st{display:none}
+  .tk .si{display:block}
+  body.touch #btnTeam{display:none}
+  body.touch #day{display:none}
+  body.touch #viewbtns{position:fixed;right:max(10px,env(safe-area-inset-right,0px));top:calc(var(--hud-b) + var(--al-h) + 10px);flex-direction:column;gap:8px}
+  .hbtn.ghost{min-width:42px;padding:4px 8px}
+  .money b{font-size:16px}
+  .chip{padding:4px 8px}
+  .day{min-width:0;padding:4px 8px}
+  .day .row{gap:6px}
+  .hud-l,.hud-r{gap:5px}
+  #hud{gap:5px}
+  body.touch #hint{left:max(10px,env(safe-area-inset-left,0px));right:auto;transform:none;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);
+    width:auto;max-width:calc(100% - 206px);text-align:left;font-size:12.5px;padding:6px 10px}
+  body.touch #hint.off{transform:translateY(12px)}
+  #tlabel{font-size:11px}
+}
+/* short landscape screens: tickets turn into slim chips (icon on the left) so the kitchen stays visible */
+@media (max-height:500px) and (min-width:560px){
+  .tk{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:5px;align-items:center;flex-basis:150px;padding:3px 7px 4px;justify-items:start}
+  .tk .ic{grid-row:1/4;font-size:22px;line-height:1}
+  .tk .nm,.tk .st,.tk .bar{grid-column:2}
+  .tk .nm{font-size:11.5px;line-height:1.2}
+  .tk .st{font-size:9.5px;line-height:1.2}
+  .tk .bar{height:4px;margin-top:1px}
+  .tk.ok{transform:translateY(-14px) scale(1.06)}
+  #btnGrab{width:80px;height:80px}
+  #btnUse{width:62px;height:62px}
+  #btnSwap{width:48px;height:48px}
+  #actions{gap:8px;bottom:calc(env(safe-area-inset-bottom,0px) + 10px)}
+  /* level prep + results: two columns instead of one tall scroll */
+  #prep .sheet,#results .sheet{max-width:min(860px,100%);display:grid;column-gap:18px;align-content:start}
+  #prep .sheet{grid-template-columns:minmax(0,1.05fr) minmax(0,1fr)}
+  #prep .sheet > h2,#prep .sheet > .sub{grid-column:1/-1}
+  #prep .sheet > h3:nth-of-type(1){grid-column:1;grid-row:3}
+  #prepRec{grid-column:1;grid-row:4/span 3;align-self:start}
+  #prep .sheet > h3:nth-of-type(2){grid-column:2;grid-row:3}
+  #prepTeam{grid-column:2;grid-row:4}
+  #prepCtrl{grid-column:2;grid-row:5;align-self:start}
+  #prep .btns{grid-column:2;grid-row:6;align-self:end}
+  #results .sheet{grid-template-columns:minmax(0,1fr) minmax(0,1.25fr)}
+  #results .sheet > *{grid-column:1}
+  #results .receipt{grid-column:2;grid-row:1/span 6;margin-top:0;align-self:start}
+  #results .btns{align-self:end;position:static;margin:10px 0 0;padding:0;background:none;gap:8px}
+  #results .btns .btn{padding-top:8px;padding-bottom:8px;font-size:16px}
+  #results .bigstars{font-size:36px;margin:0}
+  #results .sheet h2{font-size:20px}
+  .lv-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+  #title .sheet{max-width:640px}
+  #title .howto{grid-template-columns:1fr 1fr;column-gap:12px}
+  #title .howto li{font-size:13px}
+}
 </style>
 </head>
 <body>
@@ -2333,9 +2416,12 @@ const pointers = new Map();
 let pinch = null, camZoom = 1, touchUse = false;
 const joyEl = $('#joy'), knob = $('#joyknob');
 const PLAYING = () => G.state === 'play';
+let lastInput = isTouch ? 'touch' : 'key';   // 'touch' | 'key' | 'pad': picks the button glyphs shown in the target label
+const fwdPress = new Map();                  // canvas pointers that landed just outside a touch button and press it instead
 addEventListener('keydown', e => {
   const repeat = e.repeat && keys[e.code];
   keys[e.code] = true;
+  lastInput = 'key';
   if (PLAYING() && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','Tab'].includes(e.code)) e.preventDefault();
   if (repeat) return;
   if (e.code === 'Escape' || e.code === 'KeyP'){ if (G.state === 'play' || G.state === 'countdown') openPanel('pause'); else if (G.state === 'paused') closePanels(); }
@@ -2349,10 +2435,27 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; touchUse = false; });
 
+// a touch that just misses one of the round touch buttons (gaps, rims) presses that button instead of starting the joystick
+function actionNear(x, y){
+  if (!hud.actions || hud.actions.hidden) return null;
+  let best = null, bd = 22;
+  for (const el of [hud.btnGrab, hud.btnUse, hud.btnSwap]){
+    const r = el.getBoundingClientRect(); if (!r.width) continue;
+    const d = Math.hypot(x - (r.left + r.right)/2, y - (r.top + r.bottom)/2) - r.width/2;
+    if (d < bd){ bd = d; best = el; }
+  }
+  return best;
+}
 canvas.addEventListener('pointerdown', e => {
   initAudio();
   canvas.focus({preventScroll:true});
-  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY, sx:e.clientX, sy:e.clientY, t:performance.now()});
+  if (e.pointerType !== 'mouse'){
+    lastInput = 'touch';
+    const near = actionNear(e.clientX, e.clientY);
+    if (near && near._press){ e.preventDefault(); try { canvas.setPointerCapture(e.pointerId); } catch(_){} fwdPress.set(e.pointerId, near); near._press(true); return; }
+  } else if (lastInput === 'touch') lastInput = 'key';
+  if (joy.active && PLAYING()) return;   // a second finger while walking is not a pinch: don't kill the joystick
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY, sx:e.clientX, sy:e.clientY, t:e.timeStamp || performance.now()});
   try { canvas.setPointerCapture(e.pointerId); } catch(_){}
   if (pointers.size === 2){
     const [a,b] = [...pointers.values()];
@@ -2380,13 +2483,15 @@ canvas.addEventListener('pointermove', e => {
   }
 });
 function endPointer(e){
+  const fw = fwdPress.get(e.pointerId);
+  if (fw){ fwdPress.delete(e.pointerId); fw._press(false); return; }
   const p = pointers.get(e.pointerId); if (!p) return;
   pointers.delete(e.pointerId);
   if (pinch){ if (pointers.size < 2) pinch = null; if (e.pointerId === joy.id){ joy.id = null; } return; }
   if (e.pointerId === joy.id){
     const wasJoy = joy.active;
     joy.active = false; joy.id = null; joy.dx = joy.dy = 0; joyEl.hidden = true; knob.style.transform = '';
-    if (!wasJoy && performance.now() - p.t < 450 && Math.hypot(p.x-p.sx, p.y-p.sy) < 14 && e.type === 'pointerup') tapAt(e.clientX, e.clientY);
+    if (!wasJoy && (e.timeStamp || performance.now()) - p.t < 1500 && Math.hypot(p.x-p.sx, p.y-p.sy) < 14 && e.type === 'pointerup') tapAt(e.clientX, e.clientY);
   }
 }
 canvas.addEventListener('pointerup', endPointer);
@@ -2403,19 +2508,95 @@ function tapAt(cx, cy){
   raycaster.setFromCamera(ndc, camera);
   const hits = raycaster.intersectObjects(pickables, true);
   let pt = hits.length ? hits[0].point : null;
-  if (!pt){ pt = new THREE.Vector3(); if (!raycaster.ray.intersectPlane(groundPlane, pt)) return; }
-  let best = null, bd = 1.0;
-  for (const sl of SLOTS){ const q = slotNearest(sl, pt), d = Math.hypot(q.x-pt.x, q.z-pt.z); if (d < bd){ bd = d; best = sl; } }
+  const gp = new THREE.Vector3(); const onGround = !!raycaster.ray.intersectPlane(groundPlane, gp);
+  if (!pt){ if (!onGround) return; pt = gp; }
+  const best = tapStation(cx, cy, pt, onGround ? gp : null);
   const s = player;
   if (best){
-    const sp = best.band ? {x:clamp(pt.x, best.band[0]+0.4, best.band[1]-0.4), z:best.spot.z} : best.spot;
-    s.agent.goTo(sp.x, sp.z); s.pending = best;
+    const a = s.agent; s.pending = best;
+    if (slotDist(best, a.pos) <= best.reach - 0.1) a.path.length = 0;   // already in reach: use it right here
+    else { const sp = approachSpot(best, s, pt); if (sp) a.path = sp.path; else { const q = best.band ? {x:clamp(pt.x, best.band[0]+0.4, best.band[1]-0.4), z:best.spot.z} : best.spot; a.goTo(q.x, q.z); } }
   } else {
     s.agent.goTo(clamp(pt.x,-9.7,9.7), clamp(pt.z,-6.7,11)); s.pending = null;
   }
   const m = document.createElement('div'); m.id = 'tapmark'; m.style.left = cx+'px'; m.style.top = cy+'px';
   fxLayer.appendChild(m); setTimeout(()=>m.remove(), 520);
 }
+// which station did the tap mean? First: the station drawn closest to the finger on screen; then: the station nearest the 3D hit point
+function tapStation(cx, cy, pt, gp){
+  let best = null, bd = lastInput === 'touch' ? 36 : 26;
+  for (const sl of SLOTS){
+    const ref = gp || pt;
+    const x = sl.band ? clamp(ref.x, sl.band[0], sl.band[1]) : sl.x;
+    _v.set(x, sl.y || 0.8, sl.z).project(camera);
+    if (_v.z > 1) continue;
+    const d = Math.hypot((_v.x+1)/2*VW - cx, (1-_v.y)/2*VH - cy);
+    if (d < bd){ bd = d; best = sl; }
+  }
+  if (best) return best;
+  let wd = 1.0;
+  for (const sl of SLOTS){
+    for (const p of gp ? [pt, gp] : [pt]){
+      // a shelf counts from its whole footprint (both the shelf body and the floor band in front of it)
+      const q = sl.band ? {x:clamp(p.x, sl.band[0], sl.band[1]), z:clamp(p.z, Math.min(sl.band[2], sl.z - 0.5), Math.max(sl.band[3], sl.z + 0.5))} : {x:sl.x, z:sl.z};
+      const d = Math.hypot(q.x - p.x, q.z - p.z);
+      if (d < wd){ wd = d; best = sl; }
+    }
+  }
+  return best;
+}
+// shortest walk to a spot where the station is in reach: its usual spot, or any free side (pass from behind the counter, island from the back)
+function approachSpot(sl, s, pt){
+  const p = s.agent.pos, cands = [];
+  if (sl.band){
+    const x = clamp(pt.x, sl.band[0] + 0.4, sl.band[1] - 0.4);
+    cands.push({x, z:sl.spot.z, pref:0}, {x:clamp(p.x, sl.band[0] + 0.4, sl.band[1] - 0.4), z:sl.spot.z, pref:0.8});
+  } else {
+    cands.push({x:sl.spot.x, z:sl.spot.z, pref:0});
+    for (let k=0;k<12;k++){ const an = k*Math.PI/6; for (const r of [0.8, 1.1]) cands.push({x:sl.x + Math.sin(an)*r, z:sl.z + Math.cos(an)*r, pref:0.7}); }
+  }
+  let best = null, bc = 1e9;
+  const probe = {agent:{pos:{x:0, z:0}, g:{rotation:{y:0}}}};   // stand-in for findTarget: from here, facing the station, is it the one you'd use?
+  for (const c of cands){
+    if (!walkXZ(c.x, c.z) || slotDist(sl, c) > sl.reach - 0.12) continue;
+    probe.agent.pos.x = c.x; probe.agent.pos.z = c.z; probe.agent.g.rotation.y = slotFaceRot(sl, c);
+    if (findTarget(probe) !== sl) continue;
+    const path = findPath(p.x, p.z, c.x, c.z); if (!path.length) continue;
+    const end = path[path.length-1]; if (Math.hypot(end.x - c.x, end.z - c.z) > 0.3) continue;
+    let len = 0, ax = p.x, az = p.z;
+    for (const q of path){ if (path.length === 1 && !lineClear(ax, az, q.x, q.z) && Math.hypot(q.x-ax, q.z-az) > 0.6){ len = 1e9; break; } len += Math.hypot(q.x-ax, q.z-az); ax = q.x; az = q.z; }
+    const cost = len + c.pref;
+    if (cost < bc){ bc = cost; best = {x:c.x, z:c.z, path}; }
+  }
+  return best && bc < 1e8 ? best : null;
+}
+// which way to face to use a station from where you stand
+function slotFaceRot(sl, pos){
+  const q = sl.band ? {x:clamp(pos.x, sl.band[0], sl.band[1]), z:sl.z} : slotNearest(sl, pos);
+  return Math.atan2(q.x - pos.x, q.z - pos.z);
+}
+// aim assist: when standing still, turn toward the station you are roughly facing so a slightly-off stance still targets it
+function aimAssist(s){
+  const a = s.agent, p = a.pos, r0 = a.rot, fx = Math.sin(r0), fz = Math.cos(r0);
+  let best = null, bs = 1e9;
+  for (const sl of SLOTS){
+    if (sl.band) continue;
+    const dx = sl.x - p.x, dz = sl.z - p.z, d = Math.hypot(dx, dz);
+    if (d > sl.reach || d < 0.05) continue;
+    const cos = (dx*fx + dz*fz)/d;
+    if (cos < 0.6) continue;                          // within ~53° of where you face
+    const sc = d*(1.7 - cos);
+    if (sc < bs){ bs = sc; best = Math.atan2(dx, dz); }
+  }
+  if (best !== null) a.rot = best;
+}
+// auto-use (touch / gamepad): standing still and empty-handed at the board with fruit on it chops without holding 🔪
+function autoUseOK(s){
+  if (lastInput === 'key' || s.hold || s.agent.path.length || s.pending || s.slip) return false;
+  const t = findTarget(s);
+  return !!(t && t.kind === 'board' && t.item && t.item.type === 'fruit' && !t.fire);
+}
+let autoUsing = false;
 
 function updatePlayer(dt){
   const s = player, a = s.agent;
@@ -2425,6 +2606,7 @@ function updatePlayer(dt){
   if (keys.KeyA || keys.ArrowLeft) ix -= 1;
   if (keys.KeyD || keys.ArrowRight) ix += 1;
   if (joy.active){ ix += joy.dx; iz += joy.dy; }
+  if (pad.on){ ix += pad.x; iz += pad.y; }
   if (ix || iz){ const w = screenDirToWorld(ix, iz); ix = w.x; iz = w.z; }   // screen-relative under any camera yaw
   const len = Math.hypot(ix,iz);
   let manual = false;
@@ -2442,8 +2624,14 @@ function updatePlayer(dt){
     const m = Math.min(1,len), nx = ix/len, nz = iz/len, sp = a.speed*m*dt;
     const px = a.pos.x + nx*sp, pz = a.pos.z + nz*sp;
     if (walkXZ(px,pz)){ a.pos.x = px; a.pos.z = pz; }
-    else if (walkXZ(px,a.pos.z)) a.pos.x = px;
-    else if (walkXZ(a.pos.x,pz)) a.pos.z = pz;
+    else if (Math.abs(nx) > 0.2 && walkXZ(px,a.pos.z)) a.pos.x = px;
+    else if (Math.abs(nz) > 0.2 && walkXZ(a.pos.x,pz)) a.pos.z = pz;
+    else {   // corner slip: walking head-on into the end of a counter, a little to one side is free → slide around it
+      corner: for (const off of [0.25, 0.5]) for (const sg of [1, -1]){
+        const ox = -nz*sg*off, oz = nx*sg*off;
+        if (walkXZ(px + ox, pz + oz) && walkXZ(a.pos.x + ox, a.pos.z + oz)){ const k = Math.min(1, sp/off); a.pos.x += ox*k; a.pos.z += oz*k; break corner; }
+      }
+    }
     a.rot = Math.atan2(nx,nz); manual = true;
     if (!(s.slipCD > 0) && m > 0.5 && onSpill(s)){
       s.slip = {vx:nx*a.speed*1.1, vz:nz*a.speed*1.1, t:0.55};
@@ -2456,13 +2644,16 @@ function updatePlayer(dt){
   if (s.pending && !a.path.length){
     const sl = s.pending; s.pending = null;
     if (slotDist(sl, a.pos) <= sl.reach + 0.2){
-      const q = slotNearest(sl, a.pos); const r = Math.atan2(q.x - a.pos.x, q.z - a.pos.z);
+      const r = slotFaceRot(sl, a.pos);
       a.rot = r; a.g.rotation.y = r;
-      if (grab(s, sl)) haptic(8);
+      const chopHere = lastInput !== 'key' && !s.hold && sl.kind === 'board' && sl.item && sl.item.type === 'fruit';   // auto-use chops it instead of picking it back up
+      if (!chopHere && grab(s, sl)) haptic(8);
     }
-  }
-  const useHeld = touchUse || keys.KeyE || keys.KeyK;
-  s.prog = useHeld ? useTick(s, dt) : null;
+  } else if (manual) s.aimT = 0.3;   // aim assist runs briefly after you stop walking
+  else if (s.aimT > 0 && !a.path.length && !s.pending){ s.aimT -= dt; aimAssist(s); }
+  const held = touchUse || keys.KeyE || keys.KeyK || (pad.on && pad.use);
+  autoUsing = !held && !manual && autoUseOK(s);
+  s.prog = (held || autoUsing) ? useTick(s, dt) : null;
 }
 
 /* ---------------- camera ---------------- */
@@ -2513,6 +2704,7 @@ function updateCamera(dt, instant){
   }
   camera.updateProjectionMatrix();
   camera.updateMatrixWorld();
+  camCutaway(dt, instant);
   if (camShake.x || camShake.y || camShake.z){ camera.position.add(camShake); camera.updateMatrixWorld(); }   // juice: additive shake offset
 }
 
@@ -2521,9 +2713,31 @@ function updateCamera(dt, instant){
    from behind the west wall, so the store's long axis runs up the screen — portrait phones/tablets see far more.
    cx/cz = framing centre, fitU/fitV = half-extents that must fit across/up the screen, scrU/scrV = follow limits. */
 const CAM_VIEWS = [
-  {yaw:0,           cx:0, cz:1.5, fitU:11,  fitV:8.5,  scrU:10.8, scrV:9},
-  {yaw:-Math.PI/2,  cx:0, cz:0.6, fitU:7.8, fitV:10.9, scrU:8.2,  scrV:10.8},
+  {yaw:0,           cx:0, cz:1.5, fitU:11,  fitV:8.5,  scrU:11.6, scrV:11.4},
+  {yaw:-Math.PI/2,  cx:0, cz:0.6, fitU:7.8, fitV:10.9, scrU:8.6,  scrV:13.6},   // follow range reaches ~2 m past the walls so end stations never sit under the HUD or the touch buttons
 ];
+/* cutaway: a tall side wall between the camera and the store (rotated portrait view, title orbit) sinks to a knee wall,
+   and whatever hangs on it (posters, clock) hides, so the crates / counters along that wall stay visible */
+const camCut = {list:null};
+function camCutaway(dt, instant){
+  if (!camCut.list){
+    camCut.list = [];
+    for (const o of scene.children){
+      const g = o.isMesh ? o.geometry : null, p = g && g.parameters; if (!p) continue;
+      const ax = Math.abs(o.position.x);
+      if (g.type === 'BoxGeometry' && p.height >= 2.5 && p.width <= 0.4 && p.depth >= 12 && ax > 9.8) camCut.list.push({o, side:Math.sign(o.position.x), h:p.height, y0:o.position.y - p.height/2, k:1});
+      else if (g.type === 'PlaneGeometry' && ax > 9.9 && ax < 10.1 && o.position.y > 1.0) camCut.list.push({o, side:Math.sign(o.position.x), deco:true, k:1});
+    }
+  }
+  for (const w of camCut.list){
+    const near = w.side*camera.position.x > 10.6;          // the camera is outside the store on this wall's side
+    const goal = near ? 0.24 : 1;
+    w.k = instant ? goal : lerp(w.k, goal, Math.min(1, (dt || 0)*6));
+    if (Math.abs(w.k - goal) < 0.002) w.k = goal;
+    if (w.deco){ const v = w.k > 0.8; if (w.o.visible !== v) w.o.visible = v; }
+    else if (w.o.scale.y !== w.k){ w.o.scale.y = w.k; w.o.position.y = w.y0 + w.h*w.k/2; }
+  }
+}
 let camView = 0, camYaw = 0, camDist = 0, camZoomSeen = 1, overview = false;
 const camVel = {x:0, z:0}, camPrev = {x:0, z:0};
 const camInset = {top:0, bottom:0, left:0, right:0, safeB:0};   // px covered by HUD / safe areas
@@ -2566,6 +2780,69 @@ function haptic(ms){
   try { navigator.vibrate(ms); } catch(e){}
 }
 
+/* ---------------- device UX: gamepad (standard mapping) ----------------
+   left stick / d-pad move · A grab/drop · X or B hold to use · LB/RB switch character · Start pause · Back/View 看全店.
+   In menus: stick / d-pad moves focus, A presses, B goes back. Polled every frame; does nothing without a pad. */
+const pad = {on:false, x:0, y:0, use:false, prev:[], navT:0, navDir:''};
+function padList(){ try { return (navigator.getGamepads && navigator.getGamepads()) || []; } catch(e){ return []; } }
+function pollGamepad(dt){
+  let gp = null;
+  for (const g of padList()) if (g && g.connected !== false && g.buttons && g.buttons.length){ gp = g; break; }
+  if (!gp){
+    if (pad.on){ pad.on = false; pad.x = pad.y = 0; pad.use = false; toast('🎮 手把已中斷'); if (lastInput === 'pad') lastInput = isTouch ? 'touch' : 'key'; }
+    return;
+  }
+  const b = gp.buttons.map(x => !!x && (x.pressed || x.value > 0.5));
+  if (!pad.on){ pad.on = true; pad.prev = b; toast('🎮 已連接', 'good'); lastInput = 'pad'; }
+  const was = pad.prev, edge = i => b[i] && !was[i];
+  pad.prev = b;
+  let x = +gp.axes[0] || 0, y = +gp.axes[1] || 0;
+  if (b[14]) x = -1; if (b[15]) x = 1; if (b[12]) y = -1; if (b[13]) y = 1;
+  const m = Math.hypot(x, y), DZ = 0.22;
+  if (m < DZ){ x = y = 0; } else { const k = Math.min(1, (m - DZ)/(0.92 - DZ))/m; x *= k; y *= k; }   // radial dead zone, full speed near the rim
+  if (x || y || b.some(Boolean)) lastInput = 'pad';
+  const inGame = G.state === 'play' || G.state === 'countdown';
+  pad.x = inGame ? x : 0; pad.y = inGame ? y : 0;
+  pad.use = G.state === 'play' && !!(b[1] || b[2]);
+  if (edge(9)){ if (inGame) openPanel('pause'); else if (G.state === 'paused') closePanels(); return; }
+  if (G.state === 'play'){
+    if (edge(0)) actGrab();
+    if (edge(4)) switchChar(-1);
+    if (edge(5)) switchChar(1);
+    if (edge(8)) setOverview(!overview);
+    if ((edge(1) || edge(2)) && player) haptic(6);
+  } else if (!inGame) padMenu(b, edge, x, y, dt);
+}
+function padMenu(b, edge, x, y, dt){
+  const scr = Object.values(screens).find(s => !s.hidden); if (!scr) return;
+  const btns = [...scr.querySelectorAll('button')].filter(el => !el.disabled && el.offsetParent !== null);
+  if (!btns.length) return;
+  const cur = btns.includes(document.activeElement) ? document.activeElement : null;
+  const primary = btns.find(el => el.classList.contains('lv')) || btns.find(el => el.classList.contains('btn')) || btns[0];
+  const dir = Math.abs(x) > 0.5 || Math.abs(y) > 0.5 ? (Math.abs(x) > Math.abs(y) ? (x > 0 ? 'r' : 'l') : (y > 0 ? 'd' : 'u')) : '';
+  pad.navT -= dt;
+  if (dir && (dir !== pad.navDir || pad.navT <= 0)){
+    pad.navT = dir !== pad.navDir ? 0.38 : 0.16;
+    if (!cur) primary.focus();
+    else {   // spatial navigation: nearest button in that direction
+      const r0 = cur.getBoundingClientRect(), c0 = {x:(r0.left+r0.right)/2, y:(r0.top+r0.bottom)/2};
+      let best = null, bs = 1e9;
+      for (const el of btns){ if (el === cur) continue;
+        const r = el.getBoundingClientRect(), dx = (r.left+r.right)/2 - c0.x, dy = (r.top+r.bottom)/2 - c0.y;
+        const along = dir === 'r' ? dx : dir === 'l' ? -dx : dir === 'd' ? dy : -dy, across = (dir === 'r' || dir === 'l') ? Math.abs(dy) : Math.abs(dx);
+        if (along < 4) continue;
+        const sc = along + across*2.2; if (sc < bs){ bs = sc; best = el; } }
+      if (best){ best.focus(); best.scrollIntoView({block:'nearest'}); }
+    }
+  }
+  pad.navDir = dir;
+  if (edge(0)) (cur || primary).click();
+  if (edge(1)){
+    const back = {pause:'#btnResume', levels:'#btnLvBack', prep:'#btnPrepBack', results:'#btnMenu'}[Object.keys(screens).find(k => screens[k] === scr)];
+    const el = back && $(back); if (el && !el.disabled && !el.hidden) el.click();
+  }
+}
+
 /* ---------------- device UX: fullscreen ---------------- */
 const fsSupported = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
 function fsElement(){ return document.fullscreenElement || document.webkitFullscreenElement || null; }
@@ -2604,7 +2881,9 @@ function buildDeviceUX(){
   uxEls.over.setAttribute('aria-pressed', 'false'); uxEls.over.hidden = true;
   uxEls.fs = mk('btnFull', '全螢幕', '⛶', () => { toggleFullscreen(); canvas.focus({preventScroll:true}); });
   uxEls.fs.hidden = !fsSupported;
-  if (hudR){ if (before && before.parentNode === hudR){ hudR.insertBefore(uxEls.over, before); hudR.insertBefore(uxEls.fs, before); } else hudR.append(uxEls.over, uxEls.fs); }
+  // 🔭 / ⛶ live in their own group: inline in the HUD, or a small column at the right edge on narrow phones (keeps the HUD to one row)
+  uxEls.vb = document.createElement('div'); uxEls.vb.id = 'viewbtns'; uxEls.vb.append(uxEls.over, uxEls.fs);
+  if (hudR){ if (before && before.parentNode === hudR) hudR.insertBefore(uxEls.vb, before); else hudR.append(uxEls.vb); }
   setOverview(false); syncFullscreenButton();
   document.addEventListener('fullscreenchange', () => { syncFullscreenButton(); setTimeout(resize, 60); });
   document.addEventListener('webkitfullscreenchange', () => { syncFullscreenButton(); setTimeout(resize, 60); });
@@ -2612,6 +2891,10 @@ function buildDeviceUX(){
   uxEls.edge = document.createElement('div'); uxEls.edge.id = 'edge';
   const hint = $('#hint'); hint.parentNode.insertBefore(uxEls.edge, hint);
   uxEls.probe = document.createElement('div'); uxEls.probe.id = 'safeprobe'; document.body.appendChild(uxEls.probe);
+  // what you would interact with, next to the target ring ("✋ 拿 空杯")
+  uxEls.tl = document.createElement('div'); uxEls.tl.id = 'tlabel'; uxEls.tl.hidden = true; tagLayer.appendChild(uxEls.tl);
+  if (highlight){ highlight.material.depthTest = false; highlight.renderOrder = 20; }   // the ring stays visible on counters and in front of shelves
+  addEventListener('gamepadconnected', () => { lastInput = 'pad'; });
   // block page zoom / text selection gestures that slip past touch-action (iOS Safari)
   for (const ev of ['gesturestart','gesturechange']) document.addEventListener(ev, e => e.preventDefault(), {passive:false});
   document.addEventListener('dblclick', e => { if (e.target === canvas || e.target === document.body) e.preventDefault(); });
@@ -2620,7 +2903,14 @@ function buildDeviceUX(){
   measureDeviceLayout();
   // test hook for the cross-device checks
   window.__cloneMartUX = {camera, player:() => player, view:() => ({view:camView, yaw:camYaw, dist:camDist, overview, inset:Object.assign({}, camInset)}), setOverview, haptic,
-    project(x,y,z){ _v.set(x,y,z).project(camera); return {x:(_v.x+1)/2*VW, y:(1-_v.y)/2*VH}; }};
+    project(x,y,z){ _v.set(x,y,z).project(camera); return {x:(_v.x+1)/2*VW, y:(1-_v.y)/2*VH}; },
+    input:() => ({last:lastInput, padOn:pad.on, padX:pad.x, padY:pad.y, padUse:pad.use, autoUsing, touchUse}),
+    tapPick(cx, cy){   // which station a tap at (cx, cy) would pick, without walking
+      raycaster.setFromCamera(new THREE.Vector2(cx/VW*2-1, -(cy/VH)*2+1), camera);
+      const hits = raycaster.intersectObjects(pickables, true), gp = new THREE.Vector3(), onG = !!raycaster.ray.intersectPlane(groundPlane, gp);
+      const pt = hits.length ? hits[0].point : gp, sl = tapStation(cx, cy, pt, onG ? gp : null);
+      return sl ? sl.id : null;
+    }};
 }
 // measure the HUD / alerts / safe areas so CSS and the camera can keep the play area clear
 function measureDeviceLayout(){
@@ -2635,8 +2925,13 @@ function measureDeviceLayout(){
   }
   camInset.top = hudEl.hidden ? 0 : hudB + 4;
   // touch action buttons (bottom-right) cover part of the view on narrow screens: keep the store above them
+  // (portrait: the whole button block height; landscape: the buttons sit beside the store, so no inset)
   const actEl = $('#actions');
-  camInset.bottom = (actEl && !actEl.hidden && VW < 700) ? Math.round(VH - actEl.getBoundingClientRect().top) * 0.6 : 0;
+  const actR = (actEl && !actEl.hidden) ? actEl.getBoundingClientRect() : null;
+  camInset.act = actR && actR.width ? {left:actR.left, top:actR.top, right:actR.right, bottom:actR.bottom} : null;
+  camInset.bottom = camInset.act && VH > VW*1.05 ? Math.round(VH - actR.top) + 6 : 0;
+  camInset.vb = null;   // 🔭/⛶ column at the right edge (narrow phones)
+  if (uxEls.vb && getComputedStyle(uxEls.vb).position === 'fixed'){ const r = uxEls.vb.getBoundingClientRect(); if (r.width && r.height) camInset.vb = {left:r.left, top:r.top, right:r.right, bottom:r.bottom}; }
   const root = document.documentElement.style;
   if (uxEls._hudB !== hudB){ uxEls._hudB = hudB; root.setProperty('--hud-b', hudB + 'px'); }
   const ar = hud.alerts.getBoundingClientRect(), alH = Math.round(ar.height);
@@ -2700,6 +2995,20 @@ function updateEdgeIndicators(){
   if (!camInset.alRow && camInset.alB) for (const it of shown){   // left alert column
     if (it.x < camInset.alR + R && it.y < camInset.alB + R){ if (it.x <= L + 1) it.y = Math.min(B, camInset.alB + R + 4); else it.x = Math.min(Rt, camInset.alR + R + 4); }
   }
+  const vr = camInset.vb;
+  if (vr) for (const it of shown){   // below / left of the 🔭⛶ column
+    if (it.x > vr.left - R - 4 && it.y > vr.top - R - 4 && it.y < vr.bottom + R + 4){ if (it.x >= Rt - 1) it.y = Math.min(B, vr.bottom + R + 8); else it.x = Math.max(L, vr.left - R - 8); }
+  }
+  const ar = camInset.act;
+  if (ar) for (const it of shown){   // never on top of the touch buttons: slide up the right edge or left along the bottom
+    if (it.x > ar.left - R - 4 && it.y > ar.top - R - 4){
+      if (it.x >= Rt - 1 || it.y < B - 1) it.y = Math.max(T, ar.top - R - 8); else it.x = Math.max(L, ar.left - R - 8);
+    }
+  }
+  if (ar) for (let i=0;i<shown.length;i++) for (let j=0;j<i;j++){   // re-separate anything that slid onto another indicator
+    const a = shown[i], b = shown[j];
+    if (Math.abs(a.x-b.x) < 2*R && Math.abs(a.y-b.y) < 2*R){ if (a.x >= Rt - 1) a.y = clamp(b.y - 2*R - 2, T, B); else a.x = clamp(b.x - 2*R - 2, L, Rt); }
+  }
   const hr = camInset.hint;
   if (hr) for (const it of shown){   // stay above the hint bubble
     if (it.x > hr.left - R && it.x < hr.right + R && it.y > hr.top - R) it.y = Math.max(T, hr.top - R - 4);
@@ -2719,9 +3028,20 @@ function updateEdgeIndicators(){
 }
 // called once per frame from the main loop
 function updateDeviceUX(dt){
+  pollGamepad(dt);
+  const padMode = lastInput === 'pad';
+  if (uxEls._pad !== padMode){ uxEls._pad = padMode; document.body.classList.toggle('pad', padMode); }
   uxMeasureT -= dt;
   if (uxMeasureT <= 0){ uxMeasureT = 0.25; measureDeviceLayout(); }
   const playing = G.state === 'play';
+  // 🔪 hold ring: fills with the current use progress (held or auto-use)
+  if (!hud.actions.hidden){
+    const pr = playing && player && player.prog !== null && player.prog !== undefined ? clamp(player.prog, 0, 1) : -1;
+    const pk = pr < 0 ? -1 : Math.round(pr*60)/60;
+    if (uxEls._pr !== pk){ uxEls._pr = pk; hud.btnUse.classList.toggle('prog', pk >= 0); if (pk >= 0) hud.btnUse.style.setProperty('--p', pk.toFixed(3)); }
+    const au = playing && autoUsing;
+    if (uxEls._au !== au){ uxEls._au = au; hud.btnUse.classList.toggle('auto', au); }
+  }
   if (uxEls.over){
     const want = playing && (overview || camZoom < 0.97 || !storeFitsOnScreen());
     if (uxEls.over.hidden === want) uxEls.over.hidden = !want;
@@ -2811,12 +3131,13 @@ function updateHUD(dt){
 }
 /* order tickets across the top */
 function renderTickets(){
-  if (G.demo) return;
+  if (G.demo || !(G.state === 'play' || G.state === 'countdown' || G.state === 'paused')) return;   // no stray tickets behind the results sheet
   for (const o of orders){
     const R = RECIPES[o.rec];
     if (!o.el){
       const el = document.createElement('div'); el.className = 'tk';
-      el.innerHTML = `<div class="ic">${R.ic}</div><div class="nm">${R.n}</div><div class="st">${R.steps.join(' › ')}</div><div class="bar"><b></b></div>`;
+      const si = R.steps.map(s => Array.from(s)[0]).join('›');   // icon-only steps for narrow phones
+      el.innerHTML = `<div class="ic">${R.ic}</div><div class="nm">${R.n}</div><div class="st">${R.steps.join(' › ')}</div><div class="si">${si}</div><div class="bar"><b></b></div>`;
       el._b = el.querySelector('.bar b');
       hud.orders.appendChild(el); o.el = el;
       requestAnimationFrame(() => el.classList.add('in'));
@@ -2857,16 +3178,59 @@ function updateActionLabels(){
   const t = findTarget(player);
   const g = grabLabel(player, t), u = useLabel(player);
   if (_hc.gl !== g){ _hc.gl = g; hud.btnGrab.querySelector('span').textContent = g; hud.btnGrab.classList.toggle('off', g === '—'); }
-  if (_hc.ul !== u){ _hc.ul = u; hud.btnUse.querySelector('span').textContent = u; hud.btnUse.classList.toggle('off', u === '—'); hud.btnUse.querySelector('b').textContent = u === '噴' ? '🧯' : u === '修理' ? '🔧' : u === '拖地' ? '🧽' : '🔪'; }
+  if (_hc.ul !== u){ _hc.ul = u; hud.btnUse.querySelector('span').textContent = u; hud.btnUse.classList.toggle('off', u === '—'); hud.btnUse.querySelector('b').textContent = useIcon(u); }
+  // ✋ pulses when it would deliver an order
+  const go = g === '出餐' && !!player.hold && orders.some(o => RECIPES[o.rec].item === player.hold.type);
+  if (_hc.go !== go){ _hc.go = go; hud.btnGrab.classList.toggle('go', go); }
+  // label next to the target ring
+  const html = targetLabelHTML(player, t, g, u);
+  if (_hc.tl !== html){ _hc.tl = html; if (uxEls.tl){ uxEls.tl.innerHTML = html ? html.replace(/^dim:/, '') : ''; uxEls.tl.classList.toggle('dim', html.startsWith('dim:')); } }
+}
+const useIcon = u => u === '噴' ? '🧯' : u === '修理' ? '🔧' : u === '拖地' ? '🧽' : '🔪';
+// "✋ 拿 空杯 · 🔪 長按 切" — glyphs follow the input you last used (touch / keyboard / gamepad)
+function targetLabelHTML(s, sl, g, u){
+  const esc = t => String(t).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[c]);
+  const nm = type => (ITEMS[type] && ITEMS[type].n) || '';
+  const k = lastInput === 'pad' ? ['<kbd>A</kbd>', '<kbd>X</kbd>'] : lastInput === 'key' ? ['<kbd>空白</kbd>', '<kbd>E</kbd>'] : ['✋', useIcon(u)];
+  const parts = [];
+  if (sl && g && g !== '—'){
+    const h = s.hold;
+    let v = g;
+    if (g === '起火') v = '🔥 先滅火';
+    else if (g === '拿起') v = '拿 ' + nm(sl.item ? sl.item.type : sl.give);
+    else if (g === '放下') v = '放到' + sl.n;
+    else if (g === '丟掉' && h) v = '丟掉 ' + nm(h.type);
+    else if (g === '出餐' && h) v = '出餐 ' + nm(h.type);
+    else if (g === '夾起來' && h){ const r = combine(h.type, sl.give); v = r ? '夾成 ' + nm(r) : g; }
+    else if (g === '組合' && h && sl.item){ const r = combine(h.type, sl.item.type); v = r ? '組成 ' + nm(r) : g; }
+    parts.push((g === '起火' ? '' : k[0] + ' ') + esc(v));
+  }
+  if (u && u !== '—') parts.push(k[1] + ' ' + (autoUsing ? '自動' : '長按') + esc(u));
+  if (!parts.length) return sl ? 'dim:' + esc(sl.n) : '';
+  return parts.join('<span class="sep">·</span>');
 }
 /* target ring + per-station status tags */
 function updateHighlight(t){
   const tt = (G.state === 'play') ? findTarget(player) : null;
-  if (!tt){ highlight.visible = false; return; }
-  const q = slotNearest(tt, player.agent.pos);
+  const tl = uxEls.tl;
+  if (!tt){ highlight.visible = false; if (tl && !tl.hidden) tl.hidden = true; return; }
+  const p = player.agent.pos;
+  let x = tt.x, y = tt.y + 0.012, z = tt.z;
+  if (tt.band){   // long shelves: ring on the floor at the shelf face, right in front of you
+    const b = tt.band; x = clamp(p.x, b[0] + 0.25, b[1] - 0.25); z = tt.z < b[2] ? b[2] : tt.z > b[3] ? b[3] : tt.z; y = 0.03;
+  }
   highlight.visible = true;
-  highlight.position.set(tt.band ? q.x : tt.x, (tt.band ? 0.02 : tt.y + 0.012), tt.band ? q.z : tt.z);
-  highlight.scale.setScalar(1 + Math.sin(t*6)*0.08);
+  highlight.position.set(x, y, z);
+  highlight.scale.setScalar((tt.band ? 1.25 : 1) + Math.sin(t*6)*0.08);
+  if (tl){
+    const show = !!tl.innerHTML;
+    if (tl.hidden === show) tl.hidden = !show;
+    if (show){
+      _v.set(x, y, z).project(camera);
+      const sx = clamp((_v.x+1)/2*VW, 70, VW - 70), sy = (1-_v.y)/2*VH + 16;
+      tl.style.transform = `translate(${sx.toFixed(1)}px,${sy.toFixed(1)}px) translate(-50%,0)`;
+    }
+  }
 }
 function updateSlotTags(){
   for (const sl of SLOTS){
@@ -2956,6 +3320,7 @@ function showPrep(i){
   $('#prepCtrl').innerHTML = isTouch
     ? '🕹️ 左手在畫面上拖曳走路　✋ 拿起／放下／出餐<br>🔪 長按：切水果、噴滅火器、拖地、修理　🔄 換人操作'
     : '⌨️ WASD／方向鍵走路　空白鍵或 J：拿起／放下／出餐<br>E 或 K 長按：切水果、滅火、拖地、修理　Q 或 Tab：換人操作　（也可以用滑鼠點）';
+  if (pad.on) $('#prepCtrl').innerHTML += '<br>🎮 左搖桿走路　A 拿起／放下　X 或 B 長按動作　LB／RB 換人　Start 暫停';
   G.state = 'menu';
   showScreen('prep');
 }
@@ -3251,8 +3616,9 @@ $('#btnMenu').onclick = () => { $('#hud').hidden = true; showLevels(); };
 screens.pause.addEventListener('pointerdown', e => { if (e.target === screens.pause) closePanels(); });
 // touch action buttons
 const bindHold = (el, down, up) => {
-  el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); initAudio(); el.classList.add('down'); try { el.setPointerCapture(e.pointerId); } catch(_){} down(); });
+  el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); initAudio(); if (e.pointerType !== 'mouse') lastInput = 'touch'; el.classList.add('down'); try { el.setPointerCapture(e.pointerId); } catch(_){} down(); });
   const end = e => { el.classList.remove('down'); if (up) up(); };
+  el._press = on => { if (on){ initAudio(); el.classList.add('down'); down(); } else end(); };   // used by near-miss touches on the canvas
   el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('lostpointercapture', end);
   el.addEventListener('contextmenu', e => e.preventDefault());
 };
