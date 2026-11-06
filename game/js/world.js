@@ -1565,36 +1565,30 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
     return out;
   }
 
-  const triCount = 20 * N * N;
+  const triCount = (triTotal - nRefined) + nRefined * KF * KF;
   const tPos = new Float32Array(triCount * 9);
   const tCol = new Float32Array(triCount * 9);
   {
     const jr = mulberry32(WORLD_SEED ^ 0x5151);
-    const D = L.dirs, rs = L.rowStart;
     let t = 0;
     const wsum = new Float64Array(NB);
-    const emit = (k0, k1, k2) => {
-      // 確保外向
-      let a = k0, b = k1, c = k2;
-      const ax = D[a * 3] * HR[a], ay = D[a * 3 + 1] * HR[a], az = D[a * 3 + 2] * HR[a];
-      const bx = D[b * 3] * HR[b], by = D[b * 3 + 1] * HR[b], bz = D[b * 3 + 2] * HR[b];
-      const cx = D[c * 3] * HR[c], cy = D[c * 3 + 1] * HR[c], cz = D[c * 3 + 2] * HR[c];
+    /** 寫入一個三角形（確保外向），回傳它的徑向坡度 0..1（0 = 平） */
+    const put = (ax, ay, az, bx, by, bz, cx, cy, cz) => {
       const ux = bx - ax, uy = by - ay, uz = bz - az, vx = cx - ax, vy = cy - ay, vz = cz - az;
       const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-      const flip = nx * (ax + bx + cx) + ny * (ay + by + cy) + nz * (az + bz + cz) < 0;
+      const sx = ax + bx + cx, sy = ay + by + cy, sz = az + bz + cz;
+      const nd = nx * sx + ny * sy + nz * sz;
       const o = t * 9;
       tPos[o] = ax; tPos[o + 1] = ay; tPos[o + 2] = az;
-      if (flip) {
+      if (nd < 0) {
         tPos[o + 3] = cx; tPos[o + 4] = cy; tPos[o + 5] = cz; tPos[o + 6] = bx; tPos[o + 7] = by; tPos[o + 8] = bz;
       } else {
         tPos[o + 3] = bx; tPos[o + 4] = by; tPos[o + 5] = bz; tPos[o + 6] = cx; tPos[o + 7] = cy; tPos[o + 8] = cz;
       }
-      // 顏色
-      let mx = D[a * 3] + D[b * 3] + D[c * 3], my = D[a * 3 + 1] + D[b * 3 + 1] + D[c * 3 + 1], mz = D[a * 3 + 2] + D[b * 3 + 2] + D[c * 3 + 2];
-      const il = 1 / Math.hypot(mx, my, mz); mx *= il; my *= il; mz *= il;
-      const h = (HR[a] + HR[b] + HR[c]) / 3 - R;
+      return 1 - Math.abs(nd) / (Math.hypot(nx, ny, nz) * Math.hypot(sx, sy, sz) || 1);
+    };
+    const shade = (mx, my, mz, h, slope) => {
       _acc.setRGB(0, 0, 0);
-      for (let i = 0; i < NB; i++) wsum[i] = (WV[a * NB + i] + WV[b * NB + i] + WV[c * NB + i]) / 3;
       for (let i = 0; i < NB; i++) {
         if (wsum[i] < 0.01) continue;
         biomeColor(i, mx, my, mz, h, _bc);
@@ -1608,18 +1602,56 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
         _bc.copy(COL.sand).lerp(COL.ice, icy);
         _acc.lerp(_bc, beach * (1 - wsum[iVolcano]));
       }
+      landformColor(mx, my, mz, h, slope, _acc);
       const j = 0.95 + jr() * 0.09;
+      const o = t * 9;
       for (let v = 0; v < 3; v++) {
         tCol[o + v * 3] = _acc.r * j; tCol[o + v * 3 + 1] = _acc.g * j; tCol[o + v * 3 + 2] = _acc.b * j;
       }
       t++;
     };
+    const D = L.dirs, rs = L.rowStart;
+    const emit = (a, b, c) => {
+      const slope = put(D[a * 3] * HR[a], D[a * 3 + 1] * HR[a], D[a * 3 + 2] * HR[a],
+        D[b * 3] * HR[b], D[b * 3 + 1] * HR[b], D[b * 3 + 2] * HR[b],
+        D[c * 3] * HR[c], D[c * 3 + 1] * HR[c], D[c * 3 + 2] * HR[c]);
+      let mx = D[a * 3] + D[b * 3] + D[c * 3], my = D[a * 3 + 1] + D[b * 3 + 1] + D[c * 3 + 1], mz = D[a * 3 + 2] + D[b * 3 + 2] + D[c * 3 + 2];
+      const il = 1 / Math.hypot(mx, my, mz); mx *= il; my *= il; mz *= il;
+      for (let i = 0; i < NB; i++) wsum[i] = (WV[a * NB + i] + WV[b * NB + i] + WV[c * NB + i]) / 3;
+      shade(mx, my, mz, (HR[a] + HR[b] + HR[c]) / 3 - R, slope);
+    };
+    const DFn = LF.dirs;
+    const emitF = (a, b, c) => {
+      const slope = put(DFn[a * 3] * HRF[a], DFn[a * 3 + 1] * HRF[a], DFn[a * 3 + 2] * HRF[a],
+        DFn[b * 3] * HRF[b], DFn[b * 3 + 1] * HRF[b], DFn[b * 3 + 2] * HRF[b],
+        DFn[c * 3] * HRF[c], DFn[c * 3 + 1] * HRF[c], DFn[c * 3 + 2] * HRF[c]);
+      let mx = DFn[a * 3] + DFn[b * 3] + DFn[c * 3], my = DFn[a * 3 + 1] + DFn[b * 3 + 1] + DFn[c * 3 + 1], mz = DFn[a * 3 + 2] + DFn[b * 3 + 2] + DFn[c * 3 + 2];
+      const il = 1 / Math.hypot(mx, my, mz); mx *= il; my *= il; mz *= il;
+      biomeWeights(mx, my, mz, wsum);
+      shade(mx, my, mz, (HRF[a] + HRF[b] + HRF[c]) / 3 - R, slope);
+    };
+    const rsF = LF.rowStart;
     for (let f = 0; f < 20; f++) {
-      const base = f * L.per;
+      const base = f * L.per, baseF = f * LF.per;
       for (let i = 0; i < N; i++) {
         for (let j = 0; j < N - i; j++) {
-          emit(base + rs[i] + j + 1, base + rs[i + 1] + j, base + rs[i] + j);
-          if (j < N - 1 - i) emit(base + rs[i] + j + 1, base + rs[i + 1] + j + 1, base + rs[i + 1] + j);
+          const tid = f * N * N + i * (2 * N - i) + 2 * j;
+          for (const up of [1, 0]) {
+            if (!up && j >= N - 1 - i) continue;
+            if (!refined[tid + (up ? 0 : 1)]) {
+              if (up) emit(base + rs[i] + j + 1, base + rs[i + 1] + j, base + rs[i] + j);
+              else emit(base + rs[i] + j + 1, base + rs[i + 1] + j + 1, base + rs[i + 1] + j);
+              continue;
+            }
+            const I0 = i * KF, J0 = j * KF;
+            for (let a = 0; a < KF; a++) {
+              for (let b = 0; b < KF; b++) {
+                const I = I0 + a, J = J0 + b, sab = a + b;
+                if (up ? sab <= KF - 1 : sab >= KF) emitF(baseF + rsF[I] + J + 1, baseF + rsF[I + 1] + J, baseF + rsF[I] + J);
+                if (up ? sab <= KF - 2 : sab >= KF - 1) emitF(baseF + rsF[I] + J + 1, baseF + rsF[I + 1] + J + 1, baseF + rsF[I + 1] + J);
+              }
+            }
+          }
         }
       }
     }
@@ -1638,7 +1670,12 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
   // =========================================================================
   function getGroundRadius(dir) {
     const r = seabed(dir.x, dir.y, dir.z);
-    return r < WADE ? WADE : r;
+    if (r < WADE) return WADE;
+    // v4：河流、湖泊（高於海面的淺水）：涉水地面 = 水面下 0.35
+    const l = Math.hypot(dir.x, dir.y, dir.z) || 1;
+    const wl = localWaterH(dir.x / l, dir.y / l, dir.z / l);
+    if (wl === wl && r < R + wl - 0.35) return R + wl - 0.35;
+    return r;
   }
   function getSurfacePoint(dir, offset = 0, out = new THREE.Vector3()) {
     const r = getGroundRadius(dir) + offset;
@@ -1649,7 +1686,21 @@ export function createWorld({ scene, renderer, quality = 'high' } = {}) {
     const l = Math.hypot(dir.x, dir.y, dir.z) || 1;
     return BIOMES[biomeWeights(dir.x / l, dir.y / l, dir.z / l, _wb)];
   }
-  function isWater(dir) { return seabed(dir.x, dir.y, dir.z) < SEA_LEVEL; }
+  function isWater(dir) {
+    const r = seabed(dir.x, dir.y, dir.z);
+    if (r < SEA_LEVEL) return true;
+    const l = Math.hypot(dir.x, dir.y, dir.z) || 1;
+    const wl = localWaterH(dir.x / l, dir.y / l, dir.z / l);
+    return wl === wl && r < R + wl;
+  }
+  /** v4（額外）：dir 處水面的半徑（海、河流、湖泊）；不在水裡回傳 NaN */
+  function getWaterSurface(dir) {
+    const r = seabed(dir.x, dir.y, dir.z);
+    const l = Math.hypot(dir.x, dir.y, dir.z) || 1;
+    const wl = localWaterH(dir.x / l, dir.y / l, dir.z / l);
+    if (wl === wl && r < R + wl) return R + wl;
+    return r < SEA_LEVEL ? SEA_LEVEL : NaN;
+  }
 
   const obstacles = [];
   const _fp = new THREE.Vector3();
