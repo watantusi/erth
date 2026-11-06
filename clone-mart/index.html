@@ -234,28 +234,69 @@ button{touch-action:manipulation}
   .hbtn.pulse,.tag.shelf.empty .tx{animation:none}
 }
 
-/* ---------- daily goals (HUD right column; top is set from JS so it sits under the top bar) ---------- */
-#goals{position:fixed;right:max(10px,env(safe-area-inset-right,0px));top:calc(env(safe-area-inset-top,0px) + 62px);width:min(196px,48vw);pointer-events:auto;cursor:pointer;color:var(--paper);
-  background:var(--chip);border:2px solid rgba(255,255,255,.12);border-radius:12px;padding:6px 9px 7px;font-size:12px;line-height:1.3;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
-#goals .gh{display:flex;justify-content:space-between;align-items:baseline;gap:6px;font-weight:900;color:var(--sign)}
-#goals .gh .rw,#goals .gh .sm{color:var(--paper);font-weight:700;font-size:11px;opacity:.85;white-space:nowrap}
-#goals .gh .sm,#goals.mini .gh .rw,#goals.mini .g{display:none}
-#goals.mini{width:auto;max-width:min(196px,48vw);padding:4px 9px}
-#goals.mini .gh .sm{display:inline}
-#goals .evs{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
-#goals .ev{font-weight:900;font-size:11px;border-radius:7px;padding:1px 6px;background:rgba(255,159,67,.95);color:var(--ink)}
-#goals .ev.rush{background:var(--coral);color:#fff}
-#goals .g{display:grid;grid-template-columns:13px 1fr auto;column-gap:4px;row-gap:2px;align-items:center;font-weight:700;margin-top:5px}
-#goals .g .ck{text-align:center;opacity:.8}
-#goals .g .lb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#goals .g .v{font-size:11px;font-variant-numeric:tabular-nums;opacity:.85;white-space:nowrap}
-#goals .g i{grid-column:2/4;height:3px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden}
-#goals .g i b{display:block;height:100%;width:0;background:var(--sign)}
-#goals .g.done{color:var(--mint)} #goals .g.done i b{background:var(--mint)}
-#goals .g.fail{color:var(--coral)} #goals .g.fail .lb{text-decoration:line-through}
-#storeUpg{margin-top:18px;padding-top:14px;border-top:2px dashed #cfc6b2}
-#storeUpg .upg-h{margin:0 0 2px;font-size:18px;font-weight:900}
-#storeUpg .upg-sub{margin:0 0 10px;color:var(--muted);font-size:13px;font-weight:500}
+/* ---------- order rush: tickets, touch action buttons, level select, prep, results ---------- */
+#orders{position:fixed;left:max(10px,env(safe-area-inset-left,0px));right:max(10px,env(safe-area-inset-right,0px));top:calc(env(safe-area-inset-top,0px) + 62px);
+  display:flex;gap:6px;pointer-events:none;align-items:flex-start}
+.tk{flex:0 1 96px;min-width:0;background:var(--paper);color:var(--ink);border:2px solid var(--ink);border-radius:10px;box-shadow:0 3px 0 rgba(15,29,51,.6);
+  padding:3px 5px 5px;display:flex;flex-direction:column;align-items:center;gap:1px;transform:translateY(-14px);opacity:0;transition:transform .25s,opacity .3s}
+.tk.in{transform:none;opacity:1}
+.tk .ic{font-size:26px;line-height:1.15}
+.tk .nm{font-size:12px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.tk .st{font-size:10px;font-weight:700;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.tk .bar{width:100%;height:6px;border-radius:3px;background:#e3dccb;overflow:hidden;margin-top:2px}
+.tk .bar b{display:block;height:100%;width:100%;background:var(--mint)}
+.tk.urgent{animation:tkShake .45s ease-in-out infinite}
+.tk.ok{transform:translateY(-22px) scale(1.12);opacity:0;border-color:var(--mint);background:#e6fff6}
+.tk.bad{transform:translateY(18px) rotate(-6deg);opacity:0;border-color:var(--coral);background:#ffe9e7}
+@keyframes tkShake{0%,100%{transform:none}25%{transform:rotate(-3deg)}75%{transform:rotate(3deg)}}
+#actions{position:fixed;right:max(14px,env(safe-area-inset-right,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 16px);
+  display:grid;grid-template-columns:auto auto;grid-template-rows:auto auto;gap:10px;align-items:end;justify-items:center;pointer-events:none}
+.act{pointer-events:auto;touch-action:none;border-radius:50%;border:3px solid var(--ink);box-shadow:0 4px 0 var(--ink);font-family:var(--f-body);font-weight:900;color:var(--ink);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;padding:0;-webkit-user-select:none;user-select:none}
+.act b{font-size:28px;font-weight:400} .act span{font-size:13px}
+#btnGrab{width:88px;height:88px;background:var(--sign);grid-column:2;grid-row:1/3}
+#btnUse{width:68px;height:68px;background:#fff;grid-column:1;grid-row:2}
+#btnUse b{font-size:24px}
+#btnSwap{width:50px;height:50px;background:var(--sky);color:#fff;grid-column:1;grid-row:1}
+#btnSwap b{font-size:22px}
+.act.down{transform:translateY(3px);box-shadow:0 1px 0 var(--ink)}
+.act.off span{opacity:.45}
+body.touch #hint{bottom:calc(env(safe-area-inset-bottom,0px) + 186px);font-size:13px;line-height:1.4;padding:7px 12px}
+@media (min-width:700px){ body.touch #hint{bottom:calc(env(safe-area-inset-bottom,0px) + 18px);max-width:min(520px,calc(100% - 420px))} }
+#bigmsg{position:fixed;inset:0;display:grid;place-items:center;pointer-events:none;font-family:var(--f-display);font-size:clamp(64px,18vw,130px);color:var(--sign);
+  text-shadow:0 6px 0 var(--ink),4px 0 0 var(--ink),-4px 0 0 var(--ink),0 -4px 0 var(--ink)}
+#bigmsg.zh{font-family:var(--f-body);font-weight:900;font-size:clamp(48px,13vw,104px)}
+#bigmsg span{animation:bigPop 1s ease-out both}
+@keyframes bigPop{0%{transform:scale(2.2);opacity:0}22%{transform:scale(1);opacity:1}80%{opacity:1}100%{opacity:0;transform:scale(.92)}}
+.sheet.wide{max-width:660px}
+.sheet h3{margin:14px 0 6px;font-size:15px;font-weight:900;display:flex;justify-content:space-between;align-items:baseline}
+.sheet h3 .slots{font-family:var(--f-display);font-weight:400;font-size:13px;color:var(--muted)}
+.lv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.lv{border:2px solid var(--ink);border-radius:14px;background:#fff;padding:10px 12px;text-align:left;color:var(--ink);display:flex;flex-direction:column;gap:3px;box-shadow:0 3px 0 var(--ink);min-width:0}
+.lv:active{transform:translateY(2px);box-shadow:0 1px 0 var(--ink)}
+.lv .no{font-family:var(--f-display);font-size:11px;color:var(--muted);letter-spacing:.06em}
+.lv .nm{font-weight:900;font-size:16px}
+.lv .rc{font-size:18px;letter-spacing:1px}
+.lv .st{color:var(--sign);font-size:19px;letter-spacing:1px;text-shadow:0 1px 0 var(--ink)}
+.lv .st i,.bigstars i{font-style:normal;color:#d8d0bf;text-shadow:none}
+.lv .bs{font-size:12px;color:var(--muted);font-weight:700}
+.lv:disabled{opacity:.5;box-shadow:none;cursor:not-allowed}
+.rec-list{display:grid;gap:6px}
+.rec{display:grid;grid-template-columns:34px 1fr;gap:8px;align-items:center;background:#fff;border:2px solid #e3dccb;border-radius:12px;padding:6px 8px}
+.rec .ic{font-size:26px;text-align:center}
+.rec .nm{font-weight:900}
+.rec .pt{font-family:var(--f-display);font-size:11px;color:var(--muted);margin-left:6px}
+.rec .sp{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
+.rec .sp span{font-size:12px;font-weight:700;background:#f4efe4;border-radius:7px;padding:1px 6px}
+.team-pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.tp{border:2px solid #cfc6b2;border-radius:12px;padding:7px 10px;background:#fff;font-weight:900;font-size:14px;color:var(--ink);display:flex;flex-direction:column;align-items:flex-start;gap:1px;min-height:44px;text-align:left}
+.tp small{font-weight:700;font-size:11px;opacity:.8}
+.tp.on{color:#fff;box-shadow:0 3px 0 var(--ink)}
+.tp:disabled{opacity:.45;cursor:not-allowed}
+.ctrl{margin-top:12px;font-size:13px;line-height:1.7;color:var(--ink);background:#f4efe4;border-radius:10px;padding:8px 10px}
+.bigstars{text-align:center;font-size:48px;letter-spacing:8px;color:var(--sign);text-shadow:0 3px 0 var(--ink);margin:2px 0 4px;line-height:1.1}
+.newbest{display:block;text-align:center;font-weight:900;color:var(--coral);margin-bottom:6px}
+@media (prefers-reduced-motion:reduce){ .tk.urgent{animation:none} #bigmsg span{animation:none} }
 </style>
 </head>
 <body>
@@ -269,12 +310,19 @@ button{touch-action:manipulation}
     <div class="chip day"><div class="row"><span id="day">第 1 天</span><span id="clock">07:00</span></div><div class="dayline"><i id="dayfill"></i></div></div>
   </div>
   <div class="hud-r">
-    <div class="chip"><span class="stars" aria-label="評價"><span class="s-bg">★★★★★</span><span class="s-fg" id="starfg">★★★★★</span></span><span id="ratenum">3.0</span></div>
-    <button id="btnTeam" class="hbtn" type="button">分身 <span class="cnt" id="teamCount">0/5</span></button>
+    <div class="chip"><span class="stars" aria-label="星星進度"><span class="s-bg">★★★</span><span class="s-fg" id="starfg">★★★</span></span><span id="ratenum">3.0</span></div>
+    <button id="btnTeam" class="hbtn" type="button" aria-label="換人操作 (Q)" title="換人操作 (Q)">🔄 <span class="cnt" id="teamCount">老闆</span></button>
     <button id="btnPause" class="hbtn ghost" type="button" aria-label="暫停">❚❚</button>
   </div>
 </div>
+<div id="orders" aria-live="polite"></div>
 <div id="alerts"></div>
+<div id="bigmsg" aria-live="assertive"></div>
+<div id="actions" hidden>
+  <button id="btnSwap" class="act" type="button" aria-label="換人操作"><b>🔄</b></button>
+  <button id="btnUse" class="act off" type="button" aria-label="長按做動作"><b>🔪</b><span>—</span></button>
+  <button id="btnGrab" class="act" type="button" aria-label="拿起或放下"><b>✋</b><span>拿起</span></button>
+</div>
 <div id="goals" role="button" aria-label="今日目標（點一下展開或收合）" hidden></div>
 <div id="toast"></div>
 <div id="hint" class="off"></div>
@@ -288,27 +336,39 @@ button{touch-action:manipulation}
       <div class="en"><span>CLONE MART</span><span>24H</span></div>
     </div>
     <ul class="howto">
-      <li><span class="k">🕹️</span><span id="howMove">拖曳畫面走動，或點一下地板／貨架直接走過去。</span></li>
-      <li><span class="k">🧾</span><span>站進「收銀」格子幫客人結帳，站到咖啡機前沖咖啡。</span></li>
-      <li><span class="k">📦</span><span>到倉庫「拿貨」，再走到空貨架前補貨。踩到垃圾就會清掉。</span></li>
-      <li><span class="k">🤖</span><span>賺錢僱用 5 個 AI 分身：收銀、補貨、清潔、咖啡、保全，讓店自己轉起來。</span></li>
+      <li><span class="k">🕹️</span><span id="howMove">左手拖曳畫面走路，右下角按鈕拿東西、做動作。</span></li>
+      <li><span class="k">🧾</span><span>上方是客人的點單：照步驟做好，送到黃色「出餐」台。越快送小費越多！</span></li>
+      <li><span class="k">🔥</span><span>做好的東西放太久會燒焦，再放下去還會起火。地板濕了會滑倒。</span></li>
+      <li><span class="k">🤖</span><span>帶 AI 分身一起上班，隨時按 🔄 換人操作，其他人會自己找事做。</span></li>
     </ul>
     <div class="clonerow" id="cloneRow"></div>
     <div class="btns">
-      <button class="btn" id="btnContinue" type="button" hidden>繼續營業</button>
       <button class="btn" id="btnNew" type="button">開始營業</button>
     </div>
   </div>
 </div>
 
-<!-- Team -->
-<div id="team" class="screen" hidden>
+<!-- Level select -->
+<div id="levels" class="screen" hidden>
+  <div class="sheet wide">
+    <h2>選擇關卡</h2>
+    <p class="sub" id="lvStars"></p>
+    <div class="lv-grid" id="lvList"></div>
+    <div class="btns"><button class="btn alt" id="btnLvBack" type="button">回到招牌</button></div>
+  </div>
+</div>
+
+<!-- Level prep: menu + team -->
+<div id="prep" class="screen" hidden>
   <div class="sheet">
-    <h2>AI 分身</h2>
-    <p class="sub">分身會自己找事做。僱用後每天打烊要付薪水，升級會讓動作更快。</p>
-    <div class="walletline"><span>現金</span><b id="teamMoney">$0</b></div>
-    <div class="team-list" id="teamList"></div>
-    <div class="btns"><button class="btn alt" id="btnTeamClose" type="button">回到店裡</button></div>
+    <h2 id="prepTitle"></h2>
+    <p class="sub" id="prepDesc"></p>
+    <h3>今天的菜單</h3>
+    <div class="rec-list" id="prepRec"></div>
+    <h3>帶分身上場 <span class="slots" id="prepSlots"></span></h3>
+    <div class="team-pick" id="prepTeam"></div>
+    <div class="ctrl" id="prepCtrl"></div>
+    <div class="btns"><button class="btn" id="btnGo" type="button">開店！</button><button class="btn alt" id="btnPrepBack" type="button">換一關</button></div>
   </div>
 </div>
 
@@ -321,30 +381,25 @@ button{touch-action:manipulation}
     <div class="toggle-row"><span>🔊 音效</span><button class="hbtn" id="btnSound" type="button" aria-pressed="true">開</button></div>
     <div class="btns">
       <button class="btn" id="btnResume" type="button">繼續</button>
-      <button class="btn alt" id="btnRestart" type="button">從第 1 天重新開始</button>
-    </div>
-    <div class="confirm" id="confirmBox" hidden>
-      確定要清除進度重新開始嗎？
-      <div class="btns"><button class="btn danger" id="btnRestartYes" type="button">清除重來</button><button class="btn alt" id="btnRestartNo" type="button">取消</button></div>
+      <button class="btn alt" id="btnRestart" type="button">重玩這一關</button>
+      <button class="btn alt" id="btnQuit" type="button">回到關卡選單</button>
     </div>
   </div>
 </div>
 
-<!-- Day summary -->
-<div id="summary" class="screen" hidden>
+<!-- Results -->
+<div id="results" class="screen" hidden>
   <div class="sheet">
-    <h2 id="sumTitle">打烊了！</h2>
+    <h2>打烊結算</h2>
+    <p class="sub" id="resTitle"></p>
+    <div class="bigstars" id="resStars"></div>
+    <span class="newbest" id="resBest" hidden>新紀錄！</span>
     <div class="receipt" id="receipt"></div>
-    <div class="btns"><button class="btn" id="btnNext" type="button">迎接下一天</button></div>
-  </div>
-</div>
-
-<!-- Game over -->
-<div id="over" class="screen" hidden>
-  <div class="sheet">
-    <h2 id="overTitle">店舖倒閉了</h2>
-    <p class="sub" id="overText"></p>
-    <div class="btns"><button class="btn" id="btnOverRestart" type="button">重新開店</button></div>
+    <div class="btns">
+      <button class="btn" id="btnNextLv" type="button">下一關 ›</button>
+      <button class="btn alt" id="btnRetry" type="button">再玩一次</button>
+      <button class="btn alt" id="btnMenu" type="button">關卡選單</button>
+    </div>
   </div>
 </div>
 
@@ -397,40 +452,14 @@ const SHELVES = [
 ];
 const SHELF = Object.fromEntries(SHELVES.map(s => [s.id, s]));
 
-const ROLES = [
-  {id:'cashier', name:'收銀分身', icon:'🧾', color:0x4da3ff, css:'#4da3ff', cost:800,  wage:60, desc:'守在收銀台，自動幫客人結帳。'},
-  {id:'stocker', name:'補貨分身', icon:'📦', color:0xff9f43, css:'#ff9f43', cost:900,  wage:70, desc:'貨架快空時，自己去倉庫搬貨上架。'},
-  {id:'cleaner', name:'清潔分身', icon:'🧹', color:0x34d6a6, css:'#34d6a6', cost:500,  wage:40, desc:'看到垃圾或打翻的飲料就去清乾淨。'},
-  {id:'barista', name:'咖啡分身', icon:'☕', color:0xc98b5a, css:'#c98b5a', cost:700,  wage:50, desc:'持續沖咖啡備用，收銀台沒人時會幫忙結帳。'},
-  {id:'guard',   name:'保全分身', icon:'🛡️', color:0xff6058, css:'#ff6058', cost:1000, wage:80, desc:'在門口迎賓讓客人更有耐心，還會追捕小偷。'},
+const ROLES = [   // the five AI clones, unlocked by total stars; each runs its own recipes when you are not controlling it
+  {id:'barista', name:'咖啡分身', icon:'☕', color:0xc98b5a, css:'#c98b5a', need:0,  recipes:['coffee','noodle'],          home:{x:7.9, z:2.0},  desc:'沖咖啡、泡泡麵'},
+  {id:'cook',    name:'熱食分身', icon:'🍱', color:0xff9f43, css:'#ff9f43', need:2,  recipes:['bento','oden'],             home:{x:-6.2, z:3.0}, desc:'微波便當、煮關東煮'},
+  {id:'griller', name:'烤台分身', icon:'🌭', color:0xff6058, css:'#ff6058', need:4,  recipes:['hotdog'],                   home:{x:-7.4, z:2.6}, desc:'烤香腸、夾成大亨堡'},
+  {id:'prep',    name:'備料分身', icon:'🔪', color:0x34d6a6, css:'#34d6a6', need:7,  recipes:['fruitcup','drink','snack'], home:{x:-3.4, z:2.9}, desc:'切水果杯、拿飲料零食'},
+  {id:'cleaner', name:'清潔分身', icon:'🧯', color:0x4da3ff, css:'#4da3ff', need:10, recipes:[],                           home:{x:-1.0, z:2.8}, desc:'拖地、丟失敗品、滅火、修理'},
 ];
 const ROLE = Object.fromEntries(ROLES.map(r => [r.id, r]));
-const LV_WORK = [0, 0.85, 1.15, 1.5];
-const LV_MOVE = [0, 2.7, 3.3, 4.0];
-const upgradeCost = (r, lv) => lv === 1 ? Math.round(r.cost*0.75) : Math.round(r.cost*1.4);
-
-/* goals, events & store upgrades (see "goals & events" section below) */
-const RUSHES = [   // rush hours: spawn interval × RUSH_MULT, shopping lists lean to `boost`
-  {id:'lunch',  name:'午餐尖峰', icon:'🍱', from:11.5, to:13,    boost:{bento:3, noodle:2}},
-  {id:'dinner', name:'下班尖峰', icon:'🌆', from:17.5, to:19.25, boost:{drink:2, snack:2}},
-];
-const RUSH_MULT = d => clamp(0.8 - 0.05*d, 0.5, 0.75);   // day 1: ×0.75 … day 6+: ×0.5
-const DAY_EVENTS = [   // one per day from day 4 (55% chance); fields are multipliers / overrides
-  {id:'normal', name:'平常日', icon:'🏪', desc:''},
-  {id:'promo',  name:'促銷日', icon:'🏷️', desc:'全品項 9 折，客人變多', spawn:0.8, price:0.9},
-  {id:'rain',   name:'雨天',   icon:'☔', desc:'客人少一點、愛喝咖啡、地板容易髒', spawn:1.15, coffee:0.5, mess:1.6},
-  {id:'payday', name:'發薪日', icon:'💰', desc:'大部分客人會多買一樣', extraItem:0.6},
-  {id:'heat',   name:'熱浪',   icon:'🥵', desc:'飲料大賣，熱咖啡沒人要', boost:{drink:3}, coffee:0.12},
-];
-const VIP_PAY = 1.5, VIP_DRAIN = 1.6;
-const vipChance = d => d >= 3 ? Math.min(0.12, 0.03 + d*0.012) : 0;
-const STORE_UPG = [   // bought in the team panel; each has 2 levels
-  {id:'shelf',  name:'加大貨架',   icon:'🗄️', desc:'每個貨架能放更多商品，補一次撐更久。', cost:[700,1600],  fx:[1,1.35,1.7],  fxText:v=>'容量 ×'+v},
-  {id:'coffee', name:'高速咖啡機', icon:'☕', desc:'沖一杯咖啡的時間縮短。',               cost:[500,1200],  fx:[1,0.7,0.5],   fxText:v=>'沖泡時間 ×'+v},
-  {id:'pos',    name:'快速收銀機', icon:'💳', desc:'每位客人結帳更快。',                   cost:[800,1800],  fx:[1,0.8,0.65],  fxText:v=>'結帳時間 ×'+v},
-  {id:'sign',   name:'招牌燈箱',   icon:'💡', desc:'更醒目的招牌，吸引更多客人上門。',     cost:[900,2000],  fx:[1,0.88,0.78], fxText:v=>'來客間隔 ×'+v},
-];
-const STORE = Object.fromEntries(STORE_UPG.map(u => [u.id, u]));
 
 /* ---------------- renderer / scene ---------------- */
 const canvas = $('#game');
@@ -921,7 +950,6 @@ function buildCounter(){
   blockRect(7.0,5.25,10,5.45);
 
   regTag = new Tag('reg'); coffeeTag = new Tag('reg');
-  floorMark(CASHIER_SPOT, '#4da3ff', '🧾', '收銀');
   floorMark(COFFEE_SPOT, '#c98b5a', '☕', '咖啡');
 }
 function buildStockroom(){
@@ -943,7 +971,6 @@ function buildStockroom(){
   blockRect(5.8,-6.75,6.45,-6.05);
   blockRect(7.5,-7,10,-5.3);
   stockTag = new Tag('reg');
-  floorMark(STOCK_SPOT, '#ff9f43', '📦', '拿貨');
 }
 function buildDecor(){
   // ATM
@@ -1622,412 +1649,705 @@ function juiceCheckout(who, total){ squash(who, 0.2); coinBurst(CHECKOUT_SPOT.x 
 function juiceCatch(staffer, thief, total){ squash(thief, 0.26); squash(staffer, 0.14); camShakeAdd(0.55); coinBurst(thief.agent.pos.x, 1.6, thief.agent.pos.z, total); }
 window.__cloneMartAudio = {AUD, JUICE, camShake, musicTick, get musicOn(){ return musicOn; }, get muted(){ return muted; }};
 
+/* =====================================================================
+   CLONE MART RUSH — co-op order-rush gameplay
+   Orders arrive as tickets. Grab ingredients, run them through the
+   machines, and deliver to the 出餐 counter before a ticket runs out.
+   Switch between the owner and the AI clones; the others keep working.
+   ===================================================================== */
+
+/* ---------------- items, recipes, levels ---------------- */
+const ITEMS = {
+  cup:{n:'空杯', ic:'🥛'},            coffee:{n:'熱咖啡', ic:'☕'},
+  noodle_raw:{n:'泡麵', ic:'🥡'},     noodle:{n:'泡好的麵', ic:'🍜'},
+  bento_cold:{n:'冷便當', ic:'🧊'},   bento:{n:'熱便當', ic:'🍱'},
+  sausage:{n:'生香腸', ic:'🥩'},      sausage_cooked:{n:'烤香腸', ic:'🥓'},
+  bun:{n:'麵包', ic:'🥖'},            hotdog:{n:'大亨堡', ic:'🌭'},
+  oden_raw:{n:'關東煮料', ic:'🥚'},   oden:{n:'關東煮', ic:'🍢'},
+  fruit:{n:'水果', ic:'🍎'},          fruitcup:{n:'水果杯', ic:'🍓'},
+  drink:{n:'飲料', ic:'🥤'},          snack:{n:'零食', ic:'🍪'},
+  burnt:{n:'失敗品', ic:'💀'},        ext:{n:'滅火器', ic:'🧯'},
+};
+const COMBOS = [['bun','sausage_cooked','hotdog']];
+function combine(a, b){ for (const [x,y,r] of COMBOS) if ((a===x && b===y) || (a===y && b===x)) return r; return null; }
+
+const RECIPES = {
+  drink:   {n:'飲料',   ic:'🥤', item:'drink',    pts:10, time:45, steps:['🥤冰箱']},
+  snack:   {n:'零食',   ic:'🍪', item:'snack',    pts:10, time:45, steps:['🍪貨架']},
+  coffee:  {n:'熱咖啡', ic:'☕', item:'coffee',   pts:20, time:60, steps:['🥛空杯','☕咖啡機']},
+  noodle:  {n:'泡麵',   ic:'🍜', item:'noodle',   pts:20, time:60, steps:['🥡泡麵','🚰熱水']},
+  bento:   {n:'熱便當', ic:'🍱', item:'bento',    pts:30, time:70, steps:['🧊便當','📟微波']},
+  oden:    {n:'關東煮', ic:'🍢', item:'oden',     pts:35, time:80, steps:['🥚食材','🍲湯鍋']},
+  hotdog:  {n:'大亨堡', ic:'🌭', item:'hotdog',   pts:40, time:85, steps:['🥩香腸','🔥烤台','🥖麵包']},
+  fruitcup:{n:'水果杯', ic:'🍓', item:'fruitcup', pts:30, time:75, steps:['🍎水果','🔪長按切']},
+};
+const ALL_RECIPES = Object.keys(RECIPES);
+const LEVELS = [
+  {n:'開店第一天',   hour:8,    len:150, rec:['drink','snack','coffee'], every:[8,11], max:3, clones:1, spills:0,   stars:[240,380,540],
+   desc:'先學會拿東西、沖咖啡，再送到出餐台。'},
+  {n:'早餐尖峰',     hour:6.5,  len:180, rec:['coffee','noodle','bento','drink'], every:[7,10], max:4, clones:1, spills:0, stars:[300,530,770],
+   desc:'泡麵要加熱水，便當要微波。微波太久會燒焦！'},
+  {n:'午餐大爆滿',   hour:11.5, len:180, rec:['bento','hotdog','coffee','drink'], every:[6.5,9], max:4, clones:2, spills:0.6, stars:[690,960,1240],
+   desc:'大亨堡：先烤香腸，再拿著香腸去夾麵包。地上偶爾會濕。'},
+  {n:'下雨的傍晚',   hour:17,   len:200, rec:['oden','hotdog','coffee','noodle'], every:[6.5,9], max:5, clones:2, spills:1.6, stars:[840,1040,1250],
+   desc:'關東煮要慢慢煮，煮太久會爛掉。雨天地板特別滑。'},
+  {n:'深夜加班',     hour:21,   len:210, rec:['fruitcup','oden','bento','hotdog','coffee'], every:[6,8.5], max:5, clones:3, spills:0.8, stars:[1240,1570,1920],
+   desc:'水果要放上砧板，長按「動作」切成水果杯。'},
+  {n:'颱風夜大混亂', hour:22,   len:240, rec:['coffee','noodle','bento','oden','hotdog','fruitcup','drink'], every:[5.5,7.5], max:5, clones:3, spills:1.4, outage:28, stars:[340,860,1390],
+   desc:'停電會讓機器故障 ⚡，長按「動作」修好它。'},
+  {n:'24H 無限營業', hour:20,   len:0, endless:true, rec:ALL_RECIPES, every:[8,10], max:5, clones:5, spills:1, outage:45, stars:[3000,6000,10000],
+   desc:'錯過 5 張單就打烊，看你能撐多久！'},
+];
+const MAX_FAILS_ENDLESS = 5;
+const CLONE_SPEED = 2.6, CLONE_WORK = 0.7, CLONE_THINK = 0.5;   // AI clones are slower than you on purpose
+
 /* ---------------- game state ---------------- */
 const G = {
-  state:'title', prevState:'play', day:1, time:0, money:START_MONEY, rating:3, cups:2,
-  spawnT:2, closingT:0, tips:new Set(), clones:{}, stats:null,
+  state:'title', prevState:'play', lv:0, level:LEVELS[0], time:0, money:0, combo:1, orderSeq:0, spawnT:0,
+  stats:null, best:{}, tips:new Set(), team:[], demo:true, endT:0, fails:0, outT:0, spillT:0,
 };
-function newStats(){ return {customers:0, served:0, angry:0, stolen:0, caught:0, revenue:0, stockCost:0, coffeeCost:0, items:0, coffeeSold:0, vip:0, vipServed:0, bonus:0, missed:0}; }
+// money/rating are kept as the names other modules (juice, HUD money tick) read: money = this shift's score
+function newStats(){ return {delivered:0, failed:0, tips:0, base:0, penalty:0, burnt:0, fires:0, maxCombo:1, byRec:{}}; }
 G.stats = newStats();
-const customers = [], queue = [], messes = [], staff = [];
-let player = null;
-
+const customers = [], queue = [], staff = [], spills = [];
+const orders = [];
+let player = null, owner = null;
 function addMoney(n){ G.money += n; }
-function addRating(d){ G.rating = clamp(G.rating + d, 0, 5); }
-function tip(key, text, valid){ if (G.state === 'title' || G.tips.has(key)) return; G.tips.add(key); showHint(text, valid); }
+function tip(key, text, valid){ if (G.demo || G.state === 'title' || G.tips.has(key)) return; G.tips.add(key); showHint(text, valid); }
+function totalStars(){ let t = 0; for (const k in G.best) t += (G.best[k] && G.best[k].stars) || 0; return t; }
 
-/* ----- staff ----- */
+/* ---------------- item meshes ---------------- */
+const IG = {
+  cup: new THREE.CylinderGeometry(0.09,0.07,0.2,12).translate(0,0.1,0),
+  lid: new THREE.CylinderGeometry(0.095,0.095,0.03,12).translate(0,0.215,0),
+  bowl: new THREE.CylinderGeometry(0.15,0.1,0.14,14).translate(0,0.07,0),
+  soup: new THREE.CylinderGeometry(0.14,0.14,0.02,14).translate(0,0.13,0),
+  tray: new THREE.BoxGeometry(0.36,0.08,0.26).translate(0,0.04,0),
+  tlid: new THREE.BoxGeometry(0.37,0.03,0.27).translate(0,0.095,0),
+  saus: new THREE.CylinderGeometry(0.045,0.045,0.32,8).rotateZ(Math.PI/2).translate(0,0.06,0),
+  bun: new THREE.SphereGeometry(0.1,12,8).scale(1.8,0.55,0.85).translate(0,0.05,0),
+  ball: new THREE.SphereGeometry(0.06,10,8),
+  stick: new THREE.CylinderGeometry(0.008,0.008,0.32,4),
+  fruit: new THREE.SphereGeometry(0.11,12,10).translate(0,0.11,0),
+  leaf: new THREE.ConeGeometry(0.04,0.08,5).translate(0,0.24,0),
+  cube: new THREE.BoxGeometry(0.07,0.07,0.07),
+  bottle: new THREE.CylinderGeometry(0.06,0.065,0.28,10).translate(0,0.14,0),
+  bcap: new THREE.CylinderGeometry(0.035,0.035,0.05,8).translate(0,0.305,0),
+  bag: new THREE.BoxGeometry(0.26,0.3,0.09).translate(0,0.15,0),
+  lump: new THREE.IcosahedronGeometry(0.13,0).translate(0,0.1,0),
+  ext: new THREE.CylinderGeometry(0.075,0.075,0.38,10).translate(0,0.19,0),
+  nozzle: new THREE.BoxGeometry(0.16,0.04,0.04).translate(0.06,0.4,0),
+  steam: new THREE.SphereGeometry(0.05,6,5),
+};
+const steamMat = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.55, depthWrite:false});
+function itemMesh(type){
+  const g = new THREE.Group();
+  const add = (geo, c, x, y, z, rx, ry, rz) => { const m = new THREE.Mesh(geo, typeof c === 'number' ? mat(c) : c); m.position.set(x||0, y||0, z||0); if (rx||ry||rz) m.rotation.set(rx||0, ry||0, rz||0); m.castShadow = true; g.add(m); return m; };
+  const steam = () => { for (let i=0;i<3;i++){ const s = add(IG.steam, steamMat, (i-1)*0.05, 0.32 + i*0.07, 0); s.userData.steam = i; } };
+  switch (type){
+    case 'cup': add(IG.cup, 0xf4f4f4); break;
+    case 'coffee': add(IG.cup, 0xf4f4f4); add(IG.lid, 0x7a4a2a); steam(); break;
+    case 'noodle_raw': add(IG.bowl, 0xff6058); add(IG.soup, 0xf4f4f4); break;
+    case 'noodle': add(IG.bowl, 0xff6058); add(IG.soup, 0xf2c14e); steam(); break;
+    case 'bento_cold': add(IG.tray, 0x2b2b2b); add(IG.tlid, 0x9fd3ff); break;
+    case 'bento': add(IG.tray, 0x2b2b2b); add(IG.tlid, 0xff9f43); steam(); break;
+    case 'sausage': add(IG.saus, 0xf08a9a); break;
+    case 'sausage_cooked': add(IG.saus, 0xa0522d); steam(); break;
+    case 'bun': add(IG.bun, 0xe0b070); break;
+    case 'hotdog': add(IG.bun, 0xe0b070); add(IG.saus, 0xa0522d, 0, 0.05, 0); add(IG.cube, 0xffd23f, 0, 0.11, 0).scale.set(3.2,0.2,0.4); break;
+    case 'oden_raw': add(IG.tray, 0xd8d0c0); for (let i=0;i<3;i++) add(IG.ball, [0xfff5e0,0xd9a066,0xf2f2f2][i], -0.1+i*0.1, 0.12, 0); break;
+    case 'oden': add(IG.bowl, 0xf2f2f2); add(IG.soup, 0xb8863b); for (let i=0;i<3;i++){ add(IG.ball, [0xfff5e0,0xd9a066,0x8b5a2b][i], -0.06+i*0.06, 0.16+i*0.03, 0); } add(IG.stick, 0xe8d2a9, 0.05, 0.25, 0, 0, 0, 0.3); steam(); break;
+    case 'fruit': add(IG.fruit, 0xe8413c); add(IG.leaf, 0x3f8a4f); break;
+    case 'fruitcup': add(IG.cup, new THREE.MeshLambertMaterial({color:0xe8f6ff, transparent:true, opacity:0.55})); for (let i=0;i<6;i++) add(IG.cube, [0xe8413c,0xffcf3a,0x34d6a6,0xff9f43][i%4], ((i%3)-1)*0.04, 0.06+Math.floor(i/3)*0.07, ((i%2)-0.5)*0.04); break;
+    case 'drink': add(IG.bottle, pick([0x4da3ff,0x34d6a6,0xff6058,0xffcf3a])); add(IG.bcap, 0xffffff); break;
+    case 'snack': add(IG.bag, pick([0xff6058,0xffcf3a,0xb57cf0,0x4da3ff])); break;
+    case 'burnt': add(IG.lump, 0x1e1a18); add(IG.ball, 0x3a302a, 0.08, 0.16, 0.03); break;
+    case 'ext': add(IG.ext, 0xd9262c); add(IG.nozzle, 0x222222); break;
+  }
+  return g;
+}
+function newItem(type){ return {type, cook:0, chop:0, mesh:itemMesh(type)}; }
+function setItemType(it, type){
+  const old = it.mesh, parent = old.parent;
+  it.type = type; it.cook = 0; it.chop = 0; it.mesh = itemMesh(type);
+  it.mesh.position.copy(old.position); it.mesh.rotation.copy(old.rotation);
+  if (parent){ parent.remove(old); parent.add(it.mesh); }
+}
+function dropItem(it){ if (it && it.mesh.parent) it.mesh.parent.remove(it.mesh); }
+
+/* ---------------- stations ("slots") ---------------- */
+// kind: src (gives an item), counter (holds one item), appl (machine), board (chopping), pass (deliver), trash
+const SLOTS = [], SLOT = {};
+const APPL = {
+  coffee:  {n:'咖啡機', ins:{cup:{out:'coffee', t:3}}},
+  hotwater:{n:'熱水機', ins:{noodle_raw:{out:'noodle', t:2.5}}},
+  micro:   {n:'微波爐', ins:{bento_cold:{out:'bento', t:4, burn:7}}, fire:6},
+  grill:   {n:'烤台',   ins:{sausage:{out:'sausage_cooked', t:5, burn:7}}, fire:6},
+  pot:     {n:'湯鍋',   ins:{oden_raw:{out:'oden', t:6, burn:10}}},
+};
+const ISLAND = ['micro','grill','c1','pot','board','c2'];
+function applOutRule(id, type){ const a = APPL[id]; if (!a) return null; for (const k in a.ins) if (a.ins[k].out === type) return a.ins[k]; return null; }
+function addSlot(o){
+  Object.assign(o, {item:null, fire:null, broken:0, fix:0, reach:o.reach || 1.45});
+  o.tag = new Tag('slot');
+  SLOTS.push(o); SLOT[o.id] = o;
+  return o;
+}
+function slotNearest(sl, p){
+  if (sl.band){ const b = sl.band; return {x:clamp(p.x,b[0],b[1]), z:clamp(p.z,b[2],b[3])}; }
+  return {x:sl.x, z:sl.z};
+}
+function slotDist(sl, p){ const q = slotNearest(sl, p); return Math.hypot(q.x-p.x, q.z-p.z); }
+function placeOnSlot(sl, it){
+  sl.item = it; scene.add(it.mesh);
+  it.mesh.position.set(sl.x, sl.y, sl.z); it.mesh.rotation.set(0, sl.ry || 0, 0); it.mesh.scale.setScalar(1);
+}
+function takeFromSlot(sl){ const it = sl.item; sl.item = null; return it; }
+
+let highlight = null, fireGroupGeo = null;
+function buildKitchen(){
+  const steel = 0xc9d1dc, top = 0x9aa7b8, white = 0xf2f2ee;
+  // island (prep line) in the front-left of the store
+  const isl = new THREE.Group(); scene.add(isl); pickables.push(isl);
+  box(6.4,0.9,0.9, white, -5.25,0,4.45, isl);
+  box(6.5,0.05,1.0, top, -5.25,0.9,4.45, isl);
+  box(6.4,0.12,0.05, 0xffcf3a, -5.25,0.62,3.99, isl, {cast:false});
+  blockRect(-8.45,4.0,-2.05,4.9);
+  const IY = 0.95, IZ = 4.45, NZ = 3.3;
+  // microwave (open-front box so the tray inside is visible)
+  const mw = new THREE.Group(); mw.position.set(-7.9, IY, IZ); isl.add(mw);
+  box(0.62,0.04,0.46, 0x2e3440, 0,0.38,0, mw); box(0.04,0.38,0.46, 0x2e3440, -0.29,0,0, mw); box(0.04,0.38,0.46, 0x2e3440, 0.29,0,0, mw);
+  box(0.62,0.38,0.04, 0x2e3440, 0,0,-0.21, mw); box(0.14,0.3,0.02, mat(0x9fe8ff,0x4da3ff,0.6), 0.22,0.04,0.235, mw, {cast:false});
+  // grill rollers
+  const gr = new THREE.Group(); gr.position.set(-6.8, IY, IZ); isl.add(gr);
+  box(0.62,0.1,0.48, 0x8a94a3, 0,0,0, gr);
+  for (let i=0;i<5;i++){ const r = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.56,8), mat(0xb0b8c4)); r.rotation.z = Math.PI/2; r.position.set(0,0.12,-0.16+i*0.08); gr.add(r); }
+  // pot
+  const pt = new THREE.Group(); pt.position.set(-4.6, IY, IZ); isl.add(pt);
+  const potM = new THREE.Mesh(new THREE.CylinderGeometry(0.27,0.24,0.16,16), mat(0xb0b8c4)); potM.position.y = 0.08; potM.castShadow = true; pt.add(potM);
+  const brM = new THREE.Mesh(new THREE.CylinderGeometry(0.25,0.25,0.02,16), mat(0x8b5a2b)); brM.position.y = 0.155; pt.add(brM);
+  // chopping board
+  box(0.52,0.04,0.38, 0xd9a066, -3.5,IY,IZ, isl);
+  // trash can
+  const tr = new THREE.Group(); tr.position.set(-1.55,0,IZ); scene.add(tr); pickables.push(tr);
+  const can = new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.24,0.82,14), mat(0x3f6b4f)); can.position.y = 0.41; can.castShadow = true; tr.add(can);
+  const lidM = new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.3,0.05,14), mat(0x2f523c)); lidM.position.y = 0.84; tr.add(lidM);
+  blockRect(-1.85,4.15,-1.25,4.75,0.25);
+  // ingredient crates along the west wall
+  const crate = (z, type, label) => {
+    const g = new THREE.Group(); g.position.set(-9.55,0,z); scene.add(g); pickables.push(g);
+    box(0.72,0.62,0.86, 0xb88445, 0,0,0, g);
+    box(0.74,0.06,0.88, 0x9a6b3a, 0,0.62,0, g);
+    for (let i=0;i<3;i++){ const m = itemMesh(type); m.position.set(-0.12+i*0.12, 0.66, -0.2+i*0.18); m.rotation.y = i; g.add(m); }
+    signPlane(0.7,0.26,(c,w,h)=>{ roundRect(c,3,3,w-6,h-6,10); c.fillStyle='#fffaf0'; c.fill(); c.fillStyle='#14233d'; c.font=`900 ${h*0.56}px ${FONT}`; c.textAlign='center'; c.textBaseline='middle'; c.fillText(label, w/2, h*0.55); }, g, 0.37, 0.4, 0, Math.PI/2);
+    blockRect(-9.95, z-0.45, -9.2, z+0.45);
+    return g;
+  };
+  crate(-1.6, 'sausage', '香腸'); crate(-0.4, 'bun', '麵包'); crate(0.8, 'oden_raw', '關東煮料'); crate(2.0, 'fruit', '水果');
+  // extinguisher wall hook
+  box(0.5,0.9,0.08, 0xd9262c, -9.95,0.6,3.15); box(0.45,0.06,0.4, 0x6c7686, -9.7,0.55,3.15);
+  blockRect(-9.95,2.9,-9.45,3.4,0.25);
+  // hot-water dispenser on the back counter
+  const hw = new THREE.Group(); hw.position.set(9.65,0.95,4.2); scene.add(hw); pickables.push(hw);
+  box(0.5,0.62,0.42, 0xf4f4f4, 0,0,0, hw); box(0.06,0.06,0.06, 0xff6058, -0.26,0.42,0.1, hw); box(0.12,0.08,0.12, 0x888888, -0.22,0.3,0, hw);
+  // pass mat on the checkout counter
+  signPlane(0.95,0.95,(c,w,h)=>{ roundRect(c,6,6,w-12,h-12,22); c.fillStyle='#ffcf3a'; c.fill(); c.lineWidth=8; c.strokeStyle='#14233d'; c.stroke();
+    c.fillStyle='#14233d'; c.font=`900 ${h*0.24}px ${FONT}`; c.textAlign='center'; c.textBaseline='middle'; c.fillText('出餐', w/2, h*0.5); }, scene, 6.5, 1.035, 2.4).rotation.x = -Math.PI/2;
+  const bell = new THREE.Mesh(new THREE.SphereGeometry(0.07,10,6,0,Math.PI*2,0,Math.PI/2), mat(0xd4af37)); bell.position.set(6.5,1.03,1.9); bell.castShadow = true; scene.add(bell);
+
+  // --- slots ---
+  const isle = (id, x, kind, n, extra) => addSlot(Object.assign({id, kind, n, x, y:IY + (id==='micro'?0.05:id==='grill'?0.1:id==='pot'?0.03:id==='board'?0.04:0.03), z:IZ, spot:{x, z:NZ}, isl:true}, extra||{}));
+  isle('micro', -7.9, 'appl', '微波爐');
+  isle('grill', -6.8, 'appl', '烤台');
+  isle('c1',    -5.7, 'counter', '工作台');
+  isle('pot',   -4.6, 'appl', '湯鍋');
+  isle('board', -3.5, 'board', '砧板');
+  isle('c2',    -2.6, 'counter', '工作台');
+  ISLAND.forEach((id,i) => { SLOT[id].islI = i; });
+  addSlot({id:'trash', kind:'trash', n:'垃圾桶', x:-1.55, y:0.87, z:IZ, spot:{x:-1.55, z:3.4}, reach:1.3});
+  const src = (id, give, x, z, spot, extra) => addSlot(Object.assign({id, kind:'src', give, n:ITEMS[give].n, x, y:0.66, z, spot}, extra||{}));
+  src('sausagesrc', 'sausage',  -9.55, -1.6, {x:-8.55, z:-1.6});
+  src('bunsrc',     'bun',      -9.55, -0.4, {x:-8.55, z:-0.4});
+  src('odensrc',    'oden_raw', -9.55,  0.8, {x:-8.55, z:0.8});
+  src('fruitsrc',   'fruit',    -9.55,  2.0, {x:-8.55, z:2.0});
+  addSlot({id:'extstand', kind:'counter', n:'滅火器架', x:-9.6, y:0.6, z:3.15, spot:{x:-8.6, z:3.15}, reach:1.35, only:'ext'});
+  placeOnSlot(SLOT.extstand, newItem('ext'));
+  // shelves become ingredient sources
+  const sb = id => SHELF[id];
+  src('drink',     'drink',      sb('drink').cx,  -6.0, {x:-3, z:-5.0},  {band:sb('drink').band, y:1.0, reach:0.7});
+  src('snack',     'snack',      sb('snack').cx,  -2.9, {x:-5.5, z:-1.75}, {band:sb('snack').band, y:1.1, reach:0.7});
+  src('noodlesrc', 'noodle_raw', sb('noodle').cx, -2.9, {x:0.5, z:-1.75},  {band:sb('noodle').band, y:1.1, reach:0.7});
+  src('bentosrc',  'bento_cold', sb('bento').cx,   0.5, {x:0.5, z:1.75},   {band:sb('bento').band, y:1.0, reach:0.7});
+  // back counter: cups, coffee machine, hot water, a spare counter
+  src('cups', 'cup', 9.55, 2.45, {x:8.6, z:2.45}, {y:1.0, reach:1.3});
+  addSlot({id:'coffee', kind:'appl', n:'咖啡機', x:9.4, y:1.0, z:1.5, spot:{x:8.6, z:1.5}, reach:1.3});
+  addSlot({id:'hotwater', kind:'appl', n:'熱水機', x:9.4, y:0.97, z:4.2, spot:{x:8.6, z:4.2}, reach:1.3});
+  addSlot({id:'c3', kind:'counter', n:'工作台', x:9.55, y:0.98, z:3.35, spot:{x:8.6, z:3.35}, reach:1.3});
+  addSlot({id:'pass', kind:'pass', n:'出餐台', x:6.5, y:1.04, z:2.4, spot:{x:5.3, z:2.4}, reach:1.5});
+  // the old 3D cup display is now the cup stack: keep it always visible
+  for (const c of cupMeshes) c.visible = true;
+  // target highlight (pulsing ring) shown under the station you would interact with
+  highlight = new THREE.Mesh(new THREE.RingGeometry(0.3,0.42,28).rotateX(-Math.PI/2), new THREE.MeshBasicMaterial({color:0xffcf3a, transparent:true, opacity:0.9, depthWrite:false, side:THREE.DoubleSide}));
+  highlight.renderOrder = 5; highlight.visible = false; scene.add(highlight);
+  fireGroupGeo = new THREE.ConeGeometry(0.12,0.42,7).translate(0,0.21,0);
+}
+
+/* ---------------- fire, spills, outages ---------------- */
+const fireMats = [new THREE.MeshBasicMaterial({color:0xff6a00, transparent:true, opacity:0.9}), new THREE.MeshBasicMaterial({color:0xffd23f, transparent:true, opacity:0.85})];
+function ignite(sl){
+  if (sl.fire || sl.kind === 'src' && !sl.band) return;
+  const g = new THREE.Group(); g.position.set(sl.x, sl.y, sl.z); scene.add(g);
+  for (let i=0;i<4;i++){ const m = new THREE.Mesh(fireGroupGeo, fireMats[i%2]); m.position.set((i%2-0.5)*0.16, 0, (Math.floor(i/2)-0.5)*0.14); m.userData.ph = Math.random()*6; g.add(m); }
+  sl.fire = {t:0, hp:1, g, spread:0};
+  if (sl.item && sl.item.type !== 'ext') setItemType(sl.item, 'burnt');
+  G.stats.fires++;
+  SFX.bad(); camShakeAdd(0.35);
+  toast('🔥 ' + sl.n + '起火了！', 'bad');
+  tip('fire', '起火了！到牆上拿 🧯 滅火器，對著火長按「動作」。火會延燒到旁邊的台子！');
+}
+function extinguish(sl){
+  if (!sl.fire) return;
+  scene.remove(sl.fire.g); sl.fire = null;
+  floatText(sl.x, sl.y + 0.8, sl.z, '滅火了！', 'good txt'); SFX.clean();
+}
+function spawnSpill(){
+  if (spills.length >= 6) return;
+  for (let k=0;k<20;k++){
+    const p = randomInside();
+    if (p.z > 6 || (p.x > 7 && p.z > -0.5 && p.z < 5.5)) continue;
+    if (spills.some(s => Math.hypot(s.x-p.x, s.z-p.z) < 1.2)) continue;
+    const g = new THREE.Group(); g.position.set(p.x, 0, p.z); scene.add(g);
+    const m = new THREE.Mesh(new THREE.CircleGeometry(0.5,20).rotateX(-Math.PI/2), new THREE.MeshLambertMaterial({color:0x7fc8ff, transparent:true, opacity:0.6, depthWrite:false}));
+    m.position.y = 0.012; m.scale.set(rand(0.8,1.25),1,rand(0.7,1.1)); g.add(m);
+    const sp = {x:p.x, z:p.z, g, prog:0, tag:new Tag('')}; sp.tag.icon('💧');
+    spills.push(sp);
+    tip('spill', '地上濕了會滑倒！空手站在水漬旁長按「動作」可以拖乾。');
+    return;
+  }
+}
+function removeSpill(sp){ const i = spills.indexOf(sp); if (i >= 0) spills.splice(i,1); scene.remove(sp.g); sp.tag.remove(); }
+function breakRandomMachine(){
+  const cand = ['coffee','hotwater','micro','grill','pot'].map(id => SLOT[id]).filter(s => !s.broken && !s.fire);
+  if (!cand.length) return;
+  const sl = pick(cand); sl.broken = 1; sl.fix = 0;
+  toast('⚡ 停電！' + sl.n + '故障了', 'bad'); SFX.bad();
+  tip('outage', '機器故障 ⚡ 時不會運作。空手站在旁邊長按「動作」就能修好。');
+}
+
+/* ---------------- staff & AI clones ---------------- */
 function makeStaffChar(roleColor){
   return makeChar({shirt:0x22345a, pants:0x2f3b52, skin:0xf2c9a5, hair:0x2b1d14, apron: roleColor || 0xffcf3a, cap: roleColor || 0xffcf3a,
     glow: roleColor || 0, ring: roleColor || 0xffcf3a, scale:1.12});
 }
-function createPlayer(){
-  const ch = makeStaffChar(0);
-  const a = new Agent(ch, 4.4);
-  a.pos.set(CASHIER_SPOT.x, 0, CASHIER_SPOT.z - 1.2);
-  player = {role:'owner', agent:a, ch, carry:false, work:1, restockT:0, tag:new Tag('')};
-  staff.push(player);
+function makeStaff(roleId, ch, speed, work){
+  const a = new Agent(ch, speed);
+  return {role:roleId, agent:a, ch, hold:null, work, baseSpeed:speed, ai:{}, tag:new Tag(''), spawnFx:0, useT:0, slip:null, prog:null};
 }
-function spawnClone(roleId, level, instant){
+function createPlayer(){
+  owner = makeStaff('owner', makeStaffChar(0), 4.4, 1);
+  owner.agent.pos.set(4.2, 0, 2.4);
+  player = owner;
+  staff.push(owner);
+}
+function spawnClone(roleId, instant){
   const r = ROLE[roleId];
-  const ch = makeStaffChar(r.color);
-  const a = new Agent(ch, LV_MOVE[level]);
-  const p = randomNear(STOCK_IDLE);
-  a.pos.set(p.x, 0, p.z);
-  const s = {role:roleId, level, agent:a, ch, carry:false, work:LV_WORK[level], restockT:0, ai:{}, tag:new Tag(''), spawnFx: instant ? 0 : 1};
-  if (!instant){ ch.g.scale.setScalar(0.01); }
-  addHoloFx(ch, r.color, s);   // hologram shimmer + materialize beam
+  const s = makeStaff(roleId, makeStaffChar(r.color), CLONE_SPEED, CLONE_WORK);
+  const p = randomNear(r.home);
+  s.agent.pos.set(p.x, 0, p.z);
+  s.spawnFx = instant ? 0 : 1;
+  if (!instant) s.ch.g.scale.setScalar(0.01);
+  addHoloFx(s.ch, r.color, s);
   staff.push(s);
   return s;
 }
 function randomNear(p){ for (let k=0;k<20;k++){ const x=p.x+rand(-0.8,0.8), z=p.z+rand(-0.8,0.8); if (walkXZ(x,z)) return {x,z}; } return {x:p.x,z:p.z}; }
 function cloneOf(roleId){ return staff.find(s => s.role === roleId); }
-function setCloneLevel(s, lv){ s.level = lv; s.work = LV_WORK[lv]; s.agent.speed = LV_MOVE[lv]; }
+function removeStaff(s){ if (s.hold) dropItem(s.hold); s.hold = null; scene.remove(s.ch.g); s.tag.remove(); const i = staff.indexOf(s); if (i >= 0) staff.splice(i,1); }
+function holdItem(s, it){
+  s.hold = it;
+  if (it){ s.ch.g.add(it.mesh); it.mesh.position.set(0, 0.9, 0.42); it.mesh.rotation.set(0,0,0); it.mesh.scale.setScalar(0.95); }
+}
+function releaseHold(s){ const it = s.hold; s.hold = null; if (it && it.mesh.parent) it.mesh.parent.remove(it.mesh); return it; }
 
-/* ----- customers ----- */
-function spawnCustomer(){
-  const side = Math.random() < 0.5 ? -1 : 1;
-  const thiefChance = G.day >= 2 ? Math.min(0.14, 0.05 + G.day*0.012) : 0;
-  const thief = Math.random() < thiefChance;
-  const vip = !thief && G.state !== 'title' && Math.random() < vipChance(G.day);
-  const ev = G.event || DAY_EVENTS[0];
-  const kid = !vip && Math.random() < 0.12;
-  const hasHat = vip || Math.random() < 0.2;
-  const ch = makeChar({shirt: vip ? 0x22223a : pick(SHIRTS), pants:pick(PANTS), skin:pick(SKIN), hair:pick(HAIR), cap: vip ? 0xffcf3a : hasHat ? pick([0x2f3b52,0xe85d75,0x58c48f,0xf2f2f2]) : 0, scale: kid ? 0.82 : vip ? 1.1 : rand(1.0,1.12)});
-  const a = new Agent(ch, rand(1.9,2.5) * (kid ? 1.1 : 1));
-  a.pos.set(side*13.5, 0, STREET_Z + rand(-0.4,0.4));
-  // shopping list (rush hours and day events tilt what people want)
-  let n = vip ? (Math.random() < 0.5 ? 2 : 3) : Math.random() < 0.5 ? 1 : (Math.random() < 0.7 ? 2 : 3);
-  if (ev.extraItem && Math.random() < ev.extraItem) n = Math.min(SHELVES.length, n + 1);
-  const boost = Object.assign({}, ev.boost, G.rush && G.state === 'play' ? G.rush.boost : null);
-  const wt = x => x.weight * (boost[x.id] || 1);
-  const pool = SHELVES.slice(); const list = [];
-  for (let i=0;i<n;i++){
-    const tot = pool.reduce((s,x)=>s+wt(x),0); let r = Math.random()*tot, k = 0;
-    while (k < pool.length-1 && r > wt(pool[k])){ r -= wt(pool[k]); k++; }
-    list.push(pool[k].id); pool.splice(k,1);
+/* ---------------- interaction rules (shared by the player and the AI) ---------------- */
+function facingOf(s){ const r = s.agent.g.rotation.y; return {x:Math.sin(r), z:Math.cos(r)}; }
+function findTarget(s){
+  const p = s.agent.pos, f = facingOf(s);
+  let best = null, bs = 1e9;
+  for (const sl of SLOTS){
+    const q = slotNearest(sl, p), dx = q.x-p.x, dz = q.z-p.z, d = Math.hypot(dx,dz);
+    if (d > sl.reach) continue;
+    const dot = d > 0.05 ? (dx*f.x + dz*f.z)/d : 1;
+    const sc = d - dot*0.7;
+    if (sc < bs){ bs = sc; best = sl; }
   }
-  const c = {agent:a, ch, side, list, li:0, basket:[], patience:100, wantsCoffee: Math.random() < (ev.coffee !== undefined ? ev.coffee : 0.28), gotCoffee:false,
-    thief, vip, state:'arrive', timer:0, qi:-1, tag:new Tag(''), emoteT:0, emote:'', greeted:false, entered:false, payT:0, dirtT:rand(4,12)};
-  a.path = [{x:side*9.3, z:STREET_Z}, {x:DOOR_OUT.x + rand(-0.3,0.3), z:DOOR_OUT.z}];
-  customers.push(c);
-  G.stats.customers++;
-  if (vip) G.stats.vip++;
-}
-function emote(c, e, t){ c.emote = e; c.emoteT = t || 1.4; }
-function goNextShelf(c){
-  if (c.li < c.list.length){
-    const sh = SHELF[c.list[c.li]];
-    const off = sh.id === 'drink' ? rand(-2.6,2.6) : rand(-1.1,1.1);
-    c.agent.goTo(sh.spot.x + off, sh.spot.z);
-    c.state = 'toShelf';
-  } else if (!c.basket.length){
-    leaveStore(c, true);
-  } else if (c.thief){
-    c.state = 'escape'; c.agent.speed = 2.9;
-    c.agent.goTo(DOOR_OUT.x, DOOR_OUT.z + 0.4);
-    tip('thief', '有人沒結帳就往外跑！快追上去攔住（保全分身也會幫忙抓）');
-    toast('🕶️ 有小偷！', 'bad');
-  } else {
-    queue.push(c); c.state = 'queue'; c.qi = -1; refreshQueue();
-  }
-}
-function queueSpot(i){ return i < 7 ? {x:CHECKOUT_SPOT.x - i*0.8, z:CHECKOUT_SPOT.z} : i < 14 ? {x:0.6 + (i-7)*0.8, z:4.4} : {x:5.0 - (i-14)*0.8, z:5.5}; }
-function refreshQueue(){
-  queue.forEach((c,i)=>{ if (c.qi !== i){ c.qi = i; const s = queueSpot(i); c.agent.goTo(s.x, s.z); } });
-}
-function leaveStore(c, unhappy){
-  const qi = queue.indexOf(c); if (qi >= 0){ queue.splice(qi,1); refreshQueue(); }
-  c.state = 'leave'; c.leaveStage = 0; c.agent.speed = Math.max(c.agent.speed, 2.2);
-  c.agent.goTo(DOOR_OUT.x + rand(-0.3,0.3), DOOR_OUT.z);
-  if (unhappy) emote(c, '😞', 2);
-}
-function removeCustomer(c){
-  const i = customers.indexOf(c); if (i >= 0) customers.splice(i,1);
-  const qi = queue.indexOf(c); if (qi >= 0){ queue.splice(qi,1); refreshQueue(); }
-  scene.remove(c.ch.g); c.tag.remove();
-}
-function angryLeave(c){
-  emote(c, '💢', 2.2); SFX.bad();
-  G.stats.angry++; addRating(-0.22);
-  if (c.vip) addRating(-0.25);
-  floatText(c.agent.pos.x, 2.3, c.agent.pos.z, '評價 ↓', 'bad txt');
-  if (c.basket.length && Math.random() < 0.6) spawnMess(c.agent.pos.x, c.agent.pos.z, 'drop');
-  c.basket.length = 0;
-  leaveStore(c, false);
-}
-
-function updateCustomer(c, dt){
-  const a = c.agent;
-  const arrived = a.step(dt);
-  const p = a.pos;
-  if (!c.entered && p.z < 6.6){
-    c.entered = true; SFX.chime();
-    const gd = cloneOf('guard');
-    if (gd && dist2(gd.agent.pos, GUARD_SPOT) < 1.5){ c.patience = 125; emote(c, '😊', 1.2); gd.greetT = 1.2; }
-    if (c.vip){ toast('👑 VIP 客人光臨！別讓他等太久', ''); tip('vip', '戴金帽的 👑 VIP 付 1.5 倍的錢，但特別沒耐心，氣走他評價會掉很多。'); }
-  }
-  // mess generation while inside
-  if (c.entered && p.z < 6.4 && c.state !== 'leave'){
-    c.dirtT -= dt;
-    if (c.dirtT <= 0){ c.dirtT = rand(10,22); if (Math.random() < (0.35 + G.day*0.03) * ((G.event && G.event.mess) || 1)) spawnMess(p.x, p.z, Math.random()<0.5?'spill':'trash'); }
-  }
-  switch (c.state){
-    case 'arrive': if (arrived) goNextShelf(c); break;
-    case 'toShelf':
-      if (arrived){ c.state = 'browse'; c.timer = rand(0.6,1.3); a.face(Math.PI); }
-      break;
-    case 'browse':
-      c.timer -= dt;
-      if (c.timer <= 0){
-        const sh = SHELF[c.list[c.li]];
-        if (sh.stock > 0){ sh.stock--; c.basket.push(sh.id); emote(c, sh.icon, 0.9); G.stats.items++; }
-        else { c.patience -= 30; emote(c, '😡', 1.6); addRating(-0.06); SFX.bad(); G.stats.missed++; tip('restock', '貨架空了！先到倉庫「拿貨」格子拿箱子，再走到貨架前就會自動補滿。'); }
-        c.li++;
-        if (c.patience <= 0){ angryLeave(c); break; }
-        goNextShelf(c);
-      }
-      break;
-    case 'queue': {
-      let drain = 1.9 + Math.min(1.2, G.day*0.08);
-      for (const m of messes) if (dist2(m, p) < 3) drain += 0.7;
-      if (c.vip) drain *= VIP_DRAIN;
-      c.patience -= drain*dt;
-      if (arrived && c.qi >= 0) a.face(c.qi < 7 ? Math.PI/2 : -Math.PI/2);
-      if (c.patience <= 0) angryLeave(c);
-      break;
-    }
-    case 'escape':
-      if (p.z > 7.9){
-        G.stats.stolen++; addRating(-0.15);
-        const loss = c.basket.reduce((s,id)=>s+SHELF[id].price,0);
-        floatText(p.x, 2.3, p.z, '-' + fmt(loss) + ' 被偷了', 'bad txt');
-        toast('小偷跑掉了…', 'bad'); SFX.bad();
-        c.thief = false; c.basket.length = 0; c.state = 'leave'; c.leaveStage = 1;
-        a.path = [{x:c.side*9.3, z:STREET_Z}, {x:c.side*14, z:STREET_Z}];
-      } else if (arrived){ a.goTo(DOOR_OUT.x, DOOR_OUT.z + 0.4); }
-      break;
-    case 'leave':
-      if (arrived){
-        if (c.leaveStage === 0){ c.leaveStage = 1; a.path = [{x:c.side*9.3, z:STREET_Z + rand(-0.3,0.3)}, {x:c.side*14, z:STREET_Z}]; }
-        else { removeCustomer(c); return; }
-      }
-      break;
-  }
-  // tag
-  let ic = '';
-  if (c.emoteT > 0){ c.emoteT -= dt; ic = c.emote; }
-  else if (c.state === 'escape') ic = '🕶️❗';
-  else if (c.state === 'queue') ic = c.wantsCoffee && !c.gotCoffee ? '☕' : (c.qi === 0 ? '💳' : '');
-  else if (c.state === 'toShelf' || c.state === 'browse') ic = SHELF[c.list[c.li]] ? SHELF[c.list[c.li]].icon : '';
-  c.tag.icon(c.vip && c.state !== 'leave' ? '👑' + ic : ic);
-  if (c.state === 'queue' || (c.patience < 100 && c.state !== 'leave' && c.state !== 'escape')){
-    const f = c.patience/100;
-    c.tag.setBar(f, f > 0.5 ? '#34d6a6' : f > 0.25 ? '#ffcf3a' : '#ff6058');
-  } else c.tag.setBar(null);
-  c.ch.bag.visible = c.state === 'leave' && c.paid;
-}
-
-/* ----- messes ----- */
-const MESS_GEO = { spill: new THREE.CircleGeometry(0.42,18).rotateX(-Math.PI/2), trash: new THREE.IcosahedronGeometry(0.13,0), can: new THREE.CylinderGeometry(0.06,0.06,0.16,8) };
-function spawnMess(x,z,type){
-  if (messes.length >= 10) return;
-  if (!walkXZ(x,z) || z > 6.6 || (x > 7 && z > -0.5 && z < 5.5)) return;
-  const g = new THREE.Group(); g.position.set(x,0,z); scene.add(g);
-  if (type === 'spill'){
-    const m = new THREE.Mesh(MESS_GEO.spill, new THREE.MeshLambertMaterial({color:pick([0x8b5a2b,0xff9f43,0x6b3d1f]), transparent:true, opacity:0.75, depthWrite:false}));
-    m.position.y = 0.012; m.scale.set(rand(0.8,1.2),1,rand(0.7,1.1)); g.add(m);
-    const cup = new THREE.Mesh(MESS_GEO.can, mat(0xffffff)); cup.rotation.z = Math.PI/2; cup.position.set(0.2,0.06,0.05); g.add(cup);
-  } else {
-    for (let i=0;i<(type==='drop'?4:3);i++){
-      const m = new THREE.Mesh(i%2 ? MESS_GEO.can : MESS_GEO.trash, mat(type==='drop' ? pick(PCOL) : pick([0xf2f2f2,0xe0d6c0,0xff6058,0x4da3ff])));
-      m.position.set(rand(-0.25,0.25), 0.07, rand(-0.25,0.25)); m.rotation.set(rand(0,3),rand(0,3),i%2?Math.PI/2:0); m.castShadow = true; g.add(m);
-    }
-  }
-  const ms = {x, z, g, prog:0, tag:new Tag('')};
-  ms.tag.icon('🗑️');
-  messes.push(ms);
-  tip('mess', '地上髒了！走過去站一下就能清乾淨。髒亂會讓客人更沒耐心。');
-}
-function removeMess(m){ const i = messes.indexOf(m); if (i >= 0) messes.splice(i,1); scene.remove(m.g); m.tag.remove(); }
-
-/* ----- staff work zones ----- */
-function shelfAt(p){
-  for (const sh of SHELVES){ const b = sh.band; if (p.x > b[0] && p.x < b[1] && p.z > b[2] && p.z < b[3]) return sh; }
-  return null;
-}
-function doRestock(s, sh){
-  const need = sh.max - sh.stock;
-  const afford = Math.min(need, Math.floor(G.money / sh.cost));
-  if (afford <= 0){
-    const now = performance.now();
-    if (s === player && !(s.noMoneyAt > now - 3000)){ s.noMoneyAt = now; toast('現金不夠進貨了！', 'bad'); }
-    return false;
-  }
-  const cost = afford*sh.cost;
-  addMoney(-cost); G.stats.stockCost += cost;
-  sh.stock += afford;
-  s.carry = false; s.agent.carrying = false;
-  SFX.stock();
-  squash(s, 0.12);
-  if (s === player) haptic(25);
-  floatText(sh.spot.x, 2.0, sh.spot.z, '補貨 -' + fmt(cost), 'good txt');
-  return true;
-}
-function staffWork(s, dt){
-  const p = s.agent.pos;
-  const canCarry = s === player || s.role === 'stocker';
-  const canClean = s === player || s.role === 'cleaner';
-  const canChase = s === player || s.role === 'guard';
-  if (dist2(p, CASHIER_SPOT) < 0.75) reg.power = Math.max(reg.power, s.work);
-  if (dist2(p, COFFEE_SPOT) < 0.75) coffee.power = Math.max(coffee.power, s.work);
-  if (canCarry && !s.carry && dist2(p, STOCK_SPOT) < 0.85){
-    s.carry = true; s.agent.carrying = true; SFX.pick();
-    if (s === player) haptic(15);
-    if (s === player) tip('carry', '拿到貨了！走到任何一個不滿的貨架前就會補貨。');
-  }
-  let prog = null;
-  if (canCarry && s.carry){
-    const sh = shelfAt(p);
-    if (sh && sh.stock < sh.max){
-      s.restockT += dt * s.work;
-      prog = s.restockT / 0.7;
-      if (s.restockT >= 0.7){ s.restockT = 0; doRestock(s, sh); prog = null; }
-    } else s.restockT = 0;
-  }
-  if (canClean){
-    for (const m of messes){
-      if (dist2(m, p) < 0.85){
-        m.prog += dt * s.work; prog = m.prog / 1.0;
-        if (m.prog >= 1.0){ removeMess(m); SFX.clean(); squash(s, 0.12); addRating(0.02); floatText(p.x, 2.2, p.z, '乾淨！', 'good txt'); prog = null; }
-        break;
-      }
-    }
-  }
-  if (canChase){
-    for (const c of customers){
-      if (c.state === 'escape' && dist2(c.agent.pos, p) < 1.3){
-        const total = c.basket.reduce((t,id)=>t+SHELF[id].price,0);
-        addMoney(total); G.stats.revenue += total; G.stats.caught++; addRating(0.03);
-        floatText(c.agent.pos.x, 2.4, c.agent.pos.z, '抓到了！+' + fmt(total), 'good txt');
-        SFX.catch(); emote(c, '😰', 2);
-        juiceCatch(s, c, total);
-        if (s === player) haptic([30,40,30]);
-        c.thief = false; c.paid = true; c.basket.length = 0; c.agent.speed = 2.2;
-        leaveStore(c, false);
-      }
-    }
-  }
-  s.prog = prog;
-}
-
-/* ----- clone AI ----- */
-let curDt = 1/60;
-function ensureAt(s, spot, faceRot){
-  const a = s.agent, d = dist2(a.pos, spot);
-  if (d > 0.35){
-    if (s.ai.dest !== spot){ s.ai.dest = spot; s.ai.retry = 0.6; a.goTo(spot.x, spot.z); }
-    else if (!a.path.length){ s.ai.retry = (s.ai.retry || 0) - curDt; if (s.ai.retry <= 0){ s.ai.retry = 0.6; a.goTo(spot.x, spot.z); } }
-  } else { s.ai.dest = spot; if (faceRot !== undefined && !a.path.length) a.face(faceRot); }
-}
-function someoneAtRegister(except){ return staff.some(o => o !== except && dist2(o.agent.pos, CASHIER_SPOT) < 0.8); }
-function pickRestockTarget(carrying){
-  let best = null, br = carrying ? 1 : 0.5;
-  for (const sh of SHELVES){ const r = sh.stock/sh.max; if (r < br){ br = r; best = sh; } }
   return best;
 }
-function updateClone(s, dt){
-  if (s.spawnFx > 0){ s.spawnFx = Math.max(0, s.spawnFx - dt*1.8); s.ch.g.scale.setScalar(1.12*(1 - s.spawnFx*s.spawnFx)); }
-  const ai = s.ai;
-  switch (s.role){
-    case 'cashier': ensureAt(s, CASHIER_SPOT, -Math.PI/2); break;
-    case 'barista':
-      if (queue.length > 0 && G.cups >= 2 && !someoneAtRegister(s)) ensureAt(s, CASHIER_SPOT, -Math.PI/2);
-      else ensureAt(s, COFFEE_SPOT, Math.PI/2);
-      break;
-    case 'stocker':
-      if (!s.carry){
-        const t = pickRestockTarget(false);
-        if (t) ensureAt(s, STOCK_SPOT); else ensureAt(s, STOCK_IDLE);
-      } else {
-        if (!ai.shelf || ai.shelf.stock >= ai.shelf.max) ai.shelf = pickRestockTarget(true);
-        if (ai.shelf){
-          if (G.money < ai.shelf.cost){ ensureAt(s, STOCK_IDLE); }
-          else ensureAt(s, ai.shelf.spot, Math.PI);
-        } else ensureAt(s, STOCK_IDLE);
-      }
-      break;
-    case 'cleaner':
-      if (ai.mess && messes.indexOf(ai.mess) < 0) ai.mess = null;
-      if (!ai.mess && messes.length){
-        let bd = 1e9; for (const m of messes){ const d = dist2(m, s.agent.pos); if (d < bd){ bd = d; ai.mess = m; } }
-      }
-      if (ai.mess) ensureAt(s, ai.mess);
-      else {
-        ai.wander = (ai.wander || 0) - dt;
-        if (ai.wander <= 0){ ai.wander = rand(4,7); ai.wp = randomInside(); }
-        if (ai.wp) ensureAt(s, ai.wp);
-      }
-      break;
-    case 'guard': {
-      let target = null, bd = 1e9;
-      for (const c of customers) if (c.state === 'escape'){ const d = dist2(c.agent.pos, s.agent.pos); if (d < bd){ bd = d; target = c; } }
-      if (target){
-        s.agent.speed = LV_MOVE[s.level]*1.3;
-        ai.repath = (ai.repath||0) - dt;
-        if (ai.repath <= 0){ ai.repath = 0.25; s.agent.goTo(target.agent.pos.x, target.agent.pos.z); ai.dest = null; }
-      } else { s.agent.speed = LV_MOVE[s.level]; ensureAt(s, GUARD_SPOT, Math.PI*0.75); }
-      if (s.greetT > 0) s.greetT -= dt;
-      break;
+let failMsgAt = 0;
+function nope(s, msg){
+  if (s !== player) return false;
+  const now = performance.now();
+  if (now - failMsgAt > 700){ failMsgAt = now; floatText(s.agent.pos.x, 2.3, s.agent.pos.z, msg, 'bad txt'); SFX.bad(); }
+  return false;
+}
+// the grab/drop button: pick up, put down, combine, deliver or throw away
+function grab(s, sl){
+  if (!sl) return false;
+  if (sl.fire) return nope(s, '著火了！先滅火');
+  const h = s.hold;
+  if (!h){
+    if (sl.item){
+      if (sl.kind === 'appl' && sl.item.type === APPL_IN(sl) && s === player) tip('early', '還沒好喔！拿起來會中斷加熱，等進度條跑完再拿。');
+      holdItem(s, takeFromSlot(sl)); SFX.pick(); squash(s, 0.1); return true;
+    }
+    if (sl.kind === 'src'){ holdItem(s, newItem(sl.give)); SFX.pick(); squash(s, 0.1); return true; }
+    return false;
+  }
+  if (sl.kind === 'trash'){
+    if (h.type === 'ext') return nope(s, '滅火器不能丟');
+    releaseHold(s); SFX.clean(); if (h.type === 'burnt') G.stats.burnt++;
+    return true;
+  }
+  if (sl.kind === 'pass') return deliver(s);
+  if (sl.kind === 'src'){
+    const r = combine(h.type, sl.give);
+    if (r){ setItemType(h, r); SFX.stock(); squash(s, 0.12); return true; }
+    return nope(s, '手上已經有東西了');
+  }
+  if (sl.item){
+    const r = combine(h.type, sl.item.type);
+    if (r){
+      const it = takeFromSlot(sl); dropItem(it);
+      setItemType(h, r);
+      if (sl.kind === 'counter' || sl.kind === 'board'){ const res = releaseHold(s); placeOnSlot(sl, res); }
+      SFX.stock(); squash(s, 0.12); return true;
+    }
+    return nope(s, sl.n + '上已經有東西');
+  }
+  if (sl.only && h.type !== sl.only) return nope(s, '這裡只能放' + ITEMS[sl.only].n);
+  if (sl.kind === 'appl'){
+    const a = APPL[sl.id];
+    if (!a.ins[h.type] && !applOutRule(sl.id, h.type)) return nope(s, a.n + '不能放' + ITEMS[h.type].n);
+  }
+  if (sl.kind === 'board' && h.type === 'ext') return nope(s, '砧板不能放滅火器');
+  placeOnSlot(sl, releaseHold(s)); SFX.pick(); squash(s, 0.08);
+  return true;
+}
+function APPL_IN(sl){ const a = APPL[sl.id]; return a ? Object.keys(a.ins)[0] : null; }
+// the hold-to-use button: chop, spray the extinguisher, mop, repair. Returns progress 0..1 or null.
+function useTick(s, dt){
+  const p = s.agent.pos;
+  if (s.hold && s.hold.type === 'ext'){
+    let tgt = null, bd = 2.2; const f = facingOf(s);
+    for (const sl of SLOTS) if (sl.fire){
+      const dx = sl.x-p.x, dz = sl.z-p.z, d = Math.hypot(dx,dz);
+      if (d < bd && (d < 0.9 || (dx*f.x + dz*f.z)/d > 0.35)){ bd = d; tgt = sl; }
+    }
+    sprayFx(s, dt);
+    if (tgt){ tgt.fire.hp -= dt*1.1*s.work; if (tgt.fire.hp <= 0) extinguish(tgt); return tgt.fire ? 1 - tgt.fire.hp : null; }
+    return null;
+  }
+  if (s.hold) return null;
+  const sl = findTarget(s);
+  if (sl && sl.kind === 'board' && sl.item && sl.item.type === 'fruit' && !sl.fire){
+    sl.item.chop += dt*s.work;
+    if (Math.floor(sl.item.chop*4) !== Math.floor((sl.item.chop - dt*s.work)*4)) tone(900 + Math.random()*200, 0.04, 'square', 0.03);
+    if (sl.item.chop >= 2.5){ setItemType(sl.item, 'fruitcup'); SFX.stock(); floatText(sl.x, 1.6, sl.z, '切好了！', 'good txt'); return null; }
+    return sl.item.chop/2.5;
+  }
+  if (sl && sl.broken){
+    sl.fix += dt*s.work;
+    if (sl.fix >= 2){ sl.broken = 0; sl.fix = 0; SFX.stock(); floatText(sl.x, 1.8, sl.z, '修好了！', 'good txt'); return null; }
+    return sl.fix/2;
+  }
+  for (const sp of spills){
+    if (Math.hypot(sp.x-p.x, sp.z-p.z) < 1.0){
+      sp.prog += dt*s.work;
+      if (sp.prog >= 1.2){ removeSpill(sp); SFX.clean(); floatText(p.x, 2.2, p.z, '拖乾了', 'good txt'); return null; }
+      return sp.prog/1.2;
     }
   }
-  s.agent.step(dt);
+  return null;
+}
+const sprayGeo = new THREE.ConeGeometry(0.28,1.3,10,1,true).rotateX(-Math.PI/2).translate(0,0,0.95);
+const sprayMat = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.45, depthWrite:false, side:THREE.DoubleSide});
+function sprayFx(s, dt){
+  if (!s.spray){ s.spray = new THREE.Mesh(sprayGeo, sprayMat); s.spray.position.set(0, 1.0, 0.3); s.ch.g.add(s.spray); }
+  s.spray.visible = true; s.sprayT = 0.12;
+  s.spray.scale.setScalar(0.85 + Math.random()*0.3);
+  if (sfxGate('spray', 0.12)) sfxNoise(0, 0.14, 0.05, 2400);
 }
 
-/* ----- register & coffee ----- */
-function updateRegister(dt){
-  // coffee machine
-  const brewT = BREW_TIME * upgFx('coffee');
-  if (coffee.power > 0 && G.cups < MAX_CUPS){
-    if (G.money >= COFFEE_COST){
-      coffee.prog += dt*coffee.power;
-      if (coffee.prog >= brewT){ coffee.prog = 0; G.cups++; addMoney(-COFFEE_COST); G.stats.coffeeCost += COFFEE_COST; SFX.brew(); }
+/* ---------------- orders & customers ---------------- */
+function pickRecipe(){
+  const lv = G.level, pool = lv.rec;
+  // avoid a whole board of the same thing
+  const counts = {}; for (const o of orders) counts[o.rec] = (counts[o.rec]||0) + 1;
+  const w = pool.map(r => 1/(1 + (counts[r]||0)*1.5));
+  let t = w.reduce((a,b)=>a+b,0)*Math.random(), i = 0;
+  while (t > w[i]){ t -= w[i]; i++; }
+  return pool[Math.min(i, pool.length-1)];
+}
+function spawnOrder(){
+  const rec = pickRecipe(), R = RECIPES[rec];
+  const ramp = G.level.endless ? Math.max(0.5, 1 - G.time/700) : 1;   // endless: tickets get shorter over time
+  const o = {id:++G.orderSeq, rec, t:0, limit:R.time*ramp, cust:null, claim:null, el:null};
+  orders.push(o);
+  o.cust = spawnCustomer(o);
+  refreshQueue();
+  if (!G.demo){
+    const first = {coffee:'熱咖啡：到後面櫃台拿 🥛 空杯，放進咖啡機，好了再送到出餐台。',
+      noodle:'泡麵：從泡麵貨架拿一碗，拿到後面櫃台的熱水機加熱水。',
+      bento:'熱便當：從便當櫃拿冷便當，放進中島的微波爐。好了要馬上拿，不然會燒焦！',
+      hotdog:'大亨堡：拿生香腸放上烤台，烤好後拿著烤香腸去麵包箱「拿取」，就會夾成大亨堡。',
+      oden:'關東煮：拿關東煮料放進湯鍋，煮好再盛起來送出去。',
+      fruitcup:'水果杯：把水果放上砧板，空手長按「動作」切好，再拿起來送出去。',
+      drink:'飲料：到後面的冰箱拿一瓶，直接送到出餐台。', snack:'零食：到零食貨架拿一包，直接送到出餐台。'}[rec];
+    tip('rec_' + rec, first);
+  }
+  return o;
+}
+function spawnCustomer(o){
+  const side = Math.random() < 0.5 ? -1 : 1;
+  const ch = makeChar({shirt:pick(SHIRTS), pants:pick(PANTS), skin:pick(SKIN), hair:pick(HAIR), cap: Math.random()<0.2 ? pick([0x2f3b52,0xe85d75,0x58c48f,0xf2f2f2]) : 0, scale: rand(1.0,1.12)});
+  const a = new Agent(ch, rand(2.4,3.0));
+  a.pos.set(side*13.5, 0, STREET_Z + rand(-0.4,0.4));
+  a.path = [{x:side*9.3, z:STREET_Z}, {x:DOOR_OUT.x + rand(-0.3,0.3), z:DOOR_OUT.z}];
+  const c = {agent:a, ch, side, order:o, state:'arrive', qi:-1, tag:new Tag(''), emoteT:0, emote:'', entered:false};
+  customers.push(c);
+  return c;
+}
+function queueSpot(i){
+  if (i < 7) return {x:CHECKOUT_SPOT.x - i*0.8, z:CHECKOUT_SPOT.z + 0.4};
+  if (i < 14) return {x:0.6 + (i-7)*0.8, z:4.4};
+  return {x:0.6 + (i-14)*0.8, z:5.5};
+}
+function refreshQueue(){
+  let i = 0;
+  for (const c of customers){
+    if (c.state !== 'arrive' && c.state !== 'wait') continue;
+    if (c.qi !== i){ c.qi = i; if (c.state === 'wait' || c.toQueue){ const s = queueSpot(i); c.agent.goTo(s.x, s.z); } }
+    i++;
+  }
+}
+function customerLeave(c, happy){
+  c.state = 'leave'; c.leaveStage = 0; c.qi = -1;
+  c.emote = happy ? '😊' : '😡'; c.emoteT = 2.2;
+  c.ch.bag.visible = !!happy;
+  c.agent.goTo(DOOR_OUT.x + rand(-0.3,0.3), DOOR_OUT.z);
+  refreshQueue();
+}
+function removeCustomer(c){ const i = customers.indexOf(c); if (i >= 0) customers.splice(i,1); scene.remove(c.ch.g); c.tag.remove(); }
+function updateCustomer(c, dt){
+  const a = c.agent, arrived = a.step(dt);
+  if (!c.entered && a.pos.z < 6.6){ c.entered = true; if (!G.demo) SFX.chime(); }
+  if (c.state === 'arrive'){
+    if (arrived && !c.toQueue){ c.toQueue = true; const s = queueSpot(Math.max(0, c.qi)); a.goTo(s.x, s.z); }
+    else if (arrived && c.toQueue){ c.state = 'wait'; }
+  } else if (c.state === 'wait'){
+    if (arrived) a.face(Math.PI/2);
+  } else if (c.state === 'leave'){
+    if (arrived){
+      if (c.leaveStage === 0){ c.leaveStage = 1; a.path = [{x:c.side*9.3, z:STREET_Z + rand(-0.3,0.3)}, {x:c.side*14, z:STREET_Z}]; }
+      else { removeCustomer(c); return; }
     }
   }
-  coffeeTag.icon(G.cups === 0 ? '☕❗' : '☕').text(G.cups + '/' + MAX_CUPS).setBar(coffee.power > 0 && G.cups < MAX_CUPS ? coffee.prog/brewT : null, '#c98b5a');
-  for (let i=0;i<MAX_CUPS;i++) cupMeshes[i].visible = i < G.cups;
+  if (c.emoteT > 0){ c.emoteT -= dt; c.tag.icon(c.emote); }
+  else if (c.order && (c.state === 'wait' || c.state === 'arrive')) c.tag.icon(RECIPES[c.order.rec].ic);
+  else c.tag.icon('');
+  if (c.order && c.state === 'wait'){ const f = 1 - c.order.t/c.order.limit; c.tag.setBar(f, f > 0.5 ? '#34d6a6' : f > 0.25 ? '#ffcf3a' : '#ff6058'); }
+  else c.tag.setBar(null);
+}
+function deliver(s){
+  const h = s.hold;
+  let best = null;
+  for (const o of orders) if (RECIPES[o.rec].item === h.type && (!best || o.t/o.limit > best.t/best.limit)) best = o;
+  if (!best) return nope(s, '沒有人點' + ITEMS[h.type].n);
+  releaseHold(s);
+  completeOrder(best, s);
+  return true;
+}
+function completeOrder(o, s){
+  const R = RECIPES[o.rec];
+  const oldest = orders.reduce((m, x) => (!m || x.id < m.id) ? x : m, null);
+  G.combo = (oldest === o) ? Math.min(4, G.combo + 1) : 1;
+  const left = clamp(1 - o.t/o.limit, 0, 1);
+  const tipAmt = Math.round(R.pts*0.6*left) * Math.max(1, G.combo - 1);
+  const total = R.pts + tipAmt;
+  const i = orders.indexOf(o); orders.splice(i,1);
+  if (o.claim && o.claim.ai) o.claim.ai.claim = null;
+  if (!G.demo){
+    addMoney(total);
+    G.stats.delivered++; G.stats.base += R.pts; G.stats.tips += tipAmt; G.stats.maxCombo = Math.max(G.stats.maxCombo, G.combo);
+    G.stats.byRec[o.rec] = (G.stats.byRec[o.rec]||0) + 1;
+    floatText(SLOT.pass.x, 2.2, SLOT.pass.z, '+' + fmt(total) + (G.combo > 1 ? ' ×' + (G.combo-1) + ' 小費' : ''));
+    SFX.ding(); haptic(20);
+    juiceCheckout(s, total);
+    ticketDone(o, true);
+  }
+  if (o.cust) customerLeave(o.cust, true);
+}
+function failOrder(o){
+  const R = RECIPES[o.rec];
+  const i = orders.indexOf(o); orders.splice(i,1);
+  if (o.claim && o.claim.ai) o.claim.ai.claim = null;
+  G.combo = 1;
+  if (!G.demo){
+    const pen = Math.round(R.pts*0.5);
+    addMoney(-pen); G.stats.failed++; G.stats.penalty += pen; G.fails++;
+    floatText(o.cust ? o.cust.agent.pos.x : CHECKOUT_SPOT.x, 2.4, o.cust ? o.cust.agent.pos.z : CHECKOUT_SPOT.z, '-' + fmt(pen) + ' 等太久了', 'bad txt');
+    SFX.bad(); camShakeAdd(0.2);
+    ticketDone(o, false);
+  }
+  if (o.cust) customerLeave(o.cust, false);
+}
 
-  const head = queue[0];
-  const atCounter = head && head.qi === 0 && !head.agent.path.length && dist2(head.agent.pos, CHECKOUT_SPOT) < 0.4;
-  let regIcon = '', regText = '', regBar = null;
-  if (head && atCounter){
-    if (reg.power === 0){
-      regIcon = '🔔'; regText = queue.length + ' 人排隊';
-      tip('register', '有客人排隊了！走進藍色「收銀」格子就會自動結帳。', () => queue.length > 0 && reg.power === 0);
-    } else if (head.wantsCoffee && !head.gotCoffee){
-      if (G.cups > 0){ G.cups--; head.gotCoffee = true; SFX.pick(); }
-      else { regIcon = '☕❓'; regText = '要咖啡'; tip('coffee', '客人要咖啡！站到「咖啡」格子沖幾杯，再回收銀台結帳。'); }
-    } else {
-      head.payT += dt*reg.power;
-      const need = (0.5 + 0.4*head.basket.length + (head.wantsCoffee ? 0.3 : 0)) * upgFx('pos');
-      regBar = head.payT/need;
-      if (head.payT >= need){
-        const total = Math.round((head.basket.reduce((t,id)=>t+SHELF[id].price,0) + (head.wantsCoffee ? COFFEE_PRICE : 0)) * ((G.event && G.event.price) || 1) * (head.vip ? VIP_PAY : 1));
-        addMoney(total); G.stats.revenue += total; G.stats.served++;
-        if (head.wantsCoffee) G.stats.coffeeSold++;
-        addRating(0.025 + 0.04*clamp(head.patience/100,0,1));
-        if (head.vip){ G.stats.vipServed++; addRating(0.08); }
-        floatText(CHECKOUT_SPOT.x, 2.2, CHECKOUT_SPOT.z, (head.vip ? '👑 +' : '+') + fmt(total));
-        SFX.ding();
-        juiceCheckout(head, total);
-        if (dist2(player.agent.pos, CASHIER_SPOT) < 0.75) haptic(20);
-        head.paid = true; emote(head, head.patience > 60 ? '😊' : '🙂', 1.4);
-        queue.shift(); head.qi = -1; refreshQueue();
-        leaveStore(head, false);
-        regBar = null;
-      }
+/* ---------------- AI clones ---------------- */
+// Each clone handles its own recipes: claim the oldest unclaimed ticket, then run a plan of steps.
+const PLANS = {
+  drink:   [['take','drink']],
+  snack:   [['take','snack']],
+  coffee:  [['take','cups'], ['put','coffee'], ['wait','coffee','coffee']],
+  noodle:  [['take','noodlesrc'], ['put','hotwater'], ['wait','hotwater','noodle']],
+  bento:   [['take','bentosrc'], ['put','micro'], ['wait','micro','bento']],
+  oden:    [['take','odensrc'], ['put','pot'], ['wait','pot','oden']],
+  hotdog:  [['take','sausagesrc'], ['put','grill'], ['wait','grill','sausage_cooked'], ['take','bunsrc']],
+  fruitcup:[['take','fruitsrc'], ['put','board'], ['chop','board'], ['take','board']],
+};
+function aiReset(s){
+  const ai = s.ai;
+  if (ai && ai.claim){ ai.claim.claim = null; }
+  s.ai = {pause:0.4};
+}
+function aiAt(s, spot){ return !s.agent.path.length && Math.hypot(s.agent.pos.x-spot.x, s.agent.pos.z-spot.z) < 0.45; }
+function aiGo(s, spot){
+  const ai = s.ai;
+  if (aiAt(s, spot)) return true;
+  if (ai.dest !== spot || (!s.agent.path.length && (ai.retry = (ai.retry||0) - aiDt) <= 0)){ ai.dest = spot; ai.retry = 0.8; s.agent.goTo(spot.x, spot.z); }
+  return false;
+}
+function aiFace(s, sl){ const q = slotNearest(sl, s.agent.pos); s.agent.face(Math.atan2(q.x - s.agent.pos.x, q.z - s.agent.pos.z)); }
+let aiDt = 1/60;
+function aiChoose(s){
+  const r = ROLE[s.role]; if (!r) return;
+  // a held item with no job: deliver it if someone wants it, else bin it
+  if (s.hold){
+    if (s.hold.type === 'ext'){ s.ai.plan = [['put','extstand']]; s.ai.i = 0; return; }
+    if (orders.some(o => RECIPES[o.rec].item === s.hold.type)){ s.ai.plan = [['deliver','pass']]; s.ai.i = 0; return; }
+    s.ai.plan = [['bin','trash']]; s.ai.i = 0; return;
+  }
+  if (r.id === 'cleaner' || r.fixer){
+    const fire = SLOTS.find(sl => sl.fire);
+    if (fire){ s.ai.plan = [['take','extstand'], ['spray', fire.id], ['put','extstand']]; s.ai.i = 0; return; }
+    const broken = SLOTS.find(sl => sl.broken);
+    if (broken){ s.ai.plan = [['fix', broken.id]]; s.ai.i = 0; return; }
+    const burnt = SLOTS.find(sl => sl.item && sl.item.type === 'burnt' && !sl.fire);
+    if (burnt){ s.ai.plan = [['take', burnt.id], ['bin','trash']]; s.ai.i = 0; return; }
+    if (r.id === 'cleaner'){
+      if (spills.length){ let bd = 1e9, b = null; for (const sp of spills){ const d = dist2(sp, s.agent.pos); if (d < bd){ bd = d; b = sp; } } s.ai.plan = [['mop', b]]; s.ai.i = 0; return; }
+      return;
     }
-  } else if (queue.length && reg.power === 0){ regIcon = '🔔'; regText = queue.length + ' 人排隊'; }
-  regTag.icon(regIcon).text(regText).setBar(regBar, '#4da3ff');
+  }
+  let pickO = null;
+  for (const o of orders){ if (o.claim || !r.recipes.includes(o.rec)) continue; if (!pickO || o.id < pickO.id) pickO = o; }
+  if (!pickO) return;
+  pickO.claim = s; s.ai.claim = pickO;
+  s.ai.plan = PLANS[pickO.rec].concat([['deliver','pass']]); s.ai.i = 0;
+}
+function aiUpdate(s, dt){
+  aiDt = dt;
+  const ai = s.ai;
+  if (s.spawnFx > 0){ s.spawnFx = Math.max(0, s.spawnFx - dt*1.8); s.ch.g.scale.setScalar(1.12*(1 - s.spawnFx*s.spawnFx)); }
+  if (s.role === 'owner'){ s.prog = null; return; }   // the owner only moves when you control it
+  if (ai.pause > 0){ ai.pause -= dt; return; }
+  if (ai.claim && orders.indexOf(ai.claim) < 0){ ai.claim = null; if (ai.plan && ai.i < ai.plan.length - 1){ ai.plan = null; } }
+  if (!ai.plan){ aiChoose(s); if (!ai.plan){ aiIdle(s, dt); return; } ai.t = 0; }
+  const step = ai.plan[ai.i];
+  if (!step){ aiReset(s); return; }
+  ai.t = (ai.t || 0) + dt;
+  if (ai.t > 22){ aiReset(s); return; }
+  const [op, ref, want] = step;
+  const next = () => { ai.i++; ai.t = 0; ai.pause = CLONE_THINK; if (ai.i >= ai.plan.length){ ai.plan = null; if (ai.claim){ ai.claim.claim = null; ai.claim = null; } } };
+  s.prog = null;
+  if (op === 'mop'){
+    const sp = ref; if (spills.indexOf(sp) < 0){ next(); return; }
+    if (!aiGo(s, sp)) return;
+    s.prog = useTick(s, dt); if (spills.indexOf(sp) < 0) next();
+    return;
+  }
+  const sl = SLOT[ref]; if (!sl){ aiReset(s); return; }
+  if (!aiGo(s, sl.spot)) return;
+  aiFace(s, sl);
+  switch (op){
+    case 'take':
+      if (sl.fire) return;
+      if (s.hold && sl.kind !== 'src'){ aiReset(s); return; }
+      if (sl.kind !== 'src' && !sl.item){ aiReset(s); return; }
+      if (grab(s, sl)) next(); else aiReset(s);
+      break;
+    case 'put':
+      if (!s.hold){ aiReset(s); return; }
+      if (sl.fire || sl.broken) return;
+      if (sl.item){ if (ai.t > 12) aiReset(s); return; }
+      if (grab(s, sl)) next(); else aiReset(s);
+      break;
+    case 'wait':
+      if (!sl.item){ aiReset(s); return; }
+      if (sl.item.type === 'burnt'){ grab(s, sl); ai.plan = [['bin','trash']]; ai.i = 0; if (ai.claim){ ai.claim.claim = null; ai.claim = null; } return; }
+      if (sl.item.type === want && !s.hold){ if (grab(s, sl)) next(); }
+      break;
+    case 'chop':
+      if (!sl.item){ aiReset(s); return; }
+      if (sl.item.type !== 'fruit'){ next(); return; }
+      s.prog = useTick(s, dt);
+      break;
+    case 'deliver':
+      if (!s.hold){ next(); return; }
+      if (orders.some(o => RECIPES[o.rec].item === s.hold.type)){ grab(s, sl); next(); }
+      else if (ai.t > 4){ ai.plan = [['bin','trash']]; ai.i = 0; }
+      break;
+    case 'bin':
+      if (s.hold) grab(s, sl);
+      next();
+      break;
+    case 'spray':
+      if (!sl.fire){ next(); return; }
+      s.prog = useTick(s, dt);
+      if (!sl.fire) next();
+      break;
+    case 'fix':
+      if (!sl.broken){ next(); return; }
+      s.prog = useTick(s, dt);
+      break;
+  }
+}
+function aiIdle(s, dt){
+  const r = ROLE[s.role];
+  if (r && r.home) aiGo(s, r.home);
 }
 
 /* ---------------- input ---------------- */
 const keys = {};
 const joy = {active:false, id:null, sx:0, sy:0, dx:0, dy:0};
 const pointers = new Map();
-let pinch = null, camZoom = 1;
+let pinch = null, camZoom = 1, touchUse = false;
 const joyEl = $('#joy'), knob = $('#joyknob');
+const PLAYING = () => G.state === 'play';
 addEventListener('keydown', e => {
-  if (e.repeat && keys[e.code]) return;
+  const repeat = e.repeat && keys[e.code];
   keys[e.code] = true;
-  if (e.code === 'Escape' || e.code === 'KeyP'){ if (G.state === 'play' || G.state === 'closing') openPanel('pause'); else if (G.state === 'paused') closePanels(); }
-  if (e.code === 'KeyT' && (G.state === 'play' || G.state === 'closing')) openPanel('team');
-  if (e.code === 'KeyF' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) toggleFullscreen();
-  if (e.code === 'KeyV' && (G.state === 'play' || G.state === 'closing')) setOverview(!overview);
-  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code) && (G.state==='play'||G.state==='closing')) e.preventDefault();
+  if (PLAYING() && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','Tab'].includes(e.code)) e.preventDefault();
+  if (repeat) return;
+  if (e.code === 'Escape' || e.code === 'KeyP'){ if (G.state === 'play' || G.state === 'countdown') openPanel('pause'); else if (G.state === 'paused') closePanels(); }
+  if (e.code === 'KeyF' && !e.ctrlKey && !e.metaKey && !e.altKey) toggleFullscreen();
+  if (e.code === 'KeyV' && PLAYING()) setOverview(!overview);
+  if (PLAYING()){
+    if (e.code === 'Space' || e.code === 'KeyJ') actGrab();
+    if (e.code === 'Tab' || e.code === 'KeyQ') switchChar(e.shiftKey ? -1 : 1);
+  }
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
-addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; touchUse = false; });
 
 canvas.addEventListener('pointerdown', e => {
   initAudio();
@@ -2049,9 +2369,9 @@ canvas.addEventListener('pointermove', e => {
     camZoom = clamp(pinch.z * pinch.d / Math.max(20,d), 0.55, 1.5);
     return;
   }
-  if (e.pointerId === joy.id && (G.state === 'play' || G.state === 'closing')){
+  if (e.pointerId === joy.id && PLAYING()){
     const dx = e.clientX - joy.sx, dy = e.clientY - joy.sy;
-    if (!joy.active && Math.hypot(dx,dy) > 12){ joy.active = true; joyEl.hidden = false; joyEl.style.left = joy.sx+'px'; joyEl.style.top = joy.sy+'px'; player.agent.path.length = 0; }
+    if (!joy.active && Math.hypot(dx,dy) > 12){ joy.active = true; joyEl.hidden = false; joyEl.style.left = joy.sx+'px'; joyEl.style.top = joy.sy+'px'; player.agent.path.length = 0; player.pending = null; }
     if (joy.active){
       const R = 55, L = Math.hypot(dx,dy), k = L > R ? R/L : 1;
       joy.dx = dx*k/R; joy.dy = dy*k/R;
@@ -2076,34 +2396,29 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 
 const raycaster = new THREE.Raycaster();
 const groundPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
+// tap / click: walk to the tapped station and use it on arrival, or just walk to the tapped floor
 function tapAt(cx, cy){
-  if (!(G.state === 'play' || G.state === 'closing')) return;
+  if (!PLAYING()) return;
   const ndc = new THREE.Vector2(cx/VW*2-1, -(cy/VH)*2+1);
   raycaster.setFromCamera(ndc, camera);
   const hits = raycaster.intersectObjects(pickables, true);
-  let target = null;
-  if (hits.length){
-    let o = hits[0].object; while (o && !o.userData.station) o = o.parent;
-    const stn = o && o.userData.station;
-    if (stn){
-      if (stn.id === 'register') target = CASHIER_SPOT;
-      else if (stn.id === 'coffee') target = COFFEE_SPOT;
-      else if (stn.id === 'stock') target = STOCK_SPOT;
-      else if (stn.band) target = {x: clamp(hits[0].point.x, stn.band[0]+0.4, stn.band[1]-0.4), z: stn.spot.z};
-    }
+  let pt = hits.length ? hits[0].point : null;
+  if (!pt){ pt = new THREE.Vector3(); if (!raycaster.ray.intersectPlane(groundPlane, pt)) return; }
+  let best = null, bd = 1.0;
+  for (const sl of SLOTS){ const q = slotNearest(sl, pt), d = Math.hypot(q.x-pt.x, q.z-pt.z); if (d < bd){ bd = d; best = sl; } }
+  const s = player;
+  if (best){
+    const sp = best.band ? {x:clamp(pt.x, best.band[0]+0.4, best.band[1]-0.4), z:best.spot.z} : best.spot;
+    s.agent.goTo(sp.x, sp.z); s.pending = best;
+  } else {
+    s.agent.goTo(clamp(pt.x,-9.7,9.7), clamp(pt.z,-6.7,11)); s.pending = null;
   }
-  if (!target){
-    const pt = new THREE.Vector3();
-    if (!raycaster.ray.intersectPlane(groundPlane, pt)) return;
-    target = {x: clamp(pt.x,-9.7,9.7), z: clamp(pt.z,-6.7,11)};
-  }
-  player.agent.goTo(target.x, target.z);
   const m = document.createElement('div'); m.id = 'tapmark'; m.style.left = cx+'px'; m.style.top = cy+'px';
   fxLayer.appendChild(m); setTimeout(()=>m.remove(), 520);
 }
 
 function updatePlayer(dt){
-  const a = player.agent;
+  const s = player, a = s.agent;
   let ix = 0, iz = 0;
   if (keys.KeyW || keys.ArrowUp) iz -= 1;
   if (keys.KeyS || keys.ArrowDown) iz += 1;
@@ -2113,16 +2428,41 @@ function updatePlayer(dt){
   if (ix || iz){ const w = screenDirToWorld(ix, iz); ix = w.x; iz = w.z; }   // screen-relative under any camera yaw
   const len = Math.hypot(ix,iz);
   let manual = false;
-  if (len > 0.15){
-    a.path.length = 0;
+  a.speed = s === owner ? 4.4 : 3.4;
+  if (s.slipCD > 0) s.slipCD -= dt;
+  if (s.slip){
+    // sliding on a wet floor: momentum carries you, input is ignored
+    const sl = s.slip; sl.t -= dt;
+    const px = a.pos.x + sl.vx*dt, pz = a.pos.z + sl.vz*dt;
+    if (walkXZ(px,pz)){ a.pos.x = px; a.pos.z = pz; } else sl.t = 0;
+    a.rot += dt*10; manual = true;
+    if (sl.t <= 0){ s.slip = null; s.slipCD = 1.2; }
+  } else if (len > 0.15){
+    a.path.length = 0; s.pending = null;
     const m = Math.min(1,len), nx = ix/len, nz = iz/len, sp = a.speed*m*dt;
     const px = a.pos.x + nx*sp, pz = a.pos.z + nz*sp;
     if (walkXZ(px,pz)){ a.pos.x = px; a.pos.z = pz; }
     else if (walkXZ(px,a.pos.z)) a.pos.x = px;
     else if (walkXZ(a.pos.x,pz)) a.pos.z = pz;
     a.rot = Math.atan2(nx,nz); manual = true;
-  }
+    if (!(s.slipCD > 0) && m > 0.5 && onSpill(s)){
+      s.slip = {vx:nx*a.speed*1.1, vz:nz*a.speed*1.1, t:0.55};
+      floatText(a.pos.x, 2.3, a.pos.z, '滑～！', 'bad txt'); tone(500, 0.3, 'sine', 0.06, 0, 220); camShakeAdd(0.12); haptic(15);
+    }
+  } else if (a.path.length && onSpill(s)) a.speed *= 0.6;
+  a.carrying = !!s.hold;
   a.step(dt, manual);
+  // tapped a station: use it on arrival
+  if (s.pending && !a.path.length){
+    const sl = s.pending; s.pending = null;
+    if (slotDist(sl, a.pos) <= sl.reach + 0.2){
+      const q = slotNearest(sl, a.pos); const r = Math.atan2(q.x - a.pos.x, q.z - a.pos.z);
+      a.rot = r; a.g.rotation.y = r;
+      if (grab(s, sl)) haptic(8);
+    }
+  }
+  const useHeld = touchUse || keys.KeyE || keys.KeyK;
+  s.prog = useHeld ? useTick(s, dt) : null;
 }
 
 /* ---------------- camera ---------------- */
@@ -2134,7 +2474,7 @@ function updateCamera(dt, instant){
   const tv = Math.tan(camera.fov*Math.PI/360), th = tv*camera.aspect;
   const Dw = 11/th, Dd = (17*Math.sin(ELEV)/2)/tv;
   let D = Math.min(Math.max(Dw, Dd), 30);
-  if (G.state === 'title'){
+  if (G.state === 'title' || G.state === 'menu'){
     orbit += dt*0.12;
     const Dt = Math.min(D*0.85, 26);
     camera.position.set(Math.sin(orbit)*Dt*Math.cos(ELEV*0.85), Dt*Math.sin(ELEV*0.85), 1 + Math.cos(orbit)*Dt*Math.cos(ELEV*0.85));
@@ -2287,9 +2627,16 @@ function measureDeviceLayout(){
   const cs = uxEls.probe ? getComputedStyle(uxEls.probe) : null;
   const px = s => parseFloat(s) || 0;
   camInset.left = cs ? px(cs.paddingLeft) : 0; camInset.right = cs ? px(cs.paddingRight) : 0; camInset.safeB = cs ? px(cs.paddingBottom) : 0;
-  const hudEl = $('#hud');
-  const hudB = hudEl.hidden ? (cs ? px(cs.paddingTop) : 0) : Math.round(hudEl.getBoundingClientRect().bottom);
+  const hudEl = $('#hud'), ordEl = $('#orders');
+  let hudB = hudEl.hidden ? (cs ? px(cs.paddingTop) : 0) : Math.round(hudEl.getBoundingClientRect().bottom);
+  if (!hudEl.hidden){   // order tickets sit right under the HUD; everything else keys off their bottom
+    const top = hudB + 6; if (uxEls._ordT !== top){ uxEls._ordT = top; ordEl.style.top = top + 'px'; }
+    hudB = Math.round(Math.max(hudB, ordEl.childElementCount ? ordEl.getBoundingClientRect().bottom : top + 70));
+  }
   camInset.top = hudEl.hidden ? 0 : hudB + 4;
+  // touch action buttons (bottom-right) cover part of the view on narrow screens: keep the store above them
+  const actEl = $('#actions');
+  camInset.bottom = (actEl && !actEl.hidden && VW < 700) ? Math.round(VH - actEl.getBoundingClientRect().top) * 0.6 : 0;
   const root = document.documentElement.style;
   if (uxEls._hudB !== hudB){ uxEls._hudB = hudB; root.setProperty('--hud-b', hudB + 'px'); }
   const ar = hud.alerts.getBoundingClientRect(), alH = Math.round(ar.height);
@@ -2303,11 +2650,12 @@ function measureDeviceLayout(){
 // arrows at the screen edge for things that need you but are off-screen; tap one to walk there
 function edgeTargets(){
   const out = [];
-  if (queue.length && reg.power === 0) out.push({x:CASHIER_SPOT.x, z:CASHIER_SPOT.z, icon:'🔔', n:queue.length, cls:'info', label:'收銀台有客人排隊'});
-  for (const c of customers) if (c.state === 'escape') out.push({x:c.agent.pos.x, z:c.agent.pos.z, icon:'🕶️', n:'', cls:'', label:'小偷', chase:c});
-  let empty = false;
-  for (const sh of SHELVES) if (sh.stock === 0){ empty = true; out.push({x:sh.spot.x, z:sh.spot.z, icon:sh.icon, n:'', cls:'', label:sh.name + '缺貨'}); }
-  if (empty && !player.carry && !G.clones.stocker) out.push({x:STOCK_SPOT.x, z:STOCK_SPOT.z, icon:'📦', n:'', cls:'stock', label:'倉庫拿貨'});
+  for (const sl of SLOTS){
+    if (sl.fire) out.push({x:sl.x, z:sl.z, icon:'🔥', n:'', cls:'', label:sl.n + '起火'});
+    else if (sl.broken) out.push({x:sl.x, z:sl.z, icon:'⚡', n:'', cls:'info', label:sl.n + '故障'});
+    else if (sl.kind === 'appl' && sl.item){ const r = applOutRule(sl.id, sl.item.type); if (r && r.burn && sl.item.cook > r.burn*0.4) out.push({x:sl.x, z:sl.z, icon:'⚠️', n:'', cls:'stock', label:sl.n + '快燒焦'}); }
+  }
+  if (player && player.hold && orders.some(o => RECIPES[o.rec].item === player.hold.type)) out.push({x:SLOT.pass.x, z:SLOT.pass.z, icon:'🛎️', n:'', cls:'info', label:'出餐台'});
   return out;
 }
 function edgeEl(i){
@@ -2318,16 +2666,15 @@ function edgeEl(i){
     el._ic = el.children[0]; el._ar = el.children[1]; el._n = el.children[2];
     el.addEventListener('pointerdown', e => e.stopPropagation());
     el.addEventListener('click', () => {
-      const t = el._t; if (!t || !(G.state === 'play' || G.state === 'closing')) return;
-      const p = t.chase ? t.chase.agent.pos : t;
-      player.agent.goTo(p.x, p.z); haptic(10);
+      const t = el._t; if (!t || G.state !== 'play') return;
+      player.agent.goTo(t.x, t.z); player.pending = null; haptic(10);
     });
     uxEls.edge.appendChild(el); uxEls.pool[i] = el;
   }
   return el;
 }
 function updateEdgeIndicators(){
-  const playing = G.state === 'play' || G.state === 'closing';
+  const playing = G.state === 'play';
   const list = playing ? edgeTargets() : [];
   const R = 26, L = camInset.left + 8 + R, Rt = VW - camInset.right - 8 - R;
   const T = Math.max(camInset.top || 0, camInset.alRow ? camInset.alB || 0 : 0) + 6 + R, B = VH - camInset.safeB - 8 - R;
@@ -2374,11 +2721,11 @@ function updateEdgeIndicators(){
 function updateDeviceUX(dt){
   uxMeasureT -= dt;
   if (uxMeasureT <= 0){ uxMeasureT = 0.25; measureDeviceLayout(); }
-  const playing = G.state === 'play' || G.state === 'closing';
+  const playing = G.state === 'play';
   if (uxEls.over){
     const want = playing && (overview || camZoom < 0.97 || !storeFitsOnScreen());
     if (uxEls.over.hidden === want) uxEls.over.hidden = !want;
-    if (want && !overview && G.tips.has('move')) tip('overview', '畫面放不下整間店？點右上角 🔭 就能看全店，再點一次回到跟隨視角。');
+    if (want && !overview && G.tips.has('rec_drink')) tip('overview', '畫面放不下整間店？點右上角 🔭 就能看全店，再點一次回到跟隨視角。');
   }
   updateEdgeIndicators();
 }
@@ -2411,378 +2758,392 @@ function applyTimeOfDay(h){
 }
 
 /* ---------------- HUD ---------------- */
-const hud = {money:$('#money'), day:$('#day'), clock:$('#clock'), fill:$('#dayfill'), star:$('#starfg'), rate:$('#ratenum'), team:$('#teamCount'), btnTeam:$('#btnTeam'), alerts:$('#alerts')};
+const hud = {money:$('#money'), day:$('#day'), clock:$('#clock'), fill:$('#dayfill'), star:$('#starfg'), rate:$('#ratenum'), team:$('#teamCount'), btnTeam:$('#btnTeam'),
+  alerts:$('#alerts'), orders:$('#orders'), actions:$('#actions'), btnGrab:$('#btnGrab'), btnUse:$('#btnUse'), btnSwap:$('#btnSwap'), big:$('#bigmsg')};
 const _hc = {};
 function setText(el, key, v){ if (_hc[key] !== v){ _hc[key] = v; el.textContent = v; } }
-let alertT = 0;
-function hourNow(){ return OPEN_H + clamp(G.time/DAY_LEN,0,1)*(CLOSE_H-OPEN_H); }
+let alertT = 0, labelT = 0;
+const DEMO_LEVEL = {n:'demo', hour:19.2, len:0, endless:true, rec:ALL_RECIPES, every:[4,6], max:5, clones:5, spills:0.7, stars:[1,2,3]};
+function hourNow(){
+  if (G.demo) return 19.2;
+  const L = G.level, f = L.endless ? clamp(G.time/900, 0, 1) : clamp(G.time/L.len, 0, 1);
+  return Math.min(23.9, L.hour + f*(L.endless ? 3.5 : 3));
+}
+function starFill(score, th){
+  let prev = 0;
+  for (let i=0;i<3;i++){ if (score < th[i]) return i + clamp((score - prev)/(th[i] - prev), 0, 1); prev = th[i]; }
+  return 3;
+}
+function starsFor(score, th){ let n = 0; for (const t of th) if (score >= t) n++; return n; }
+const mmss = s => { s = Math.max(0, Math.ceil(s)); return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); };
 function updateHUD(dt){
   setText(hud.money, 'm', fmt(moneyDisplay(dt)));
-  setText(hud.day, 'd', '第 ' + G.day + ' 天');
-  const h = hourNow(); const hh = Math.floor(h), mm = Math.floor((h-hh)*60/10)*10;
-  setText(hud.clock, 'c', G.state === 'closing' ? '打烊' : String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0'));
-  const f = Math.round(clamp(G.time/DAY_LEN,0,1)*200)/2;
-  if (_hc.f !== f){ _hc.f = f; hud.fill.style.width = f + '%'; }
-  const r = Math.round(G.rating*10)/10;
-  if (_hc.r !== r){ _hc.r = r; hud.star.style.width = (G.rating/5*100) + '%'; hud.rate.textContent = r.toFixed(1); }
-  const hired = ROLES.filter(x => G.clones[x.id]).length;
-  setText(hud.team, 't', hired + '/5');
-  const canBuy = ROLES.some(x => !G.clones[x.id] && G.money >= x.cost);
-  if (_hc.pulse !== canBuy){ _hc.pulse = canBuy; hud.btnTeam.classList.toggle('pulse', canBuy); }
-  if (canBuy && hired === 0) tip('hire', '錢夠了！按右上角「分身」僱用第一個 AI 分身幫你顧店。', () => !ROLES.some(x => G.clones[x.id]));
+  const L = G.level;
+  setText(hud.day, 'd', L.endless ? '無限營業' : '第 ' + (G.lv+1) + ' 關');
+  setText(hud.clock, 'c', L.endless ? '失誤 ' + G.fails + '/' + MAX_FAILS_ENDLESS : mmss(L.len - G.time));
+  const f = L.endless ? clamp(G.fails/MAX_FAILS_ENDLESS,0,1) : clamp(G.time/(L.len||1),0,1);
+  const fr = Math.round(f*200)/2;
+  if (_hc.f !== fr){ _hc.f = fr; hud.fill.style.width = fr + '%'; }
+  const sf = Math.round(starFill(G.money, L.stars)*100)/100;
+  if (_hc.r !== sf){ _hc.r = sf; hud.star.style.width = (sf/3*100) + '%'; const nx = L.stars.find(t => G.money < t); hud.rate.textContent = nx ? '/' + nx : '滿星'; }
+  const r = ROLE[player && player.role];
+  setText(hud.team, 't', r ? r.icon + ' ' + r.name.replace('分身','') : '老闆');
+  if (G.state === 'play'){
+    labelT -= dt;
+    if (labelT <= 0){ labelT = 0.12; updateActionLabels(); }
+  }
   alertT -= dt;
   if (alertT <= 0){
     alertT = 0.3;
     const al = [];
-    for (const sh of SHELVES) if (sh.stock === 0) al.push(['', sh.icon + ' ' + sh.name + '缺貨']);
-    if (queue.length && reg.power === 0) al.push(['info', '🔔 收銀台 ' + queue.length + ' 人排隊']);
-    if (G.cups === 0 && queue.some(c => c.wantsCoffee && !c.gotCoffee)) al.push(['warn', '☕ 咖啡沒了']);
-    if (messes.length >= 3) al.push(['warn', '🗑️ 店裡髒亂 ×' + messes.length]);
+    if (G.state === 'play' || G.state === 'paused'){
+      for (const sl of SLOTS){
+        if (sl.fire) al.push(['', '🔥 ' + sl.n + '起火了']);
+        else if (sl.broken) al.push(['info', '⚡ ' + sl.n + '故障']);
+        else if (sl.kind === 'appl' && sl.item){ const rr = applOutRule(sl.id, sl.item.type); if (rr && rr.burn && sl.item.cook > rr.burn*0.4) al.push(['warn', '⚠️ ' + sl.n + '快燒焦']); }
+      }
+      if (spills.length >= 2) al.push(['info', '💧 地板濕滑 ×' + spills.length]);
+    }
     const key = al.map(a=>a[1]).join('|');
-    if (_hc.al !== key){ _hc.al = key; hud.alerts.innerHTML = ''; for (const [c,t] of al.slice(0,4)){ const d = document.createElement('div'); d.className = 'al ' + c; d.textContent = t; hud.alerts.appendChild(d); } }
+    if (_hc.al !== key){ _hc.al = key; hud.alerts.innerHTML = ''; for (const [c,t] of al.slice(0,3)){ const d = document.createElement('div'); d.className = 'al ' + c; d.textContent = t; hud.alerts.appendChild(d); } }
   }
-  updateGoalsHUD(dt);
+  renderTickets();
+}
+/* order tickets across the top */
+function renderTickets(){
+  if (G.demo) return;
+  for (const o of orders){
+    const R = RECIPES[o.rec];
+    if (!o.el){
+      const el = document.createElement('div'); el.className = 'tk';
+      el.innerHTML = `<div class="ic">${R.ic}</div><div class="nm">${R.n}</div><div class="st">${R.steps.join(' › ')}</div><div class="bar"><b></b></div>`;
+      el._b = el.querySelector('.bar b');
+      hud.orders.appendChild(el); o.el = el;
+      requestAnimationFrame(() => el.classList.add('in'));
+    }
+    const f = clamp(1 - o.t/o.limit, 0, 1), w = Math.round(f*100);
+    if (o._w !== w){ o._w = w; o.el._b.style.width = w + '%'; o.el._b.style.background = f > 0.5 ? '#34d6a6' : f > 0.25 ? '#ffcf3a' : '#ff6058'; }
+    const urg = f < 0.22; if (o._u !== urg){ o._u = urg; o.el.classList.toggle('urgent', urg); }
+  }
+}
+function ticketDone(o, ok){
+  const el = o.el; if (!el) return; o.el = null;
+  el.classList.remove('urgent'); el.classList.add(ok ? 'ok' : 'bad');
+  setTimeout(() => el.remove(), 420);
+}
+function clearTickets(){ for (const o of orders) o.el = null; hud.orders.innerHTML = ''; }
+/* contextual labels on the touch buttons */
+function grabLabel(s, sl){
+  const h = s.hold;
+  if (!sl) return '—';
+  if (sl.fire) return '起火';
+  if (!h) return (sl.item || sl.kind === 'src') ? '拿起' : '—';
+  if (sl.kind === 'trash') return h.type === 'ext' ? '—' : '丟掉';
+  if (sl.kind === 'pass') return '出餐';
+  if (sl.kind === 'src') return combine(h.type, sl.give) ? '夾起來' : '—';
+  if (sl.item) return combine(h.type, sl.item.type) ? '組合' : '—';
+  return '放下';
+}
+function useLabel(s){
+  if (s.hold && s.hold.type === 'ext') return '噴';
+  if (s.hold) return '—';
+  const sl = findTarget(s);
+  if (sl && sl.kind === 'board' && sl.item && sl.item.type === 'fruit') return '切';
+  if (sl && sl.broken) return '修理';
+  if (spills.some(sp => Math.hypot(sp.x-s.agent.pos.x, sp.z-s.agent.pos.z) < 1.0)) return '拖地';
+  return '—';
+}
+function updateActionLabels(){
+  const t = findTarget(player);
+  const g = grabLabel(player, t), u = useLabel(player);
+  if (_hc.gl !== g){ _hc.gl = g; hud.btnGrab.querySelector('span').textContent = g; hud.btnGrab.classList.toggle('off', g === '—'); }
+  if (_hc.ul !== u){ _hc.ul = u; hud.btnUse.querySelector('span').textContent = u; hud.btnUse.classList.toggle('off', u === '—'); hud.btnUse.querySelector('b').textContent = u === '噴' ? '🧯' : u === '修理' ? '🔧' : u === '拖地' ? '🧽' : '🔪'; }
+}
+/* target ring + per-station status tags */
+function updateHighlight(t){
+  const tt = (G.state === 'play') ? findTarget(player) : null;
+  if (!tt){ highlight.visible = false; return; }
+  const q = slotNearest(tt, player.agent.pos);
+  highlight.visible = true;
+  highlight.position.set(tt.band ? q.x : tt.x, (tt.band ? 0.02 : tt.y + 0.012), tt.band ? q.z : tt.z);
+  highlight.scale.setScalar(1 + Math.sin(t*6)*0.08);
+}
+function updateSlotTags(){
+  for (const sl of SLOTS){
+    let ic = '', bar = null, col = '#34d6a6';
+    if (sl.fire){ ic = '🔥'; bar = 1 - sl.fire.hp > 0.02 ? 1 - sl.fire.hp : null; col = '#4da3ff'; }
+    else if (sl.broken){ ic = '⚡'; bar = sl.fix > 0 ? sl.fix/2 : null; col = '#4da3ff'; }
+    else if (sl.item){
+      const it = sl.item;
+      if (sl.kind === 'appl'){
+        const inR = APPL[sl.id].ins[it.type], outR = applOutRule(sl.id, it.type);
+        if (inR){ ic = ITEMS[it.type].ic; bar = it.cook/inR.t; }
+        else if (outR && outR.burn){ const warn = it.cook > outR.burn*0.4; ic = warn ? '⚠️' : '✅'; bar = warn ? it.cook/outR.burn : null; col = '#ff6058'; }
+        else if (outR) ic = '✅';
+        else if (it.type === 'burnt') ic = '💀';
+      } else if (sl.kind === 'board' && it.type === 'fruit'){ ic = '🔪'; bar = it.chop > 0 ? it.chop/2.5 : null; }
+      else if (it.type === 'burnt') ic = '💀';
+    }
+    sl.tag.icon(ic).setBar(bar, col);
+  }
 }
 
-/* ---------------- panels ---------------- */
-const screens = {title:$('#title'), team:$('#team'), pause:$('#pause'), summary:$('#summary'), over:$('#over')};
+/* ---------------- panels & screens ---------------- */
+const screens = {title:$('#title'), levels:$('#levels'), prep:$('#prep'), pause:$('#pause'), results:$('#results')};
 function showScreen(name){ for (const k in screens) screens[k].hidden = k !== name; }
 function openPanel(name){
-  if (G.state === 'play' || G.state === 'closing') G.prevState = G.state;
+  if (G.state === 'play') G.prevState = G.state;
+  if (G.state !== 'play' && G.state !== 'countdown') return;
   G.state = 'paused';
   for (const k in keys) keys[k] = false;
-  joy.active = false; joyEl.hidden = true;
-  if (name === 'team') renderTeam();
-  if (name === 'pause'){ $('#pauseInfo').textContent = '第 ' + G.day + ' 天 · ' + $('#clock').textContent + ' · 現金 ' + fmt(G.money); $('#confirmBox').hidden = true; syncAudioToggles(); }
+  joy.active = false; joyEl.hidden = true; touchUse = false;
+  if (name === 'pause'){
+    const L = G.level;
+    $('#pauseInfo').textContent = (L.endless ? '無限營業' : '第 ' + (G.lv+1) + ' 關 · ' + L.n + ' · 剩 ' + mmss(L.len - G.time)) + ' · 分數 ' + fmt(G.money);
+    syncAudioToggles();
+  }
   showScreen(name);
 }
 function closePanels(){ showScreen(null); if (G.state === 'paused') G.state = G.prevState || 'play'; canvas.focus({preventScroll:true}); }
-let buyLockT = 0;
-function buyLocked(){ const now = performance.now(); if (now < buyLockT) return true; buyLockT = now + 450; return false; }
-function renderTeam(){
-  $('#teamMoney').textContent = fmt(G.money);
-  const list = $('#teamList'); list.innerHTML = '';
+function levelUnlocked(i){
+  if (i === 0) return true;
+  if (LEVELS[i].endless) return ((G.best[i-1] && G.best[i-1].stars) || 0) >= 1;
+  return ((G.best[i-1] && G.best[i-1].stars) || 0) >= 1;
+}
+function showLevels(){
+  G.state = 'menu';
+  const list = $('#lvList'); list.innerHTML = '';
+  const ts = totalStars();
+  $('#lvStars').textContent = '已拿到 ★' + ts + '　·　星星越多，解鎖越多種 AI 分身';
+  LEVELS.forEach((L, i) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'lv';
+    const best = G.best[i] || {score:0, stars:0};
+    const open = levelUnlocked(i);
+    const st = '★'.repeat(best.stars) + '<i>' + '★'.repeat(3 - best.stars) + '</i>';
+    b.innerHTML = `<span class="no">${L.endless ? 'ENDLESS' : 'LEVEL ' + (i+1)}</span><span class="nm">${open ? '' : '🔒 '}${L.n}</span>` +
+      `<span class="rc">${L.rec.map(r => RECIPES[r].ic).join('')}</span><span class="st">${st}</span>` +
+      `<span class="bs">${open ? (best.score ? '最高 ' + fmt(best.score) : '還沒玩過') : '前一關拿到 ★ 解鎖'}</span>`;
+    b.disabled = !open;
+    b.onclick = () => { initAudio(); SFX.pick(); showPrep(i); };
+    list.appendChild(b);
+  });
+  showScreen('levels');
+}
+let prepLv = 0, prepTeam = [];
+function roleUnlocked(r){ return totalStars() >= r.need; }
+function defaultTeam(L){
+  const want = ROLES.filter(r => roleUnlocked(r)).map(r => {
+    let score = r.recipes.filter(x => L.rec.includes(x)).length*2;
+    if (r.id === 'cleaner') score = (L.spills ? 1.5 : 0) + (L.outage ? 1.5 : 0) + 0.5;
+    if (G.team.includes(r.id)) score += 0.5;
+    return {id:r.id, score};
+  }).filter(x => x.score > 0).sort((a,b) => b.score - a.score);
+  return want.slice(0, L.clones).map(x => x.id);
+}
+function showPrep(i){
+  prepLv = i; const L = LEVELS[i];
+  $('#prepTitle').textContent = (L.endless ? '' : '第 ' + (i+1) + ' 關 · ') + L.n;
+  $('#prepDesc').textContent = L.desc + (L.endless ? '' : '　營業 ' + mmss(L.len) + '，★ ' + L.stars.join(' / ★★ ').replace(/\/ ★★ (\d+)$/, '/ ★★★ $1'));
+  const rl = $('#prepRec'); rl.innerHTML = '';
+  for (const k of L.rec){
+    const R = RECIPES[k];
+    const d = document.createElement('div'); d.className = 'rec';
+    d.innerHTML = `<div class="ic">${R.ic}</div><div><div class="nm">${R.n}<span class="pt">${fmt(R.pts)}</span></div><div class="sp">${R.steps.map(s => `<span>${s}</span>`).join('')}<span>🛎️出餐</span></div></div>`;
+    rl.appendChild(d);
+  }
+  prepTeam = defaultTeam(L);
+  renderPrepTeam();
+  $('#prepCtrl').innerHTML = isTouch
+    ? '🕹️ 左手在畫面上拖曳走路　✋ 拿起／放下／出餐<br>🔪 長按：切水果、噴滅火器、拖地、修理　🔄 換人操作'
+    : '⌨️ WASD／方向鍵走路　空白鍵或 J：拿起／放下／出餐<br>E 或 K 長按：切水果、滅火、拖地、修理　Q 或 Tab：換人操作　（也可以用滑鼠點）';
+  G.state = 'menu';
+  showScreen('prep');
+}
+function renderPrepTeam(){
+  const L = LEVELS[prepLv];
+  $('#prepSlots').textContent = prepTeam.length + ' / ' + L.clones;
+  const box_ = $('#prepTeam'); box_.innerHTML = '';
   for (const r of ROLES){
-    const lv = G.clones[r.id] || 0;
-    const card = document.createElement('div'); card.className = 'card';
-    const av = document.createElement('div'); av.className = 'av'; av.style.background = r.css; av.textContent = r.icon;
-    const mid = document.createElement('div'); mid.style.minWidth = '0';
-    mid.innerHTML = `<div class="nm">${r.name}${lv ? `<span class="lv">LV${lv}</span>` : ''}</div><div class="ds">${r.desc}</div><div class="wg">日薪 ${fmt(r.wage)}${lv ? ' · 速度 ×' + LV_WORK[lv].toFixed(2) : ''}</div>`;
-    const b = document.createElement('button'); b.type = 'button';
-    if (!lv){ b.innerHTML = `僱用<small>${fmt(r.cost)}</small>`; b.disabled = G.money < r.cost; b.onclick = () => { if (buyLocked()) return; hire(r.id); }; }
-    else if (lv < 3){ const c = upgradeCost(r, lv); b.innerHTML = `升級<small>${fmt(c)}</small>`; b.disabled = G.money < c; b.onclick = () => { if (buyLocked()) return; upgrade(r.id); }; }
-    else { b.textContent = '滿級'; b.disabled = true; b.className = 'max'; }
-    card.append(av, mid, b); list.appendChild(card);
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'tp';
+    const unlocked = roleUnlocked(r), on = prepTeam.includes(r.id);
+    if (on){ b.classList.add('on'); b.style.background = r.css; b.style.borderColor = 'var(--ink)'; }
+    b.innerHTML = unlocked ? `${r.icon} ${r.name}<small>${r.desc}</small>` : `🔒 ${r.name}<small>需要 ★${r.need}</small>`;
+    b.disabled = !unlocked;
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.onclick = () => {
+      const k = prepTeam.indexOf(r.id);
+      if (k >= 0) prepTeam.splice(k,1);
+      else if (prepTeam.length < L.clones) prepTeam.push(r.id);
+      else { prepTeam.shift(); prepTeam.push(r.id); }
+      SFX.pick(); renderPrepTeam();
+    };
+    box_.appendChild(b);
   }
-  renderStoreUpgrades(list);
-}
-function hire(id){
-  const r = ROLE[id]; if (G.clones[id] || G.money < r.cost) return;
-  addMoney(-r.cost); G.clones[id] = 1;
-  spawnClone(id, 1, false);
-  SFX.hire(); toast(r.icon + ' ' + r.name + ' 上工了！', 'good');
-  renderTeam(); save();
-}
-function upgrade(id){
-  const r = ROLE[id], lv = G.clones[id]; if (!lv || lv >= 3) return;
-  const c = upgradeCost(r, lv); if (G.money < c) return;
-  addMoney(-c); G.clones[id] = lv+1;
-  const s = cloneOf(id); if (s){ setCloneLevel(s, lv+1); s.spawnFx = 0.6; }
-  SFX.hire(); toast(r.name + ' 升到 LV' + (lv+1), 'good');
-  renderTeam(); save();
 }
 
-/* ---------------- day flow ---------------- */
-function clearDayEntities(){
+/* ---------------- level flow ---------------- */
+function clearWorld(){
   while (customers.length) removeCustomer(customers[0]);
-  queue.length = 0;
-  while (messes.length) removeMess(messes[0]);
+  orders.length = 0; clearTickets();
+  while (spills.length) removeSpill(spills[0]);
+  for (const sl of SLOTS){ if (sl.fire) extinguish(sl); if (sl.item){ dropItem(sl.item); sl.item = null; } sl.broken = 0; sl.fix = 0; }
+  for (const s of staff.slice()) if (s !== owner) removeStaff(s);
+  if (owner.hold){ dropItem(owner.hold); owner.hold = null; }
+  owner.agent.path.length = 0; owner.slip = null; owner.pending = null; owner.ai = {};
+  placeOnSlot(SLOT.extstand, newItem('ext'));
 }
-function rentFor(day){ return 150 + 50*(day-1) + 8*(day-1)*(day-1); }   // quadratic term: late days need upgrades, not just clones
-function endDay(){
-  G.state = 'summary';
-  clearDayEntities();
+function setupWorld(i, team, demo){
+  clearWorld();
+  G.demo = demo; G.lv = i; G.level = demo ? DEMO_LEVEL : LEVELS[i];
+  const L = G.level;
+  G.time = 0; G.money = 0; G.combo = 1; G.fails = 0; G.spawnT = 1; G.gapT = 0; G.stats = newStats();
+  G.spillT = L.spills ? rand(14, 24)/L.spills : 1e9; G.outT = L.outage ? L.outage*0.7 : 1e9;
+  owner.agent.pos.set(4.2, 0, 2.4); owner.agent.face(-Math.PI/2);
+  for (const id of team) spawnClone(id, !!demo);
+  player = owner;
+  if (typeof JUICE !== 'undefined'){ JUICE.shown = 0; JUICE.lastTarget = 0; JUICE.pending = 0; }
+}
+function startLevel(i, team){
+  initAudio();
+  hintQ.length = 0; hintT = 0; $('#hint').classList.add('off');
+  G.team = team.slice(); saveProgress();
+  setupWorld(i, team, false);
+  $('#hud').hidden = false; showScreen(null);
+  G.state = 'countdown'; G.cdT = 3.4; G.cdShown = null;
+  updateCamera(0, true);
+  canvas.focus({preventScroll:true});
+  if (i === 0) showHint(isTouch ? '左手拖曳走路，右下角 ✋ 拿起／放下。把點單上的東西送到黃色的「出餐」台！' : 'WASD 走路，空白鍵拿起／放下。把點單上的東西送到黃色的「出餐」台！');
+  if (team.length) tip('swap', (isTouch ? '按 🔄' : '按 Q 或 Tab') + ' 可以換成操作分身，其他人會繼續自己工作。');
+}
+function bigMsg(text, zh){
+  hud.big.className = zh ? 'zh' : '';
+  hud.big.innerHTML = '<span>' + text + '</span>';
+}
+function countdownTick(dt){
+  G.cdT -= dt;
+  const n = Math.ceil(G.cdT - 0.4);
+  const show = n >= 1 ? String(n) : '開店！';
+  if (G.cdShown !== show){ G.cdShown = show; bigMsg(show, n < 1); tone(n >= 1 ? 660 : 990, n >= 1 ? 0.12 : 0.3, 'triangle', 0.1); }
+  if (G.cdT <= 0){ G.state = 'play'; setTimeout(() => { if (G.state !== 'countdown') hud.big.innerHTML = ''; }, 700); }
+}
+function endLevel(){
+  if (G.state !== 'play') return;
+  G.state = 'ending'; G.endT = 1.6;
+  for (const o of orders) ticketDone(o, false);
+  bigMsg(G.level.endless ? '打烊！' : '時間到！', true);
   SFX.close();
-  const wages = ROLES.reduce((s,r)=>s + (G.clones[r.id] ? r.wage : 0), 0);
-  const rent = rentFor(G.day);
-  const goalRows = finishGoals();
-  addMoney(-(wages + rent));
-  const S = G.stats;
-  const profit = S.revenue - S.stockCost - S.coffeeCost - wages - rent + S.bonus;
-  const stars = '★★★★★'.slice(0, Math.round(G.rating)) + '☆☆☆☆☆'.slice(0, 5-Math.round(G.rating));
+  for (const s of staff) s.agent.path.length = 0;
+}
+function showResults(){
+  hud.big.innerHTML = '';
+  G.state = 'results';
+  const L = G.level, S = G.stats, score = Math.max(0, Math.round(G.money));
+  const stars = starsFor(score, L.stars);
+  const prev = G.best[G.lv] || {score:0, stars:0}, starsBefore = totalStars();
+  const isBest = score > prev.score;
+  G.best[G.lv] = {score: Math.max(prev.score, score), stars: Math.max(prev.stars, stars)};
+  saveProgress();
   const row = (a,b,cls) => `<div class="r ${cls||''}"><span>${a}</span><span>${b}</span></div>`;
-  $('#sumTitle').textContent = '第 ' + G.day + ' 天打烊了！';
+  $('#resTitle').textContent = (L.endless ? '無限營業 · 撐了 ' + mmss(G.time) : '第 ' + (G.lv+1) + ' 關 · ' + L.n);
+  $('#resStars').innerHTML = '★'.repeat(stars) + '<i>' + '★'.repeat(3 - stars) + '</i>';
+  $('#resBest').hidden = !isBest || score === 0;
+  const recRows = Object.keys(S.byRec).map(k => row(RECIPES[k].ic + ' ' + RECIPES[k].n, S.byRec[k] + ' 份')).join('');
   $('#receipt').innerHTML =
-    `<div class="hd">分身便利店 CLONE MART<small>營業日報 · 第 ${G.day} 天 · 07:00–23:00${G.event && G.event.id !== 'normal' ? ' · ' + G.event.icon + ' ' + G.event.name : ''}</small></div><hr>` +
-    row('來客數', S.customers + ' 人') + row('結帳完成', S.served + ' 人') + row('賣出商品', S.items + ' 件') +
-    (S.vip ? row('👑 VIP 結帳', S.vipServed + ' / ' + S.vip + ' 人', S.vipServed < S.vip ? 'neg' : '') : '') +
-    (S.missed ? row('缺貨撲空', S.missed + ' 次', 'neg') : '') +
-    row('氣走客人', S.angry + ' 人', S.angry ? 'neg' : '') + row('抓到小偷', S.caught + ' 人') + row('被偷走', S.stolen + ' 次', S.stolen ? 'neg' : '') + goalRows + '<hr>' +
-    row('營業收入', fmt(S.revenue)) + row('進貨成本', '-' + fmt(S.stockCost), 'neg') + row('咖啡豆', '-' + fmt(S.coffeeCost), 'neg') +
-    row('分身薪資', '-' + fmt(wages), wages ? 'neg' : '') + row('店租', '-' + fmt(rent), 'neg') +
-    (S.bonus ? row('目標獎金', '+' + fmt(S.bonus)) : '') + '<hr>' +
-    row('本日淨利', (profit < 0 ? '-' : '') + fmt(Math.abs(profit)), 'tot ' + (profit >= 0 ? 'pos' : 'neg')) +
-    row('現金餘額', fmt(G.money), 'tot') + row('顧客評價', stars + ' ' + G.rating.toFixed(1)) +
+    `<div class="hd">分身便利店 CLONE MART<small>出餐明細 · ${L.n}</small></div><hr>` +
+    row('送出餐點', S.delivered + ' 份') + recRows + row('最高連擊', '×' + S.maxCombo) +
+    (S.failed ? row('逾時沒送到', S.failed + ' 張', 'neg') : '') + (S.burnt ? row('燒焦／失敗品', S.burnt + ' 個', 'neg') : '') + (S.fires ? row('起火', S.fires + ' 次', 'neg') : '') + '<hr>' +
+    row('餐點收入', fmt(S.base)) + row('小費', '+' + fmt(S.tips)) + (S.penalty ? row('逾時扣分', '-' + fmt(S.penalty), 'neg') : '') + '<hr>' +
+    row('本次分數', fmt(score), 'tot pos') + row('星星門檻', '★' + L.stars[0] + '　★★' + L.stars[1] + '　★★★' + L.stars[2]) +
     `<div class="bar"></div>`;
-  const broke = G.money < 0, hated = G.rating < 0.5;
-  $('#btnNext').textContent = broke ? '付不出錢了…' : hated ? '沒有客人想再來了…' : '迎接第 ' + (G.day+1) + ' 天';
-  $('#btnNext').onclick = () => { if (broke) gameOver('bankrupt'); else if (hated) gameOver('rating'); else nextDay(); };
-  if (!broke && !hated){ G.day++; G.time = 0; save(); G.day--; }
-  else { try { localStorage.removeItem(SAVE_KEY); } catch(e){} }
-  showScreen('summary');
+  const nx = G.lv + 1;
+  const nb = $('#btnNextLv');
+  nb.hidden = nx >= LEVELS.length;
+  nb.disabled = !(nx < LEVELS.length && levelUnlocked(nx));
+  nb.textContent = nb.disabled ? '拿到 ★ 才能進下一關' : '下一關 ›';
+  showScreen('results');
+  const starsAfter = totalStars(), newRoles = ROLES.filter(r => r.need > starsBefore && r.need <= starsAfter);
+  if (newRoles.length) setTimeout(() => toast(newRoles.map(r => r.icon + ' ' + r.name).join('、') + ' 解鎖了！', 'good'), 400);
 }
-function nextDay(){
-  G.day++; G.time = 0; G.spawnT = 2; G.closingT = 0; G.stats = newStats();
-  planDay();
-  for (const s of staff){ s.ai = {}; s.carry = false; s.agent.carrying = false; s.agent.path.length = 0; }
-  save();
-  showScreen(null); G.state = 'play';
-  toast('第 ' + G.day + ' 天開店！明天的店租 ' + fmt(rentFor(G.day)), 'good');
-  if (G.event.id !== 'normal'){ toast('今天是' + G.event.icon + ' ' + G.event.name + '：' + G.event.desc, ''); tip('event', '有些日子會有特別活動（' + G.event.icon + ' ' + G.event.name + '：' + G.event.desc + '），右上方的目標欄會標出來。'); }
-  if (G.day === 2) showHint('從今天開始會出現小偷 🕶️，記得在他們出門前攔下來。');
-  if (G.day === 3) showHint('從今天開始會有戴金帽的 👑 VIP：付 1.5 倍的錢，但更沒耐心。');
-}
-function gameOver(kind){
-  G.state = 'over';
-  clearDayEntities();
-  try { localStorage.removeItem(SAVE_KEY); } catch(e){}
-  $('#overTitle').textContent = kind === 'bankrupt' ? '付不出店租，店舖倒閉了' : '評價跌到谷底，店舖倒閉了';
-  $('#overText').textContent = `你撐了 ${G.day} 天，僱用了 ${ROLES.filter(r=>G.clones[r.id]).length} 個 AI 分身。再來一次，試著早點讓分身幫忙！`;
-  showScreen('over');
-}
-
-/* ---------------- goals, events & store upgrades ---------------- */
-// Each day gets 3 goals (one per group: volume / skill / quality) and, from day 4, maybe a day event.
-// Both come from a per-run seed + day number, so reloading a save never rerolls them.
-const GOAL_DEFS = [
-  {id:'serve',   grp:0, from:1, type:'up',   label:t=>`結帳 ${t} 位客人`,  target:d=>Math.min(70, 11+4*d), val:()=>G.stats.served},
-  {id:'revenue', grp:0, from:2, type:'up',   label:t=>`營收 ${fmt(t)}`,    target:d=>Math.min(7000, Math.round((1200+350*d)/50)*50), val:()=>G.stats.revenue, money:true},
-  {id:'coffee',  grp:1, from:1, type:'up',   label:t=>`賣出 ${t} 杯咖啡`,  target:(d,ev)=>Math.min(24, Math.round((3+1.3*d)*(ev.coffee ? Math.min(1.5, ev.coffee/0.28) : 1))), val:()=>G.stats.coffeeSold, ok:ev=>ev.id !== 'heat'},
-  {id:'catch',   grp:1, from:2, type:'up',   label:t=>`抓到 ${t} 個小偷`,  target:d=>Math.min(3, 1+Math.floor(d/6)), val:()=>G.stats.caught},
-  {id:'vip',     grp:1, from:3, type:'up',   label:t=>`服務 ${t} 位 VIP`,  target:d=>Math.min(3, 1+Math.floor(d/5)), val:()=>G.stats.vipServed},
-  {id:'noAngry', grp:2, from:1, type:'zero', label:()=>'零氣走客人',      target:()=>0, val:()=>G.stats.angry},
-  {id:'noTheft', grp:2, from:2, type:'zero', label:()=>'沒有東西被偷',    target:()=>0, val:()=>G.stats.stolen},
-  {id:'rating',  grp:2, from:2, type:'end',  label:t=>`打烊評價 ≥ ${t.toFixed(1)}★`, target:d=>d < 6 ? 3.5 : 4, val:()=>G.rating},
-];
-const goalReward = d => Math.round((40 + 12*d)/10)*10;
-function mulberry32(a){ return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
-const newUpg = () => Object.fromEntries(STORE_UPG.map(u => [u.id, 0]));
-function upgFx(id){ const u = STORE[id]; return u.fx[clamp((G.upg && G.upg[id]) || 0, 0, u.fx.length-1)]; }
-for (const sh of SHELVES) sh.baseMax = sh.max;
-function applyUpgrades(){ const f = upgFx('shelf'); for (const sh of SHELVES) sh.max = Math.round(sh.baseMax*f); }
-G.upg = newUpg(); G.seed = 1; G.event = DAY_EVENTS[0]; G.goals = []; G.rush = null;
-
-function planDay(){
-  const rng = mulberry32((G.seed|0)*7919 + G.day*104729);
-  let ev = DAY_EVENTS[0];
-  if (G.day >= 4 && rng() < 0.55) ev = DAY_EVENTS[1 + Math.floor(rng()*(DAY_EVENTS.length-1))];
-  G.event = ev; G.rush = null;
-  G.goals = [];
-  for (let grp=0; grp<3; grp++){
-    const pool = GOAL_DEFS.filter(g => g.grp === grp && G.day >= g.from && (!g.ok || g.ok(ev)));
-    if (!pool.length) continue;
-    const def = pool[Math.floor(rng()*pool.length)];
-    G.goals.push({id:def.id, def, target:def.target(G.day, ev), done:false, fail:false, paid:0});
-  }
-  goalsDirty = true; goalsPeekT = 8;
-}
-function demandMult(){
-  return (G.rush && G.state === 'play' ? RUSH_MULT(G.day) : 1) * ((G.event && G.event.spawn) || 1) * upgFx('sign');
-}
-function completeGoal(g){
-  g.done = true; goalsDirty = true;
-  const r = goalReward(G.day); g.paid = r;
-  addMoney(r); G.stats.bonus += r; addRating(0.1);
-  if (G.state === 'play' || G.state === 'closing'){ toast('🎯 目標達成：' + g.def.label(g.target) + ' +' + fmt(r), 'good'); SFX.hire(); }
-}
-function updateGoals(dt){
-  if (G.state === 'play'){
-    const h = hourNow();
-    const r = RUSHES.find(x => h >= x.from && h < x.to) || null;
-    if (r !== G.rush){
-      G.rush = r; goalsDirty = true;
-      if (r){
-        toast(r.icon + ' ' + r.name + '來了！客人變多', 'bad');
-        tip('rush', '尖峰時段客人會一口氣湧進來：先把貨補滿、多沖幾杯咖啡。');
-        G.spawnT = Math.min(G.spawnT, 0.8);   // the rush starts now, not after the slower pre-rush timer
-      }
-    }
-    if (G.time > 4) tip('goals', '右上方是「今日目標」，達成就有獎金和評價加分！');
-  } else if (G.rush){ G.rush = null; goalsDirty = true; }
-  for (const g of G.goals){
-    if (g.done || g.fail) continue;
-    const v = g.def.val();
-    if (g.def.type === 'up' && v >= g.target) completeGoal(g);
-    else if (g.def.type === 'zero' && v > 0){ g.fail = true; goalsDirty = true; toast('✗ 目標失敗：' + g.def.label(g.target), 'bad'); }
-  }
-}
-// called from endDay: settle the remaining goals, pay the all-clear bonus, return receipt rows
-function finishGoals(){
-  for (const g of G.goals){
-    if (g.done || g.fail) continue;
-    const v = g.def.val();
-    if ((g.def.type === 'zero' && v === 0) || (g.def.type === 'end' && v >= g.target - 1e-9)) completeGoal(g);
-    else g.fail = true;
-  }
-  goalsDirty = true;
-  if (!G.goals.length) return '';
-  const row = (a,b,cls) => `<div class="r ${cls||''}"><span>${a}</span><span>${b}</span></div>`;
-  let html = '<hr>' + row('🎯 今日目標', G.goals.filter(g=>g.done).length + ' / ' + G.goals.length, 'tot');
-  for (const g of G.goals) html += row((g.done ? '✓ ' : '✗ ') + g.def.label(g.target), g.done ? '+' + fmt(g.paid) : '未達成', g.done ? '' : 'neg');
-  if (G.goals.every(g => g.done)){
-    const r = goalReward(G.day); addMoney(r); G.stats.bonus += r;
-    html += row('🎉 全部達成獎勵', '+' + fmt(r));
-  }
-  return html;
-}
-
-/* goals HUD (right column, placed under the top bar). On small screens it folds into a one-line
-   chip and only "peeks" open for a few seconds when something changes; tapping it pins it open/closed. */
-const goalsEl = $('#goals');
-let goalsDirty = true, goalsT = 0, goalsRows = [], goalsOpen = null, goalsPeekT = 0, goalsMini = null;
-const shortMoney = n => n >= 1000 ? '$' + (Math.floor(n/100)/10) + 'k' : '$' + Math.round(n);
-goalsEl.addEventListener('click', () => { goalsOpen = goalsEl.classList.contains('mini'); goalsPeekT = 0; goalsT = 0; });
-function updateGoalsHUD(dt){
-  const hide = $('#hud').hidden || G.state === 'title' || !G.goals.length;
-  if (goalsEl.hidden !== hide) goalsEl.hidden = hide;
-  if (hide) return;
-  if (goalsPeekT > 0) goalsPeekT -= dt;
-  goalsT -= dt;
-  if (goalsT > 0 && !goalsDirty) return;
-  goalsT = 0.25;
-  const top = Math.round($('#hud').getBoundingClientRect().bottom + 8) + 'px';
-  if (goalsEl.style.top !== top) goalsEl.style.top = top;
-  if (goalsDirty){
-    goalsDirty = false; goalsPeekT = Math.max(goalsPeekT, 4);
-    const ev = G.event && G.event.id !== 'normal' ? `<div class="ev">${G.event.icon} ${G.event.name}</div>` : '';
-    const rush = G.rush ? `<div class="ev rush">${G.rush.icon} ${G.rush.name}中</div>` : '';
-    goalsEl.innerHTML = `<div class="gh"><span>🎯 今日目標</span><span class="rw">每項 +${fmt(goalReward(G.day))}</span><span class="sm">${G.goals.filter(g => g.done).length}/${G.goals.length} ▾</span></div>` + (ev || rush ? `<div class="evs">${ev}${rush}</div>` : '') +
-      G.goals.map(g => `<div class="g${g.done ? ' done' : g.fail ? ' fail' : ''}"><span class="ck">${g.done ? '✓' : g.fail ? '✗' : '○'}</span><span class="lb">${g.def.label(g.target)}</span><span class="v"></span>${g.def.type === 'up' ? '<i><b></b></i>' : ''}</div>`).join('');
-    const els = goalsEl.querySelectorAll('.g');
-    goalsRows = G.goals.map((g,i) => ({g, v:els[i].querySelector('.v'), b:els[i].querySelector('b'), _v:null, _w:null}));
-  }
-  const small = innerWidth < 600 || innerHeight < 480;
-  const mini = goalsOpen === null ? small && goalsPeekT <= 0 : !goalsOpen;
-  if (mini !== goalsMini){ goalsMini = mini; goalsEl.classList.toggle('mini', mini); goalsEl.setAttribute('aria-expanded', String(!mini)); }
-  for (const r of goalsRows){
-    const g = r.g, d = g.def, val = d.val();
-    let t, w = null;
-    if (d.type === 'zero') t = g.done ? '達成' : g.fail ? '失敗' : '撐到打烊';
-    else if (d.type === 'end') t = (Math.round(val*10)/10).toFixed(1) + '★';
-    else { const v = Math.min(val, g.target); t = d.money ? shortMoney(v) + '/' + shortMoney(g.target) : v + '/' + g.target; w = Math.round(v/g.target*100); }
-    if (t !== r._v){ r._v = t; r.v.textContent = t; }
-    if (r.b && w !== r._w){ r._w = w; r.b.style.width = w + '%'; }
-  }
-}
-
-/* store upgrades (rendered at the bottom of the team panel) */
-function buyUpgrade(id, quiet){
-  const u = STORE[id], lv = (G.upg && G.upg[id]) || 0;
-  if (!u || lv >= u.cost.length || G.money < u.cost[lv]) return false;
-  addMoney(-u.cost[lv]); G.upg[id] = lv+1; applyUpgrades();
-  if (!quiet){ SFX.hire(); toast(u.icon + ' ' + u.name + ' 升到 LV' + (lv+1), 'good'); }
-  if (!screens.team.hidden) renderTeam();
-  save();
-  return true;
-}
-function renderStoreUpgrades(list){
-  let sec = $('#storeUpg');
-  if (!sec){ sec = document.createElement('div'); sec.id = 'storeUpg'; list.after(sec); }
-  sec.innerHTML = '<h3 class="upg-h">店鋪升級</h3><p class="upg-sub">一次付清、永久有效，不用付薪水。</p>';
-  const grid = document.createElement('div'); grid.className = 'team-list'; sec.appendChild(grid);
-  for (const u of STORE_UPG){
-    const lv = G.upg[u.id] || 0, maxLv = u.cost.length;
-    const card = document.createElement('div'); card.className = 'card';
-    const av = document.createElement('div'); av.className = 'av'; av.style.background = '#ffe7a0'; av.textContent = u.icon;
-    const mid = document.createElement('div'); mid.style.minWidth = '0';
-    const eff = lv ? '目前 ' + u.fxText(u.fx[lv]) + (lv < maxLv ? ' → 下一級 ×' + u.fx[lv+1] : '') : '升級後 ' + u.fxText(u.fx[1]);
-    mid.innerHTML = `<div class="nm">${u.name}${lv ? `<span class="lv">LV${lv}</span>` : ''}</div><div class="ds">${u.desc}</div><div class="wg">${eff}</div>`;
-    const b = document.createElement('button'); b.type = 'button';
-    if (lv < maxLv){ const c = u.cost[lv]; b.innerHTML = `${lv ? '升級' : '購買'}<small>${fmt(c)}</small>`; b.disabled = G.money < c; b.onclick = () => buyUpgrade(u.id); }
-    else { b.textContent = '滿級'; b.disabled = true; b.className = 'max'; }
-    card.append(av, mid, b); grid.appendChild(card);
-  }
+function backToTitle(){
+  setupWorld(0, ROLES.map(r => r.id), true);
+  $('#hud').hidden = true; hud.big.innerHTML = '';
+  G.state = 'title'; showScreen('title');
 }
 
 /* ---------------- save / load ---------------- */
-function getSaveData(){
-  return {v:1, day:G.day, money:G.money, rating:G.rating, cups:G.cups, clones:G.clones, tips:[...G.tips], muted,
-    stock:Object.fromEntries(SHELVES.map(s=>[s.id,s.stock])), upg:Object.assign({}, G.upg), seed:G.seed};
+const SAVE_KEY_RUSH = 'clonemart-rush-v1';
+function saveProgress(){ try { localStorage.setItem(SAVE_KEY_RUSH, JSON.stringify({v:1, best:G.best, tips:[...G.tips], team:G.team, muted})); } catch(e){} }
+function loadProgress(){
+  try {
+    const d = JSON.parse(localStorage.getItem(SAVE_KEY_RUSH) || 'null'); if (!d) return;
+    if (d.best && typeof d.best === 'object') for (const k in d.best){ const b = d.best[k]; if (b && isFinite(b.score) && isFinite(b.stars)) G.best[k] = {score:Math.max(0, b.score|0), stars:clamp(b.stars|0, 0, 3)}; }
+    if (Array.isArray(d.tips)) G.tips = new Set(d.tips);
+    if (Array.isArray(d.team)) G.team = d.team.filter(id => ROLE[id]);
+    if (typeof d.muted === 'boolean') muted = d.muted;
+  } catch(e){}
 }
-function save(){ try { localStorage.setItem(SAVE_KEY, JSON.stringify(getSaveData())); } catch(e){} }
-function loadSave(){ try { const s = localStorage.getItem(SAVE_KEY); return s ? JSON.parse(s) : null; } catch(e){ return null; } }
-function resetWorld(data){
-  clearDayEntities();
-  for (const s of staff.slice()){ if (s !== player){ scene.remove(s.ch.g); s.tag.remove(); } }
-  staff.length = 0; staff.push(player);
-  player.carry = false; player.agent.carrying = false; player.agent.path.length = 0;
-  player.agent.pos.set(CASHIER_SPOT.x, 0, CASHIER_SPOT.z - 1.2);
-  const num = (v, d) => (typeof v === 'number' && isFinite(v)) ? v : d;
-  G.day = data ? Math.max(1, Math.floor(num(data.day, 1))) : 1; G.money = data ? num(data.money, START_MONEY) : START_MONEY; G.rating = data ? clamp(num(data.rating, 3), 0, 5) : 3;
-  G.cups = data ? clamp(Math.floor(num(data.cups, 2)), 0, MAX_CUPS) : 2; G.clones = {};
-  if (data && data.clones) for (const r of ROLES){ const lv = Math.floor(num(data.clones[r.id], 0)); if (lv > 0) G.clones[r.id] = Math.min(3, lv); }
-  G.tips = new Set(data && Array.isArray(data.tips) ? data.tips : []);
-  G.upg = Object.assign(newUpg(), data && data.upg); applyUpgrades();
-  G.seed = data && data.seed ? data.seed : 1 + Math.floor(Math.random()*1e6);
-  if (data && typeof data.muted === 'boolean') muted = data.muted;
-  for (const sh of SHELVES) sh.stock = data && data.stock ? clamp(Math.floor(num(data.stock[sh.id], sh.max)), 0, sh.max) : sh.max;
-  for (const r of ROLES) if (G.clones[r.id]) spawnClone(r.id, G.clones[r.id], true);
-  G.time = 0; G.spawnT = 2; G.closingT = 0; G.stats = newStats();
-  planDay();
-}
-function startGame(data){
-  initAudio();
-  hintQ.length = 0; hintT = 0; $('#hint').classList.add('off');
-  resetWorld(data);
-  $('#hud').hidden = false;
-  showScreen(null);
-  G.state = 'play';
-  updateCamera(0, true);
-  if (G.day === 1 && !G.tips.has('move')){
-    G.tips.add('move');
-    showHint(isTouch ? '在畫面上拖曳就能走動，或點一下地板、貨架直接走過去。' : '用 WASD／方向鍵走動，或點地板、貨架直接走過去。滾輪可以縮放。');
-  }
-  toast('第 ' + G.day + ' 天開店！', 'good');
-  canvas.focus({preventScroll:true});
-}
+function getSaveData(){ return {best:G.best, team:G.team}; }
 
 /* ---------------- main loop ---------------- */
-function spawnInterval(){
-  const base = clamp(7.5 - (G.day-1)*0.7, 2.0, 8);
-  return base * (1.25 - G.rating*0.08) * demandMult();
+function onSpill(s){ for (const sp of spills) if (Math.hypot(sp.x-s.agent.pos.x, sp.z-s.agent.pos.z) < 0.55) return true; return false; }
+function updateMachines(dt){
+  for (const sl of SLOTS){
+    if (sl.fire){
+      const f = sl.fire; f.t += dt; f.hp = Math.min(1, f.hp + dt*0.12);
+      f.g.children.forEach((m,i) => { m.scale.set(1, 0.7 + 0.5*Math.abs(Math.sin(f.t*9 + m.userData.ph)), 1); });
+      if (sl.isl){
+        f.spread += dt;
+        if (f.spread > 7){ f.spread = 0; const nb = [ISLAND[sl.islI-1], ISLAND[sl.islI+1]].filter(Boolean).map(id => SLOT[id]).filter(x => !x.fire); if (nb.length) ignite(pick(nb)); }
+      }
+      continue;
+    }
+    if (sl.kind !== 'appl' || !sl.item || sl.broken) continue;
+    const it = sl.item, a = APPL[sl.id], inR = a.ins[it.type];
+    if (inR){ it.cook += dt; if (it.cook >= inR.t){ setItemType(it, inR.out); if (!G.demo){ tone(1175, 0.12, 'triangle', 0.07); tone(1568, 0.16, 'triangle', 0.06, 0.08); } } }
+    else {
+      const outR = applOutRule(sl.id, it.type);
+      if (outR && outR.burn){
+        it.cook += dt;
+        if (it.cook > outR.burn*0.4) tip('burn', '⚠️ 快燒焦了！做好的東西要趕快從機器拿出來。');
+        if (it.cook >= outR.burn){ setItemType(it, 'burnt'); if (!G.demo){ SFX.bad(); floatText(sl.x, sl.y + 0.8, sl.z, sl.id === 'pot' ? '煮爛了！' : '燒焦了！', 'bad txt'); } }
+      } else if (it.type === 'burnt' && a.fire){
+        it.cook += dt; if (it.cook >= a.fire) ignite(sl);
+      }
+    }
+  }
 }
 function simulate(dt){
-  curDt = dt;
+  const L = G.level;
   G.time += dt;
-  if (G.state === 'play'){
-    G.spawnT -= dt;
-    if (G.spawnT <= 0 && G.time < DAY_LEN - 4){
-      G.spawnT = spawnInterval()*rand(0.6,1.4);
-      if (customers.length < 16) spawnCustomer();
-    }
-    if (G.time >= DAY_LEN){ G.state = 'closing'; G.closingT = 0; toast('23:00 打烊囉！服務完店內的客人', ''); }
-  } else if (G.state === 'closing'){
-    G.closingT += dt;
-    if (customers.length === 0 || G.closingT > 30){ endDay(); return; }
+  // tickets
+  for (const o of orders.slice()){ o.t += dt; if (o.t >= o.limit) failOrder(o); }
+  G.spawnT -= dt; G.gapT -= dt;
+  const late = !L.endless && G.time > L.len - 8;
+  const minBoard = Math.min(3, L.max);
+  if (!late && orders.length < L.max && G.gapT <= 0 && (G.spawnT <= 0 || orders.length < minBoard)){
+    spawnOrder(); G.gapT = 2.2;
+    const ramp = L.endless ? Math.max(0.3, 1 - G.time/450) : 1;   // endless: tickets come faster over time
+    G.spawnT = rand(L.every[0], L.every[1])*ramp;
   }
-  reg.power = 0; coffee.power = 0;
-  updatePlayer(dt);
-  for (const s of staff) if (s !== player) updateClone(s, dt);
-  for (const s of staff) staffWork(s, dt);
+  // hazards
+  G.spillT -= dt; if (G.spillT <= 0){ G.spillT = rand(25, 42)/(L.spills || 1); spawnSpill(); }
+  G.outT -= dt; if (G.outT <= 0){ G.outT = L.outage*rand(0.8, 1.2); breakRandomMachine(); }
+  updateMachines(dt);
+  // characters
+  if (!G.demo && !G.bot) updatePlayer(dt);
+  for (const s of staff){
+    if (s === player && !G.demo && !G.bot) continue;
+    aiUpdate(s, dt);
+    s.agent.carrying = !!s.hold;
+    s.agent.speed = s.baseSpeed*(onSpill(s) ? 0.55 : 1);
+    s.agent.step(dt);
+  }
+  for (const s of staff){
+    s.ch.carry.visible = false;
+    if (s.sprayT > 0){ s.sprayT -= dt; if (s.sprayT <= 0 && s.spray) s.spray.visible = false; }
+    if (s.hold) for (const m of s.hold.mesh.children) if (m.userData.steam !== undefined){ const k = (G.time*0.8 + m.userData.steam*0.33) % 1; m.position.y = 0.3 + k*0.3; m.material.opacity = 0.5*(1-k); }
+  }
   for (const c of customers.slice()) updateCustomer(c, dt);
-  updateRegister(dt);
-  updateGoals(dt);
-  // mess reduces reputation slowly
-  if (messes.length) addRating(-0.0015*Math.min(messes.length, 5)*dt);
-  // shelf tags
-  for (const sh of SHELVES){
-    if (sh.shown !== sh.stock){ sh.shown = sh.stock; sh.slots.forEach((s,i)=>{ s.visible = i < sh.stock; }); }
-    if (sh.stock === 0) sh.tag.text('缺貨！').icon(sh.icon).cls('empty', true);
-    else if (sh.stock <= Math.ceil(sh.max*0.34)) sh.tag.text(sh.stock + '/' + sh.max).icon('').cls('empty', false);
-    else sh.tag.text('').icon('').cls('empty', false);
-    if (sh.stock <= 2) tip('restock', '貨架快空了！先到倉庫「拿貨」格子拿箱子，再走到貨架前就會自動補滿。');
-  }
-  stockTag.icon(SHELVES.some(s=>s.stock <= Math.ceil(s.max*0.34)) && !player.carry ? '📦' : '').text('');
   // door
   let near = false;
   for (const c of customers) if (Math.abs(c.agent.pos.x-1.25) < 2 && Math.abs(c.agent.pos.z-7) < 1.8){ near = true; break; }
@@ -2791,51 +3152,52 @@ function simulate(dt){
   door.L.position.x = 0.625 - door.open*1.1; door.R.position.x = 1.875 + door.open*1.1;
   // staff tags
   for (const s of staff){
-    if (s === player){
-      s.tag.icon(s.carry ? '📦' : '').text('你').setBar(s.prog, '#34d6a6');
-    } else {
-      const r = ROLE[s.role];
-      s.tag.icon(s.greetT > 0 ? '👋' : r.icon).text('').setBar(s.prog, '#34d6a6');
-    }
+    const r = ROLE[s.role];
+    s.tag.icon(s.hold ? ITEMS[s.hold.type].ic : (r ? r.icon : '')).text(s === player && !G.demo ? '你' : '').setBar(s.prog, '#34d6a6');
   }
-  for (const m of messes) m.tag.setBar(m.prog > 0 ? m.prog : null, '#34d6a6');
+  for (const sp of spills) sp.tag.setBar(sp.prog > 0 ? sp.prog/1.2 : null, '#4da3ff');
+  if (!G.demo){
+    if (!L.endless && G.time >= L.len) endLevel();
+    else if (L.endless && G.fails >= MAX_FAILS_ENDLESS) endLevel();
+  }
+}
+function idleStep(dt){
+  for (const s of staff){ s.agent.carrying = !!s.hold; s.agent.step(dt); s.ch.carry.visible = false; }
+  for (const c of customers.slice()) updateCustomer(c, dt);
 }
 function placeTags(){
-  for (const sh of SHELVES) sh.tag.place(sh.tagPos.x, sh.tagPos.y, sh.tagPos.z);
-  regTag.place(6.5, 1.9, 3.3);
-  coffeeTag.place(9.6, 2.2, 1.5);
-  stockTag.place(8.75, 2.4, -6.1);
+  for (const sl of SLOTS) sl.tag.place(sl.band ? clamp(player.agent.pos.x, sl.band[0], sl.band[1]) : sl.x, sl.y + 0.75, sl.band ? sl.z : sl.z);
   for (const s of staff){ const p = s.agent.pos; s.tag.place(p.x, 2.15, p.z); }
   for (const c of customers){ const p = c.agent.pos; c.tag.place(p.x, 1.95*c.ch.g.scale.y/1.06, p.z); }
-  for (const m of messes) m.tag.place(m.x, 0.6, m.z);
+  for (const sp of spills) sp.tag.place(sp.x, 0.6, sp.z);
 }
 
-let last = performance.now();
+let last = performance.now(), clock = 0;
 function frame(now){
   requestAnimationFrame(frame);
   let dt = (now - last)/1000; last = now;
   if (dt > 0.1) dt = 0.1;
   if (dt <= 0) return;
-  if (G.state === 'play' || G.state === 'closing'){
-    // sub-step for stability on slow devices
+  clock += dt;
+  if (G.state === 'play'){
     const n = dt > 0.05 ? 2 : 1;
-    for (let i=0;i<n;i++) if (G.state === 'play' || G.state === 'closing') simulate(dt/n);
-    applyTimeOfDay(hourNow());
-  } else if (G.state === 'title'){
-    applyTimeOfDay(19.2);
-    // idle shoppers wander on the title screen for life
-    for (const c of customers.slice()) updateCustomer(c, dt);
-    G.spawnT -= dt; if (G.spawnT <= 0 && customers.length < 6){ G.spawnT = 3; spawnCustomer(); G.stats.customers = 0; }
-    reg.power = 0; coffee.power = 0;
-    for (const s of staff) if (s !== player) updateClone(s, dt);
-    G.cups = MAX_CUPS;
-    staffWork(player, 0); updateRegister(dt);
-    player.agent.step(dt);
+    for (let i=0;i<n;i++) if (G.state === 'play') simulate(dt/n);
+  } else if (G.state === 'title' || G.state === 'menu'){
+    simulate(dt);
+  } else if (G.state === 'countdown'){
+    countdownTick(dt); idleStep(dt);
+  } else if (G.state === 'ending'){
+    G.endT -= dt; idleStep(dt);
+    if (G.endT <= 0) showResults();
   }
-  const hideTags = G.state === 'title';
+  applyTimeOfDay(hourNow());
+  const hideTags = G.state === 'title' || G.state === 'menu';
   if (tagLayer._hidden !== hideTags){ tagLayer._hidden = hideTags; tagLayer.style.visibility = hideTags ? 'hidden' : ''; }
+  const showAct = isTouch && (G.state === 'play' || G.state === 'countdown');
+  if (hud.actions.hidden === showAct) hud.actions.hidden = !showAct;
   updateCamera(dt);
-  if (G.state !== 'title') placeTags();
+  updateHighlight(clock);
+  if (!hideTags){ updateSlotTags(); placeTags(); }
   updateDeviceUX(dt);
   updateHUD(dt); updateHint(dt);
   renderer.render(scene, camera);
@@ -2849,46 +3211,78 @@ function resize(){
 }
 addEventListener('resize', resize);
 addEventListener('orientationchange', () => setTimeout(resize, 200));
-document.addEventListener('visibilitychange', () => { if (document.hidden && (G.state === 'play' || G.state === 'closing')) openPanel('pause'); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && G.state === 'play') openPanel('pause'); });
 
 /* ---------------- buttons ---------------- */
-$('#btnTeam').onclick = () => { initAudio(); if (G.state === 'play' || G.state === 'closing') openPanel('team'); };
-$('#btnPause').onclick = () => { if (G.state === 'play' || G.state === 'closing') openPanel('pause'); };
-$('#btnTeamClose').onclick = closePanels;
+function switchChar(dir){
+  if (G.state !== 'play') return;
+  const list = staff.filter(s => s === owner || ROLE[s.role]);
+  if (list.length < 2){ toast('這關沒有帶分身', ''); return; }
+  const i = list.indexOf(player);
+  const nx = list[(i + (dir || 1) + list.length) % list.length];
+  if (player !== owner) aiReset(player);
+  player.pending = null;
+  aiReset(nx); nx.agent.path.length = 0; nx.prog = null;
+  player = nx;
+  SFX.pick(); haptic(10); squash(nx, 0.18);
+  floatText(nx.agent.pos.x, 2.5, nx.agent.pos.z, '換我！', 'txt');
+}
+function actGrab(){
+  if (G.state !== 'play') return;
+  const t = findTarget(player);
+  player.pending = null;
+  if (!t){ if (player.hold) nope(player, '這裡不能放東西'); return; }
+  if (grab(player, t)) haptic(8);
+}
+$('#btnTeam').onclick = () => { initAudio(); switchChar(1); };
+$('#btnPause').onclick = () => openPanel('pause');
 $('#btnResume').onclick = closePanels;
-$('#btnSound').onclick = () => { muted = !muted; syncAudioToggles(); save(); saveAudioSettings(); initAudio(); SFX.pick(); };
+$('#btnSound').onclick = () => { muted = !muted; syncAudioToggles(); saveProgress(); saveAudioSettings(); initAudio(); SFX.pick(); };
 $('#btnMusic').onclick = () => { musicOn = !musicOn; syncAudioToggles(); saveAudioSettings(); initAudio(); SFX.pick(); };
-$('#btnRestart').onclick = () => { $('#confirmBox').hidden = false; };
-$('#btnRestartNo').onclick = () => { $('#confirmBox').hidden = true; };
-$('#btnRestartYes').onclick = () => { try { localStorage.removeItem(SAVE_KEY); } catch(e){} startGame(null); };
-$('#btnOverRestart').onclick = () => startGame(null);
-$('#btnNew').onclick = () => startGame(null);
-$('#btnContinue').onclick = () => startGame(loadSave());
-for (const id of ['team','pause']) screens[id].addEventListener('pointerdown', e => { if (e.target === screens[id]) closePanels(); });
+$('#btnRestart').onclick = () => startLevel(G.lv, G.team);
+$('#btnQuit').onclick = () => { $('#hud').hidden = true; showLevels(); };
+$('#btnNew').onclick = () => { initAudio(); SFX.pick(); showLevels(); };
+$('#btnLvBack').onclick = () => { G.state = 'title'; showScreen('title'); };
+$('#btnGo').onclick = () => startLevel(prepLv, prepTeam);
+$('#btnPrepBack').onclick = () => showLevels();
+$('#btnRetry').onclick = () => startLevel(G.lv, G.team);
+$('#btnNextLv').onclick = () => { $('#hud').hidden = true; showPrep(G.lv + 1); };
+$('#btnMenu').onclick = () => { $('#hud').hidden = true; showLevels(); };
+screens.pause.addEventListener('pointerdown', e => { if (e.target === screens.pause) closePanels(); });
+// touch action buttons
+const bindHold = (el, down, up) => {
+  el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); initAudio(); el.classList.add('down'); try { el.setPointerCapture(e.pointerId); } catch(_){} down(); });
+  const end = e => { el.classList.remove('down'); if (up) up(); };
+  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('lostpointercapture', end);
+  el.addEventListener('contextmenu', e => e.preventDefault());
+};
+bindHold(hud.btnGrab, actGrab);
+bindHold(hud.btnUse, () => { touchUse = true; }, () => { touchUse = false; });
+bindHold(hud.btnSwap, () => switchChar(1));
 
 /* ---------------- boot ---------------- */
 function boot(hotData){
   const cr = $('#cloneRow');
   for (const r of ROLES){ const s = document.createElement('span'); s.style.background = r.css; s.textContent = r.icon + ' ' + r.name; cr.appendChild(s); }
-  if (!isTouch) $('#howMove').textContent = 'WASD／方向鍵走動，或用滑鼠點地板、貨架直接走過去。';
+  if (!isTouch) $('#howMove').textContent = 'WASD 走路，空白鍵拿起／放下，E 長按做動作，Q 換人。';
+  if (isTouch) document.body.classList.add('touch');
+  loadProgress();
   buildWorld();
+  buildKitchen();
   createPlayer();
   buildDeviceUX();
-  player.agent.pos.set(CASHIER_SPOT.x, 0, CASHIER_SPOT.z); player.agent.face(-Math.PI/2);
-  const saved = (hotData && hotData.day) ? hotData : loadSave();
-  if (saved && saved.day){
-    $('#btnContinue').hidden = false; $('#btnContinue').textContent = '繼續第 ' + saved.day + ' 天';
-    $('#btnContinue').onclick = () => startGame(saved);
-    $('#btnNew').textContent = '新的店（重新開始）';
-  }
-  if (saved && typeof saved.muted === 'boolean') muted = saved.muted;
+  setupWorld(0, ROLES.map(r => r.id), true);
   resize();
   requestAnimationFrame(t => { last = t; frame(t); });
-  if (hotData && hotData.day && hotData.inGame) startGame(hotData);
-  try { window.claude && window.claude.hot && window.claude.hot.snapshot && window.claude.hot.snapshot(() => Object.assign(getSaveData(), {inGame: G.state !== 'title' && G.state !== 'over'})); } catch(e){}
-  // expose a tiny debug/test hook
-  window.__cloneMart = {sim(secs){ const n = Math.round(secs*30); for (let i=0;i<n && (G.state==='play'||G.state==='closing');i++) simulate(1/30); return G.state; }, G, SHELVES, customers, queue, messes, staff, startGame, hire, endDay, spawnCustomer, spawnMess};
-  Object.assign(window.__cloneMart, {nextDay, upgrade, buyUpgrade, planDay, rentFor, STORE_UPG, DAY_EVENTS, cloneOf});
+  try { window.claude && window.claude.hot && window.claude.hot.snapshot && window.claude.hot.snapshot(() => getSaveData()); } catch(e){}
+  // test hook
+  window.__cloneMart = {
+    sim(secs){ const n = Math.round(secs*30); for (let i=0;i<n && G.state === 'play';i++) simulate(1/30); if (G.state === 'ending'){ G.endT = 0; showResults(); } return G.state; },
+    G, orders, SLOTS, SLOT, staff, customers, spills, LEVELS, RECIPES, ROLES, ITEMS,
+    startLevel, setupWorld, endLevel, showResults, showLevels, showPrep, spawnOrder, spawnSpill, ignite, breakRandomMachine, grab, useTick, findTarget, switchChar, actGrab,
+    get player(){ return player; }, get owner(){ return owner; }, ROLE,
+    botOwner(on){ G.bot = !!on; if (on){ ROLE.bot = {id:'bot', recipes:ALL_RECIPES.slice(), home:{x:4.2, z:2.4}, fixer:true}; owner.role = 'bot'; } else { owner.role = 'owner'; player = owner; } }, skipCountdown(){ if (G.state === 'countdown'){ G.cdT = 0; countdownTick(0); } },
+  };
 }
 function start(data){
   const fontsReady = (document.fonts && document.fonts.ready) ? Promise.race([document.fonts.ready, new Promise(r=>setTimeout(r,1500))]) : Promise.resolve();
