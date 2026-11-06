@@ -1,8 +1,9 @@
 // 分身 1：世界美術 —— 低多邊形粉彩小星球（地形、海洋、天空、燈光、道具、雲、彩蛋）
+// v3：日夜循環（天空、日月、星星、窗燈、螢火蟲、極光、流星）＋ 6 個金色橡實祕密點
 import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import {
-  BIOMES, PALETTE, PLANET_RADIUS, SEA_LEVEL, QUALITY, WORLD_SEED, START_BIOME,
+  BIOMES, PALETTE, PLANET_RADIUS, SEA_LEVEL, QUALITY, WORLD_SEED, START_BIOME, DAY_LENGTH, START_TIME_OF_DAY,
 } from './config.js';
 import { clamp, lerp, smoothstep, damp, mulberry32, noise3, fbm3, randomDirNear, tangentBasis } from './utils.js';
 
@@ -763,9 +764,86 @@ function platStack(r, h, gy, wl, k) {
   parts.push(part(new THREE.BoxGeometry(0.3, 0.5, 0.06), 0xf4f1e8, 0, -0.45, r * 1.0));
   return parts;
 }
+// ---- v3：祕密點用的平台 ----
+/** 風車頂的小瞭望台（浮空圓木台，+Z = 上來的方向，背面有欄杆與小旗） */
+function platDeck(r, h) {
+  const parts = [];
+  parts.push(cyl(r, r * 0.9, -h, 0, 12, 0xc98d55));
+  parts.push(cap(r, 12, 0xe2b077));
+  for (let i = -2; i <= 2; i++) parts.push(part(new THREE.BoxGeometry(r * 1.9 * Math.sqrt(1 - (i / 2.6) ** 2), 0.02, 0.05), 0xc48f58, 0, 0.012, i * r * 0.36));
+  parts.push(cyl(r * 1.03, r * 1.03, -0.13, -0.05, 12, 0x8a5a3c));
+  // 支柱：往下插進風車屋頂
+  parts.push(part(new THREE.CylinderGeometry(0.09, 0.12, 1.0, 6), 0x8a5a3c, 0, -h - 0.5, 0));
+  // 背面半圈欄杆
+  for (let i = 0; i < 5; i++) {
+    const a = Math.PI * (0.62 + i * 0.19);
+    parts.push(part(new THREE.BoxGeometry(0.07, 0.48, 0.07), 0xfff1dc, Math.sin(a) * r * 0.93, 0.24, Math.cos(a) * r * 0.93));
+  }
+  parts.push(cyl(r * 0.95, r * 0.95, 0.44, 0.5, 12, 0xe2574c, Math.PI * 0.62 - Math.PI / 2 + Math.PI, Math.PI * 0.76, true));
+  // 小旗
+  const fx = -r * 0.62, fz = -r * 0.62;
+  parts.push(part(new THREE.CylinderGeometry(0.035, 0.045, 1.5, 5), 0xfff1dc, fx, 0.75, fz));
+  parts.push(part(new THREE.IcosahedronGeometry(0.07, 0), 0xffd35a, fx, 1.52, fz));
+  parts.push(part(new THREE.ConeGeometry(0.22, 0.7, 3), 0xffd35a, fx + 0.35, 1.25, fz, 0, 0, -Math.PI / 2, 1, 1, 0.2));
+  return parts;
+}
+/** 樹屋旁的小木屋：樹幹 + 六角小屋 + 可以站的平屋頂（屋頂頂面在 y=0） */
+function platTreehut(r, h, gy) {
+  const parts = [];
+  const cabinB = -1.95, roofB = -0.34;
+  parts.push(cyl(0.5, 0.66, -h, cabinB + 0.05, 8, 0x8a5a3c));
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + 0.3;
+    parts.push(part(new THREE.BoxGeometry(0.12, h + cabinB - 0.2, 0.08), 0x6e4630, Math.sin(a) * 0.56, (cabinB - h) / 2 - 0.05, Math.cos(a) * 0.56, 0, a, 0));
+  }
+  // 小屋本體（六角、木板色）＋ 底板
+  parts.push(...stripes(r * 0.86, r * 0.86, cabinB, roofB, 6, 0xd9a066, 0xc98d55, 1));
+  parts.push(cyl(r * 0.98, r * 0.9, cabinB - 0.16, cabinB, 8, 0x9a6a44));
+  // 門（+Z）與窗（夜裡會亮）
+  parts.push(part(new THREE.BoxGeometry(0.34, 0.62, 0.06), 0x6e4630, 0, cabinB + 0.35, r * 0.76));
+  parts.push(part(new THREE.BoxGeometry(0.34, 0.34, 0.06), 0xffe08a, r * 0.62, cabinB + 0.9, r * 0.4, 0, Math.PI / 3, 0));
+  parts.push(part(new THREE.BoxGeometry(0.34, 0.34, 0.06), 0xffe08a, -r * 0.62, cabinB + 0.9, -r * 0.4, 0, Math.PI / 3 + Math.PI, 0));
+  // 平屋頂：葉子鋪的頂面 + 木框
+  parts.push(cyl(r * 1.04, r * 0.96, roofB, -0.06, 8, 0x8a5a3c));
+  parts.push(cyl(r, r * 1.04, -0.06, 0, 8, 0x6cbf58));
+  parts.push(cap(r * 0.96, 8, 0x7cc95a));
+  const leaf = [0x5fae4e, 0x6cbf58, 0x4f9e48];
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + 0.2;
+    parts.push(part(new THREE.IcosahedronGeometry(0.3, 0), leaf[i % 3], Math.sin(a) * r, -0.2, Math.cos(a) * r, 0, a, 0, 1, 0.6, 1));
+  }
+  // 小煙囪（在邊緣）
+  parts.push(part(new THREE.BoxGeometry(0.16, 0.36, 0.16), 0xc96f5a, -r * 0.72, 0.1, -r * 0.3));
+  // 樹幹下的葉裙與樹根
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    parts.push(part(new THREE.IcosahedronGeometry(0.42, 0), leaf[i % 3], Math.sin(a) * r * 0.75, cabinB - 0.35, Math.cos(a) * r * 0.75, 0, a, 0, 1, 0.7, 1));
+  }
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + 0.5;
+    parts.push(part(new THREE.IcosahedronGeometry(0.34, 0), 0x7a4e33, Math.sin(a) * 0.68, gy + 0.05, Math.cos(a) * 0.68, 0, a, 0, 1, 0.5, 1.6));
+  }
+  return parts;
+}
+/** 冰晶城堡頂：冰柱 + 往外斜的冰晶冠 */
+function platIceCrown(r, h, gy, k) {
+  const parts = platIce(r, h, gy, k);
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2 + 0.2;
+    const s = 0.8 + (i % 3) * 0.25;
+    const g = prep(new THREE.ConeGeometry(0.13 * s, 0.75 * s, 5), i % 2 ? [0xbfe9fb, 1.3] : [0xe8fbff, 1.3]);
+    g.translate(0, 0.3 * s, 0).rotateX(0.5).rotateY(a).translate(Math.sin(a) * r * 1.02, -0.1, Math.cos(a) * r * 1.02);
+    parts.push(g);
+  }
+  return parts;
+}
+
 function platParts(p, gy, wl) {
   const h = p.top - p.bottom, r = p.radius, k = p.index * 0.37;
   switch (p.kind) {
+    case 'deck': return platDeck(r, h);
+    case 'treehut': return platTreehut(r, h, gy);
+    case 'icecrown': return platIceCrown(r, h, gy, p.index);
     case 'hay': return platHay(r, h, gy, p.index);
     case 'barrel': return platBarrel(r, h, gy);
     case 'tower': return platTower(r, h, gy);

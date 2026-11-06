@@ -1,7 +1,7 @@
 // 雷達小地圖（分身 3，v2）：右上角的圓形小地圖，以玩家為中心、鏡頭朝向為上（沒有固定北方）。
 // 合約：createRadar({ root }) → { update(nav, player, camera), setVisible(bool) }
 //  - nav.radar：Array<{ position: Vector3, kind }> | null（null → 隱藏）
-//  - kind: 'crystal' | 'seed' | 'plot' | 'npc' | 'quest'
+//  - kind: 'crystal' | 'seed' | 'plot' | 'npc' | 'quest'；v3：'trial'（時光晶石，金色、較大、脈動）、'acorn'（金色橡實）
 // 投影：點的方向投影到玩家切平面得到方位，距離用球面弧長（RADAR_RANGE 對應到半徑），
 // 超出範圍的點貼在外圈畫成小箭頭。2D canvas 繪製，最多約 20 fps，不在每幀配置物件。
 import * as THREE from 'three';
@@ -21,13 +21,20 @@ const COLORS = {
   npcEdge: '#5d6a85',
   quest: '#ffc93c',
   questEdge: '#d18a00',
+  trial: '#ffd23f',
+  trialHi: '#fff3b0',
+  trialEdge: '#b87800',
+  trialGlow: '#ffc21a',
+  acorn: '#f2b632',
+  acornEdge: '#9a6410',
+  acornCap: '#a8702a',
   player: '#ff8a5c',
   playerEdge: '#ffffff',
   ring: 'rgba(59, 120, 190, 0.18)',
   tick: 'rgba(59, 120, 190, 0.22)',
 };
 // 畫的順序（後畫的在上面）
-const KIND_ORDER = { plot: 0, seed: 1, npc: 2, crystal: 3, quest: 4 };
+const KIND_ORDER = { plot: 0, seed: 1, npc: 2, crystal: 3, acorn: 4, quest: 5, trial: 6 };
 
 export function createRadar({ root } = {}) {
   const host = root || document.body;
@@ -57,7 +64,7 @@ export function createRadar({ root } = {}) {
   let cap = 0;
   let px = new Float32Array(0), py = new Float32Array(0), pOut = new Uint8Array(0), pKind = new Uint8Array(0);
   let order = new Uint16Array(0);
-  const KINDS = ['plot', 'seed', 'npc', 'crystal', 'quest'];
+  const KINDS = ['plot', 'seed', 'npc', 'crystal', 'acorn', 'quest', 'trial'];
   function kindIndex(k) {
     const i = KIND_ORDER[k];
     return i === undefined ? 2 : i;
@@ -234,7 +241,55 @@ export function createRadar({ root } = {}) {
     ctx.fillStyle = color; ctx.fill();
     ctx.lineWidth = 1.2; ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.stroke();
   }
-  const KIND_RIM_COLOR = [COLORS.plot, COLORS.seedEdge, COLORS.npcEdge, COLORS.crystalEdge, COLORS.questEdge];
+  const KIND_RIM_COLOR = [COLORS.plot, COLORS.seedEdge, COLORS.npcEdge, COLORS.crystalEdge, COLORS.acornEdge, COLORS.questEdge, COLORS.trialEdge];
+  const KIND_RIM_SIZE = [4.2, 4.2, 4.2, 4.2, 4.2, 5, 5.4];
+  const K_TRIAL = KINDS.indexOf('trial');
+
+  /** 時光晶石：金色菱形 + 脈動光暈 */
+  function trialGem(x, y, s, pulse) {
+    ctx.beginPath();
+    ctx.arc(x, y, s * (1.65 + pulse * 0.45), 0, Math.PI * 2);
+    ctx.globalAlpha = 0.16 + 0.26 * (1 - pulse);
+    ctx.fillStyle = COLORS.trialGlow;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    const k = 1 + pulse * 0.12;
+    diamond(x, y, s * k, COLORS.trial, COLORS.trialEdge);
+    // 左側暗面讓它有立體感
+    ctx.beginPath();
+    ctx.moveTo(x, y + s * k * 1.25);
+    ctx.lineTo(x - s * k * 0.85, y);
+    ctx.lineTo(x, y + s * k * 0.15);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(184, 120, 0, 0.35)';
+    ctx.fill();
+  }
+  /** 金色橡實：殼斗 + 果實 + 小梗 */
+  function acorn(x, y, s) {
+    // 果實
+    ctx.beginPath();
+    ctx.moveTo(x - s * 0.82, y - s * 0.15);
+    ctx.quadraticCurveTo(x - s * 0.85, y + s * 0.85, x, y + s * 1.25);
+    ctx.quadraticCurveTo(x + s * 0.85, y + s * 0.85, x + s * 0.82, y - s * 0.15);
+    ctx.closePath();
+    ctx.fillStyle = COLORS.acorn; ctx.fill();
+    ctx.lineWidth = 1.1; ctx.strokeStyle = COLORS.acornEdge; ctx.stroke();
+    // 殼斗
+    ctx.beginPath();
+    ctx.moveTo(x - s * 1.0, y - s * 0.1);
+    ctx.quadraticCurveTo(x, y - s * 1.25, x + s * 1.0, y - s * 0.1);
+    ctx.closePath();
+    ctx.fillStyle = COLORS.acornCap; ctx.fill();
+    ctx.stroke();
+    // 梗
+    ctx.beginPath();
+    ctx.moveTo(x, y - s * 0.7); ctx.lineTo(x + s * 0.25, y - s * 1.2);
+    ctx.lineWidth = 1.3; ctx.strokeStyle = COLORS.acornEdge; ctx.stroke();
+    // 高光
+    ctx.beginPath();
+    ctx.ellipse(x - s * 0.32, y + s * 0.35, s * 0.16, s * 0.3, 0.3, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'; ctx.fill();
+  }
 
   function draw(count, now) {
     const S = cssSize;
@@ -286,13 +341,15 @@ export function createRadar({ root } = {}) {
         const l = Math.hypot(px[i], py[i]) || 1;
         const ux = px[i] / l, uy = py[i] / l;
         const rr = c - RIM_PAD * 0.55;
-        chevron(c + ux * rr, c + uy * rr, ux, uy, (k === 4 ? 5 : 4.2) * unit, KIND_RIM_COLOR[k]);
+        chevron(c + ux * rr, c + uy * rr, ux, uy, KIND_RIM_SIZE[k] * (k === K_TRIAL ? 1 + pulse * 0.15 : 1) * unit, KIND_RIM_COLOR[k]);
         continue;
       }
       switch (KINDS[k]) {
         case 'crystal': diamond(x, y, 4.4 * unit, COLORS.crystal, COLORS.crystalEdge); break;
         case 'seed': dot(x, y, 3.4 * unit, COLORS.seed, COLORS.seedEdge); break;
         case 'plot': ring(x, y, 3.8 * unit, COLORS.plot); break;
+        case 'trial': trialGem(x, y, 5.2 * unit, pulse); break;
+        case 'acorn': acorn(x, y, 3.6 * unit); break;
         case 'quest': {
           const r = (5.6 + pulse * 1.6) * unit;
           ctx.beginPath();

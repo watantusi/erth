@@ -1,11 +1,13 @@
 // 分身 4：玩法（知識晶石、幼苗種子、荒地種樹、NPC「嗶嗶」、教學、勝利、存檔）
 // v2：平台挑戰頂端的晶石、指南針等級（地圖碎片）、嗶嗶訊號、任務居民（quests.js）
+// v3：知識測驗、裝扮（cosmetics.js）、金色橡實、計時挑戰（timetrial.js）
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   BIOMES, WORLD_SEED, PICKUP_RADIUS, PALETTE, START_BIOME, SEA_LEVEL,
   CRYSTALS_PER_BIOME, SEEDLING_PLOTS,
   PING_DURATION, PING_COOLDOWN, COMPASS_LEVELS, RADAR_RANGE, TOTAL_QUESTS,
+  TRIAL_MEDALS,
 } from './config.js';
 import {
   mulberry32, randomDirNear, angleBetweenDirs, getBiomeById, biomeCenters,
@@ -14,8 +16,12 @@ import {
 import {
   FACTS, factsForBiome, NPC_LINES, NPC_EMOTE_REPLIES, NPC_DEFAULT_REPLIES,
   NPC_IDLE_EMOTES, TUTORIAL, MESSAGES, VICTORY, FRAGMENT_TEXTS, fragmentTitle,
+  quizForFact, V3_MESSAGES, fragmentBonusText,
 } from './content.js';
 import { createQuests } from './quests.js';
+import { createItem } from './characters.js';
+import { createTimeTrial } from './timetrial.js';
+import { createCosmetics, ACORN_BIOMES, MEDAL_RANK, unlockReason } from './cosmetics.js';
 
 const TOTAL_CRYSTALS = BIOMES.length * CRYSTALS_PER_BIOME;
 const TOTAL_TREES = SEEDLING_PLOTS;
@@ -274,6 +280,57 @@ function buildGeometries() {
   G.shadow.rotateX(-Math.PI / 2);
   return G;
 }
+
+// ---- v3：金色橡實的備用模型與光暈貼圖（characters.js 沒有 goldenAcorn 時才用備用模型） ----
+let ACORN_FB = null;
+function fallbackAcorn() {
+  if (!ACORN_FB) {
+    const cap = new THREE.SphereGeometry(0.27, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+    ACORN_FB = {
+      geo: merged([
+        part(new THREE.SphereGeometry(0.22, 10, 8), 0xffc93c, mtx(0, 0.24, 0, 1, 1.18, 1)),
+        part(new THREE.ConeGeometry(0.08, 0.12, 8), 0xffc93c, mtx(0, 0.02, 0, 1, 1, 1, Math.PI)),
+        part(cap, 0xc98a2e, mtx(0, 0.34, 0, 1, 0.75, 1)),
+        part(new THREE.CylinderGeometry(0.03, 0.04, 0.14, 6), 0x8a5a24, mtx(0.02, 0.58, 0, 1, 1, 1, 0, 0, -0.3)),
+      ]),
+      mat: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x7a5200 }),
+    };
+  }
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(ACORN_FB.geo, ACORN_FB.mat));
+  return g;
+}
+function makeAcornObject() {
+  try {
+    const o = createItem('goldenAcorn');
+    if (o && o.isObject3D && o.children.length > 0) return o;
+  } catch (e) { console.warn('[gameplay] createItem(goldenAcorn) 失敗，改用備用模型', e); }
+  return fallbackAcorn();
+}
+let GLOW_TEX = null;
+function glowTexture() {
+  if (GLOW_TEX) return GLOW_TEX;
+  const S = 64;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const ctx = cv.getContext('2d');
+  const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.25, 'rgba(255,240,180,0.6)');
+  g.addColorStop(1, 'rgba(255,220,120,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, S, S);
+  GLOW_TEX = new THREE.CanvasTexture(cv);
+  GLOW_TEX.colorSpace = THREE.SRGBColorSpace;
+  return GLOW_TEX;
+}
+const MEDAL_ORDER = ['gold', 'silver', 'bronze'];
+function medalForTime(sec) {
+  if (!Number.isFinite(sec) || sec <= 0) return null;
+  for (const m of MEDAL_ORDER) if (TRIAL_MEDALS && sec < TRIAL_MEDALS[m]) return m;
+  return null;
+}
+const medalRank = (m) => (m && MEDAL_RANK[m]) || 0;
 
 // ======================================================================
 export function createGameplay({ scene, world, player, ui, audio, effects }) {
@@ -775,7 +832,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
 
       // v2：指南針 Lv0/Lv1 時，靠近嗶嗶會得到一段「訊號」
       npc.pingCd = Math.max(0, npc.pingCd - dt);
-      if (near && npc.pingCd <= 0 && navLevel() < 2 && countCrystals() < crystals.length) {
+      if (near && !inTrial && npc.pingCd <= 0 && navLevel() < 2 && countCrystals() < crystals.length) {
         npc.pingCd = PING_COOLDOWN;
         state.ping = PING_DURATION;
         toast(MESSAGES.ping, 3000);
@@ -791,7 +848,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       // 提示
       npc.hintCooldown -= dt;
       // 全域節流（教學中、別隻剛說過話）時先不標記，等可以說話時再說
-      const gateOpen = npcHintGate <= 0 && state.timeSec >= tutorialUntil;
+      const gateOpen = npcHintGate <= 0 && state.timeSec >= tutorialUntil && !inTrial;
       if (near && !npc.wasNear && gateOpen) {
         if (npc.hintCooldown <= 0) {
           npcHint(npc);
@@ -983,6 +1040,215 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
 
   const countCrystals = () => { let n = 0; for (const c of crystals) if (c.collected) n++; return n; };
   const countTrees = () => { let n = 0; for (const p of plots) if (p.planted) n++; return n; };
+
+  // ==================================================================
+  // v3：知識測驗（⭐ = 答對的題數）
+  // ==================================================================
+  const quiz = Object.create(null); // factId → 'correct' | 'wrong'
+  const TOTAL_STARS = crystals.filter((c) => quizForFact(c.fact.id)).length || crystals.length;
+  const countStars = () => { let n = 0; for (const c of crystals) if (quiz[c.fact.id] === 'correct') n++; return n; };
+  const isThenable = (p) => !!p && typeof p.then === 'function';
+  // 知識卡 → 測驗的流程進行中時，gameplay.update 先不跑（計時器、撿取暫停），確保勝利/碎片彈窗排在測驗之後
+  let flowBusy = 0, flowToken = 0, flowIdle = 0, retryBusy = false;
+
+  // ==================================================================
+  // v3：裝扮
+  // ==================================================================
+  const cosmetics = createCosmetics({ player, audio });
+  const pendingUnlocks = []; // 等遊戲恢復（沒有彈窗、不在計時挑戰中）時再彈出的解鎖通知
+  let bestMedal = null;
+
+  // ==================================================================
+  // v3：計時挑戰（timetrial.js，分身 3）
+  // ==================================================================
+  let trial = null;
+  let trialSaveCache = null; // 沒有 timetrial 模組時，保留存檔裡的資料不遺失
+  try {
+    trial = createTimeTrial({ scene, world, player, ui, audio, effects }) || null;
+  } catch (e) { console.warn('[gameplay] 計時挑戰建立失敗，停用', e); trial = null; }
+  if (trial) trial.onFinish = (r) => onTrialFinish(r);
+  const trialActive = () => !!(trial && trial.active);
+  let inTrial = false; // 每幀更新一次的快取
+  function trialBest() {
+    if (!trial || typeof trial.getBest !== 'function') return null;
+    let b = null;
+    try { b = trial.getBest(); } catch { b = null; }
+    if (b && typeof b === 'object') b = b.time;
+    b = Number(b);
+    return Number.isFinite(b) && b > 0 ? b : null;
+  }
+  function currentMedal() {
+    let fromBest = medalForTime(trialBest());
+    if (trial && typeof trial.getBestMedal === 'function') {
+      let m = null;
+      try { m = trial.getBestMedal(); } catch { m = null; }
+      if (medalRank(m) > medalRank(fromBest)) fromBest = m;
+    }
+    return medalRank(fromBest) > medalRank(bestMedal) ? fromBest : bestMedal;
+  }
+  function onTrialFinish(r) {
+    const m = r && typeof r === 'object' ? r.medal : null;
+    if (medalRank(m) > medalRank(bestMedal)) bestMedal = m;
+    const tm = r && Number(r.time);
+    const mt = medalForTime(tm);
+    if (medalRank(mt) > medalRank(bestMedal)) bestMedal = mt;
+    checkUnlocks();
+    // timetrial 在結果視窗關閉後才呼叫 onFinish（選「再挑戰」會緊接著開始倒數）：
+    // 這時馬上彈出解鎖通知，倒數會排在通知之後
+    if (!trialActive() && flowBusy === 0) flushUnlocks();
+  }
+
+  // ==================================================================
+  // v3：金色橡實（world.secretSpots；沒有就整個功能跳過）
+  // ==================================================================
+  const ACORN_HOVER = 0.7;
+  const ACORN_PICK_R2 = (PICKUP_RADIUS + 0.1) * (PICKUP_RADIUS + 0.1);
+  const ACORN_CULL2 = 55 * 55;
+  const ACORN_SPARKLE2 = 22 * 22;
+  const ACORN_RADAR_R2 = 12 * 12;
+  const ACORN_COLOR = 0xffd84a;
+  const acorns = [];
+  {
+    const spots = Array.isArray(world.secretSpots) ? world.secretSpots : [];
+    const used = new Set();
+    spots.forEach((spot, i) => {
+      if (!spot) return;
+      const base = toPoint(spot.position);
+      if (!base) return;
+      let key = typeof spot.biome === 'string' && ACORN_BIOMES.includes(spot.biome) && !used.has(spot.biome) ? spot.biome : null;
+      if (!key) key = ACORN_BIOMES.find((b) => !used.has(b)) || 'extra-' + i;
+      used.add(key);
+      const dir = base.clone().normalize();
+      let biome = getBiomeById(spot.biome) || null;
+      if (!biome) { try { biome = world.getBiome(dir); } catch { biome = null; } }
+      const obj = makeAcornObject();
+      obj.visible = false;
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: glowTexture(), color: 0xffd75a, transparent: true, opacity: 0,
+        blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+      }));
+      glow.scale.setScalar(1.3);
+      glow.visible = false;
+      glow.renderOrder = 4;
+      root.add(obj, glow);
+      const a = {
+        id: spot.id !== undefined && spot.id !== null ? String(spot.id) : 'acorn-' + i,
+        index: i, key, biome, dir, base, baseR: base.length(),
+        nightOnly: !!spot.nightOnly, hint: typeof spot.hint === 'string' ? spot.hint : '',
+        pos: new THREE.Vector3().copy(dir).multiplyScalar(base.length() + ACORN_HOVER),
+        check: new THREE.Vector3().copy(dir).multiplyScalar(base.length() + 0.45),
+        baseQuat: new THREE.Quaternion().setFromUnitVectors(Y_AXIS, dir),
+        found: false, anim: -1, fade: spot.nightOnly ? 0 : 1, spin: rng() * Math.PI * 2,
+        phase: rng() * Math.PI * 2, sparkleT: rng(), nightToasted: false,
+        obj, glow, radar: null,
+      };
+      a.radar = { position: a.pos, kind: 'acorn' };
+      acorns.push(a);
+    });
+  }
+  const countAcorns = () => { let n = 0; for (const a of acorns) if (a.found) n++; return n; };
+  function foundAcornKeys() {
+    const set = new Set();
+    for (const a of acorns) if (a.found) set.add(a.key);
+    return set;
+  }
+  function nightNow() {
+    if (typeof world.isNight !== 'function') return true; // 沒有日夜循環：夜晚限定的橡實一直出現
+    try { return !!world.isNight(); } catch { return true; }
+  }
+  function placeAcorn(a, scale, lift) {
+    _q.setFromAxisAngle(Y_AXIS, a.spin);
+    a.obj.quaternion.copy(a.baseQuat).multiply(_q);
+    a.obj.position.copy(a.pos).addScaledVector(a.dir, lift);
+    a.obj.scale.setScalar(Math.max(1e-3, scale));
+    a.glow.position.copy(a.obj.position).addScaledVector(a.dir, 0.3 * scale);
+  }
+  function updateAcorns(dt, t, allowCollect) {
+    if (!acorns.length) return;
+    const pp = player.position;
+    const night = nightNow();
+    for (const a of acorns) {
+      if (a.found) {
+        if (a.anim < 0) continue;
+        a.anim += dt / 0.6;
+        if (a.anim >= 1) { a.anim = -1; a.obj.visible = false; a.glow.visible = false; continue; }
+        a.spin += dt * 14;
+        const k = a.anim;
+        placeAcorn(a, (1 + Math.sin(k * Math.PI) * 0.5) * (1 - k * k), k * 1.4);
+        a.glow.material.opacity = 0.8 * (1 - k);
+        continue;
+      }
+      const want = a.nightOnly && !night ? 0 : 1;
+      const prevFade = a.fade;
+      if (a.fade !== want) a.fade = want > a.fade ? Math.min(want, a.fade + dt / 1.4) : Math.max(want, a.fade - dt / 1.4);
+      const d2 = a.base.distanceToSquared(pp);
+      if (a.nightOnly && prevFade < 0.5 && a.fade >= 0.5 && !a.nightToasted && d2 < 60 * 60 && !inTrial) {
+        a.nightToasted = true;
+        toast(V3_MESSAGES.acornNight, 3000);
+      }
+      if (a.nightOnly && want === 0) a.nightToasted = false;
+      const vis = a.fade > 0.01 && d2 < ACORN_CULL2;
+      if (a.obj.visible !== vis) { a.obj.visible = vis; a.glow.visible = vis; }
+      if (!vis) continue;
+      a.spin += dt * 1.8;
+      a.pos.copy(a.dir).multiplyScalar(a.baseR + ACORN_HOVER + Math.sin(t * 2.1 + a.phase) * 0.12);
+      const f = a.fade * a.fade * (3 - 2 * a.fade);
+      placeAcorn(a, f, 0);
+      a.glow.material.opacity = (0.4 + Math.sin(t * 3 + a.phase) * 0.12) * f;
+      if (d2 < ACORN_SPARKLE2) {
+        a.sparkleT -= dt;
+        if (a.sparkleT <= 0) {
+          a.sparkleT = 0.7 + Math.random() * 0.6;
+          if (f > 0.5) safe(() => effects.burst(a.pos, ACORN_COLOR, 3));
+        }
+      }
+      if (allowCollect && a.fade > 0.6 && a.check.distanceToSquared(pp) < ACORN_PICK_R2) collectAcorn(a);
+    }
+  }
+  function collectAcorn(a) {
+    a.found = true;
+    a.anim = 0;
+    play('acorn');
+    safe(() => effects.burst(a.pos, ACORN_COLOR, 30));
+    safe(() => effects.ring(a.base, a.dir, ACORN_COLOR));
+    const n = countAcorns();
+    toast(V3_MESSAGES.acornFound(n, acorns.length), 2600);
+    if (n === acorns.length) schedule(2.8, () => toast(V3_MESSAGES.acornAll, 3000));
+    checkUnlocks();
+  }
+  function setAcornsStatic() {
+    for (const a of acorns) {
+      a.anim = -1;
+      a.fade = a.nightOnly && !nightNow() ? 0 : 1;
+      a.nightToasted = false;
+      a.obj.visible = false;
+      a.glow.visible = false;
+    }
+  }
+
+  // ---- 解鎖檢查 ----
+  function unlockCtx() {
+    return {
+      stars: countStars(), fragments: state.fragments, acorns: foundAcornKeys(),
+      medal: currentMedal(), victory: !!state.victoryShown,
+    };
+  }
+  /** 檢查並解鎖；silent = 不彈通知（讀檔用）。回傳新解鎖的物品 */
+  function checkUnlocks(silent = false) {
+    const fresh = cosmetics.check(unlockCtx());
+    if (!silent) for (const it of fresh) pendingUnlocks.push(it);
+    return fresh;
+  }
+  function flushUnlocks() {
+    while (pendingUnlocks.length) {
+      const it = pendingUnlocks.shift();
+      const text = `${unlockReason(it)}${V3_MESSAGES.unlockText}`;
+      play('unlock');
+      if (ui && typeof ui.showUnlock === 'function') safe(() => ui.showUnlock({ icon: it.icon, name: it.name, text }));
+      else toast(`🎒 解鎖新裝扮：${it.icon} ${it.name}！`, 3000);
+    }
+  }
+
   function getProgress() {
     const c = countCrystals(), tr = countTrees(), q = countQuests();
     return {
@@ -990,6 +1256,8 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       trees: tr, totalTrees: plots.length,
       quests: q, totalQuests: TOTAL_Q,
       fragments: state.fragments,
+      stars: countStars(), totalStars: TOTAL_STARS,
+      acorns: countAcorns(), totalAcorns: acorns.length,
       done: c >= crystals.length && tr >= plots.length && q >= TOTAL_Q,
     };
   }
@@ -1009,12 +1277,72 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     safe(() => effects.burst(c.pos, PALETTE.crystal, 32));
     safe(() => effects.ring(c.ground, c.dir, PALETTE.crystal));
     play('collect');
-    const fact = c.fact;
-    const biomeName = c.biome.name;
-    schedule(0.35, () => safe(() => ui.showFact({ icon: fact.icon, title: fact.title, text: fact.text, biomeName })));
+    schedule(0.35, () => { runFactFlow(c); });
     const p = pushProgress();
     afterProgress(p, 'crystal');
   }
+  // v3：知識卡 → 測驗
+  async function runFactFlow(c) {
+    const token = flowToken;
+    flowBusy++;
+    flowIdle = 0;
+    try {
+      const fact = c.fact;
+      let r;
+      try { r = ui.showFact({ icon: fact.icon, title: fact.title, text: fact.text, biomeName: c.biome.name }); } catch (e) { console.warn('[gameplay]', e); }
+      if (isThenable(r)) { try { await r; } catch { /* 忽略 */ } }
+      if (token !== flowToken) return;
+      await askQuiz(c.fact, token, false);
+    } catch (e) {
+      console.warn('[gameplay] 知識卡流程錯誤', e);
+    } finally {
+      if (token === flowToken) flowBusy = Math.max(0, flowBusy - 1);
+    }
+  }
+  /** 出題；回傳 { correct, choice } 或 null（沒有測驗介面、沒作答） */
+  async function askQuiz(fact, token, isRetry) {
+    const q = quizForFact(fact.id);
+    if (!q || !ui || typeof ui.showQuiz !== 'function') return null;
+    let res;
+    try {
+      res = ui.showQuiz({ icon: fact.icon, question: q.question, choices: q.choices.slice(), answer: q.answer, explain: q.explain });
+    } catch (e) { console.warn('[gameplay] showQuiz 失敗', e); return null; }
+    if (isThenable(res)) { try { res = await res; } catch { res = null; } }
+    if (token !== flowToken) return null;
+    if (!res || typeof res !== 'object') return null; // 沒作答（例如彈窗被清掉）
+    const choice = Number.isInteger(res.choice) ? res.choice : -1;
+    const correct = typeof res.correct === 'boolean' ? res.correct : choice === q.answer;
+    const prev = quiz[fact.id];
+    if (correct) {
+      quiz[fact.id] = 'correct';
+      play('correct');
+      if (prev !== 'correct') {
+        toast(V3_MESSAGES.quizCorrect(countStars(), TOTAL_STARS), 2400);
+        checkUnlocks();
+        pushProgress();
+      }
+    } else {
+      if (prev !== 'correct') quiz[fact.id] = 'wrong';
+      play('wrong');
+      if (!isRetry && prev === undefined) toast(V3_MESSAGES.quizWrong, 2800);
+    }
+    return { correct, choice };
+  }
+  function retryQuiz(id) {
+    const c = crystals.find((x) => x.fact.id === id || x.id === id);
+    if (!c || !c.collected || quiz[c.fact.id] === 'correct' || retryBusy) return Promise.resolve(null);
+    retryBusy = true;
+    const token = flowToken;
+    flowBusy++;
+    flowIdle = 0;
+    return askQuiz(c.fact, token, true)
+      .catch((e) => { console.warn('[gameplay] 重答失敗', e); return null; })
+      .finally(() => {
+        retryBusy = false;
+        if (token === flowToken) flowBusy = Math.max(0, flowBusy - 1);
+      });
+  }
+
   function pickSeed(s) {
     s.picked = true;
     state.seedsCarried++;
@@ -1054,9 +1382,17 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     const n = state.fragments;
     const level = navLevel();
     const prog = pushProgress();
+    // v3：第 4/5/6 片碎片 → 裝扮驚喜（碎片彈窗就是解鎖通知，不另外彈 showUnlock）
+    const fresh = checkUnlocks(true);
+    const bonus = fresh.filter((it) => it.rule.type === 'fragments');
+    for (const it of fresh) if (it.rule.type !== 'fragments') pendingUnlocks.push(it);
     schedule(1.0, () => {
       play('fragment');
-      const ft = FRAGMENT_TEXTS[n <= 3 ? n : FRAGMENT_TEXTS.length - 1] || FRAGMENT_TEXTS[0];
+      let ft = FRAGMENT_TEXTS[n <= 3 ? n : FRAGMENT_TEXTS.length - 1] || FRAGMENT_TEXTS[0];
+      if (n > 3) {
+        ft = fragmentBonusText(bonus[0] || null);
+        if (bonus.length) setTimeout(() => play('unlock'), 450);
+      }
       if (ui && typeof ui.showFragment === 'function') {
         safe(() => ui.showFragment({ fragments: n, level, title: ft.title, text: ft.text }));
       } else {
@@ -1101,6 +1437,8 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
         state.victoryShown = true;
         const p = getProgress();
         safe(() => ui.showVictory({ timeSec: Math.round(state.timeSec), crystals: p.crystals, trees: p.trees, quests: p.quests }));
+        // v3：皇冠（通知等勝利畫面關閉、遊戲恢復後才彈出；選「重新開始」則會被 reset 清掉）
+        checkUnlocks();
       });
     });
   }
@@ -1129,8 +1467,19 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
   const R2 = PICKUP_RADIUS * PICKUP_RADIUS;
   function update(dt, t) {
     if (!(dt > 0)) dt = 0;
+    // v3：知識卡 → 測驗流程還沒結束（兩個彈窗之間的空檔）時先暫停，讓後續彈窗排在測驗之後
+    if (flowBusy > 0) {
+      flowIdle += dt;
+      if (flowIdle < 3) return;
+      flowBusy = 0; flowToken++; retryBusy = false; // 防呆：介面沒有回應
+    }
+    flowIdle = 0;
     state.timeSec += dt;
     if (tutorialPending) { tutorialPending = false; runTutorial(); }
+    inTrial = trialActive();
+    if (quests.setPaused) quests.setPaused(inTrial);
+    if (trial) safe(() => trial.update(dt, t));
+    inTrial = trialActive();
 
     // 計時器
     for (let i = timers.length - 1; i >= 0; i--) {
@@ -1189,9 +1538,10 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       // 整合者：靠近時光柱淡出，避免近距離刺眼（遠處仍是醒目的指標）
       const dSq = c.check.distanceToSquared(ppos);
       const near = Math.min(1, Math.max(0, (Math.sqrt(dSq) - 3) / 13));
-      const k = 0.12 + 0.88 * near * near * (3 - 2 * near);
+      let k = 0.12 + 0.88 * near * near * (3 - 2 * near);
+      if (inTrial) k *= 0.2; // v3：計時挑戰中一般晶石的光柱變暗、不能撿
       beamMesh.setColorAt(i, _col.setRGB(k, k, k));
-      if (dSq < R2) collectCrystal(c);
+      if (dSq < R2 && !inTrial) collectCrystal(c);
     }
     if (beamMesh.instanceColor) beamMesh.instanceColor.needsUpdate = true;
     gemMesh.instanceMatrix.needsUpdate = true;
@@ -1208,12 +1558,12 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       _q2.copy(s.baseQuat).multiply(_q);
       _m.compose(_v, _q2, _s.set(1.35, 1.35, 1.35));
       seedMesh.setMatrixAt(s.index, _m);
-      if (_v2.copy(s.dir).multiplyScalar(s.gr).distanceToSquared(ppos) < R2) pickSeed(s);
+      if (!inTrial && _v2.copy(s.dir).multiplyScalar(s.gr).distanceToSquared(ppos) < R2) pickSeed(s);
     }
     seedMesh.instanceMatrix.needsUpdate = true;
 
     // ---- 荒地與小樹 ----
-    M.plotRing.opacity = state.seedsCarried > 0 ? 0.6 : 0.22;
+    M.plotRing.opacity = inTrial ? 0.1 : state.seedsCarried > 0 ? 0.6 : 0.22;
     let treesDirty = false;
     for (const p of plots) {
       if (p.planted) {
@@ -1228,7 +1578,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       const k = state.seedsCarried > 0 ? 1.15 + Math.sin(t * 3.2 + p.index) * 0.12 : 1.1;
       _m.compose(_v.copy(p.dir).multiplyScalar(p.gr + 0.12), p.baseQuat, _s.set(k * 1.75, 1, k * 1.75));
       plotRingMesh.setMatrixAt(p.index, _m);
-      if (p.pos.distanceToSquared(ppos) < R2 * 1.1) {
+      if (!inTrial && p.pos.distanceToSquared(ppos) < R2 * 1.1) {
         if (state.seedsCarried > 0) plant(p);
         else if (needSeedCooldown <= 0) { needSeedCooldown = 12; toast(MESSAGES.needSeed, 2800); }
       }
@@ -1238,6 +1588,10 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
 
     updateNpcs(dt, t);
     safe(() => quests.update(dt, t));
+    updateAcorns(dt, t, !inTrial);
+
+    // v3：解鎖通知（等沒有彈窗、不在計時挑戰中時）
+    if (pendingUnlocks.length && !inTrial && flowBusy === 0) flushUnlocks();
 
     // 讀檔後若已全部完成但勝利畫面還沒出現過
     if (!winStarted && !state.victoryShown && getProgressDoneFast()) startVictory();
@@ -1286,7 +1640,7 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
   const radarList = [];
   const nav = {
     level: 0, fragments: 0, ping: 0, showArrow: false, showDistance: false,
-    target: null, distance: 0,
+    target: null, distance: 0, trial: false,
     biome: getBiomeById(START_BIOME),
     biomeLeft: { crystals: 0, total: CRYSTALS_PER_BIOME },
     radar: null,
@@ -1311,6 +1665,23 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     }
     nav.biomeLeft.crystals = left;
     nav.biomeLeft.total = total || CRYSTALS_PER_BIOME;
+    // v3：計時挑戰中指南針固定滿級，指向時光晶石
+    if (trialActive()) {
+      nav.trial = true;
+      nav.level = 3;
+      nav.ping = 0;
+      let tgt = null;
+      try { tgt = trial.getNavTarget() || null; } catch { tgt = null; }
+      nav.target = tgt && tgt.position ? tgt : null;
+      nav.showArrow = !!nav.target;
+      nav.showDistance = !!nav.target;
+      nav.distance = nav.target ? nav.target.position.distanceTo(player.position) : 0;
+      radarList.length = 0;
+      try { if (typeof trial.getRadarPoints === 'function') trial.getRadarPoints(radarList, player.position, RADAR_R); } catch { /* 忽略 */ }
+      nav.radar = radarList;
+      return nav;
+    }
+    nav.trial = false;
     // 箭頭目標
     const pinging = nav.ping > 0;
     let target = null;
@@ -1340,6 +1711,11 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
         }
       }
       quests.getRadarPoints(radarList, pp, RADAR_R);
+      // v3：金色橡實是祕密：不上箭頭，只有很近（12 單位內）時才出現在雷達
+      for (let i = 0; i < acorns.length; i++) {
+        const a = acorns[i];
+        if (!a.found && a.fade > 0.5 && a.pos.distanceToSquared(pp) <= ACORN_RADAR_R2) radarList.push(a.radar);
+      }
       nav.radar = radarList;
     } else nav.radar = null;
     return nav;
@@ -1376,8 +1752,14 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
   // 存檔
   // ==================================================================
   function getSaveData() {
+    let trialData = trialSaveCache;
+    if (trial && typeof trial.getSaveData === 'function') {
+      try { trialData = trial.getSaveData(); } catch { trialData = trialSaveCache; }
+    }
+    const quizOut = {};
+    for (const c of crystals) if (quiz[c.fact.id]) quizOut[c.fact.id] = quiz[c.fact.id];
     return {
-      v: 2,
+      v: 3,
       crystals: crystals.filter((c) => c.collected).map((c) => c.id),
       seeds: seeds.filter((s) => s.picked).map((s) => s.id),
       plots: plots.filter((p) => p.planted).map((p) => p.id),
@@ -1386,12 +1768,28 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
       victoryShown: state.victoryShown,
       fragments: state.fragments,
       quests: quests.getSaveData(),
+      // v3
+      quiz: quizOut,
+      stars: countStars(),
+      acorns: acorns.filter((a) => a.found).map((a) => a.id),
+      cosmetics: cosmetics.getSaveData(),
+      medal: currentMedal(),
+      trial: trialData === undefined ? null : trialData,
     };
   }
 
-  function applyState({ crystalIds, seedIds, plotIds, seedsCarried, timeSec, victoryShown, fragments = 0, questData = null }) {
+  function applyState({
+    crystalIds, seedIds, plotIds, seedsCarried, timeSec, victoryShown, fragments = 0, questData = null,
+    quizData = null, acornIds = new Set(), medal = null, trialData = null, cosmeticsData = null,
+  }) {
     timers.length = 0;
     winStarted = false;
+    // v3：中斷進行中的測驗流程與計時挑戰
+    flowToken++; flowBusy = 0; flowIdle = 0; retryBusy = false;
+    pendingUnlocks.length = 0;
+    if (trialActive()) safe(() => trial.cancel());
+    inTrial = false;
+    safe(() => quests.setPaused && quests.setPaused(false));
     safe(() => quests.loadSaveData(questData));
     const qDone = countQuests();
     state.fragments = clamp(Math.max(Math.floor(fragments) || 0, qDone), 0, 99);
@@ -1412,6 +1810,27 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     needSeedCooldown = 0;
     tutorialPending = true;
     for (const npc of npcs) { npc.replyTimer = -1; npc.faceTimer = 0; npc.hintCooldown = 0; npc.pingCd = 0; }
+    // v3：測驗結果（只認得的題目、合法的值）
+    for (const k of Object.keys(quiz)) delete quiz[k];
+    if (quizData && typeof quizData === 'object') {
+      for (const c of crystals) {
+        const v = quizData[c.fact.id];
+        if (c.collected && (v === 'correct' || v === 'wrong')) quiz[c.fact.id] = v;
+      }
+    }
+    for (const a of acorns) a.found = acornIds.has(a.id);
+    setAcornsStatic();
+    bestMedal = MEDAL_RANK[medal] ? medal : null;
+    trialSaveCache = trialData;
+    if (trial && typeof trial.loadSaveData === 'function') {
+      // 沒有資料（重新開始、v1/v2 存檔）時傳空紀錄，讓最佳時間也一起清掉
+      const td = trialData && typeof trialData === 'object' ? trialData : { best: null, medal: null };
+      try { trial.loadSaveData(td); } catch (e) { console.warn('[gameplay] 計時挑戰讀檔失敗', e); }
+    }
+    // 裝扮：還原解鎖清單，補上依進度應得的（不彈通知），再套用穿戴
+    cosmetics.loadSaveData(cosmeticsData);
+    checkUnlocks(true);
+    cosmetics.restoreEquipped(cosmeticsData && cosmeticsData.equipped);
     setStatic();
     pushProgress();
   }
@@ -1431,6 +1850,12 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
         victoryShown: data.victoryShown === true && data.v >= 2,
         fragments: Number(data.fragments) || 0,
         questData: data.quests && typeof data.quests === 'object' ? data.quests : null,
+        // v3（v1、v2 存檔沒有這些欄位 → 預設值）
+        quizData: data.quiz && typeof data.quiz === 'object' ? data.quiz : null,
+        acornIds: ids(data.acorns),
+        medal: typeof data.medal === 'string' ? data.medal : null,
+        trialData: data.trial && typeof data.trial === 'object' ? data.trial : null,
+        cosmeticsData: data.cosmetics && typeof data.cosmetics === 'object' ? data.cosmetics : null,
       });
     } catch (e) {
       console.warn('[gameplay] 讀檔失敗，忽略', e);
@@ -1438,12 +1863,76 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
   }
 
   function reset() {
+    // 完全重來：進度、測驗、橡實、裝扮、計時挑戰紀錄全部清除
     applyState({ crystalIds: new Set(), seedIds: new Set(), plotIds: new Set(), seedsCarried: 0, timeSec: 0, victoryShown: false, fragments: 0, questData: null });
+  }
+
+  // ==================================================================
+  // v3：對外 API（衣櫥、圖鑑、計時挑戰）
+  // ==================================================================
+  const getWardrobe = () => cosmetics.getWardrobe();
+  const equip = (slot, id) => cosmetics.equip(slot, id);
+  const getEquipped = () => cosmetics.getEquipped();
+
+  function getJournal() {
+    const facts = FACTS.map((f) => {
+      const c = crystals.find((x) => x.fact.id === f.id);
+      const biome = getBiomeById(f.biome) || (c && c.biome);
+      return {
+        id: f.id, biome: f.biome, biomeName: biome ? biome.name : '', biomeIcon: biome ? biome.icon : '',
+        icon: f.icon, title: f.title, text: f.text,
+        collected: !!(c && c.collected),
+        quiz: quiz[f.id] || 'none',
+      };
+    });
+    const acornList = acorns.map((a) => ({
+      id: a.id, biome: a.biome ? a.biome.id : a.key, biomeName: a.biome ? a.biome.name : '',
+      icon: a.biome ? a.biome.icon : '🌰', found: a.found, nightOnly: a.nightOnly,
+      hint: a.found ? '' : a.hint,
+    }));
+    const best = trialBest();
+    return {
+      facts,
+      stars: countStars(), totalStars: TOTAL_STARS,
+      acorns: {
+        found: countAcorns(), total: acorns.length,
+        hints: acornList.filter((a) => !a.found && a.hint).map((a) => a.hint),
+        list: acornList,
+      },
+      bestTime: best,
+      medal: currentMedal(),
+    };
+  }
+
+  const canTimeTrial = () => !!trial && !!state.victoryShown;
+  function startTimeTrial() {
+    if (!trial || trialActive()) return false;
+    if (!canTimeTrial()) { toast(V3_MESSAGES.trialLocked, 2600); return false; }
+    state.ping = 0;
+    safe(() => quests.setPaused && quests.setPaused(true));
+    let r;
+    try { r = trial.start(); } catch (e) {
+      console.warn('[gameplay] 計時挑戰開始失敗', e);
+      safe(() => quests.setPaused && quests.setPaused(trialActive()));
+      return false;
+    }
+    if (isThenable(r)) r.catch((e) => console.warn('[gameplay] 計時挑戰錯誤', e));
+    return isThenable(r) ? r : true;
+  }
+  function cancelTimeTrial() {
+    if (!trial) return false;
+    const was = trialActive();
+    if (was) safe(() => trial.cancel());
+    inTrial = trialActive();
+    safe(() => quests.setPaused && quests.setPaused(inTrial));
+    return was;
   }
 
   // 初始狀態
   setStatic();
   safe(() => world.setRestoration(0));
+  checkUnlocks(true);
+  cosmetics.apply();
 
   return {
     update,
@@ -1456,7 +1945,16 @@ export function createGameplay({ scene, world, player, ui, audio, effects }) {
     getSaveData,
     loadSaveData,
     reset,
+    // v3
+    getWardrobe,
+    equip,
+    getEquipped,
+    getJournal,
+    retryQuiz,
+    canTimeTrial,
+    startTimeTrial,
+    cancelTimeTrial,
     // 測試/除錯用（非合約）
-    _debug: { crystals, seeds, plots, npcs, root, quests, state, nav },
+    _debug: { crystals, seeds, plots, npcs, root, quests, state, nav, quiz, acorns, cosmetics, get trial() { return trial; }, pendingUnlocks },
   };
 }

@@ -1,4 +1,5 @@
 // 分身 5：音效。全部用 Web Audio API 即時合成，不載入任何音檔。
+// v3：夜晚環境音（蟲鳴、貓頭鷹、夜風）與柔和的夜晚音樂；測驗、解鎖、換裝、橡實、計時挑戰音效。
 import { SAVE_KEY } from './config.js';
 
 const MUTE_KEY = SAVE_KEY + ':muted';
@@ -32,6 +33,17 @@ export function createAudio() {
   let lastTick = 0;
   let lastBounce = 0;
   let userSuspended = false;
+  // v3：夜晚
+  let night = false;
+  let nightBus = null, musicNight = null, musicLP = null, nightBed = null;
+  let nightTimer = 0;
+  let nightOffAt = 0;
+  let nextOwl = 0;
+  const crickets = [
+    { f: 4300, pan: -0.55, period: 0.95, pulses: 3, next: 0 },
+    { f: 4750, pan: 0.5, period: 1.2, pulses: 4, next: 0 },
+    { f: 3900, pan: 0.1, period: 1.55, pulses: 3, next: 0 },
+  ];
 
   // ---------- 建立音訊圖 ----------
   function build() {
@@ -61,9 +73,22 @@ export function createAudio() {
     musicDuck = ctx.createGain();
     musicDuck.gain.value = 1;
     musicDuck.connect(master);
+    // 音樂：musicBus → 夜晚低通 → 夜晚音量 → 閃避 → master
+    musicNight = ctx.createGain();
+    musicNight.gain.value = night ? 0.6 : 1;
+    musicNight.connect(musicDuck);
+    musicLP = ctx.createBiquadFilter();
+    musicLP.type = 'lowpass';
+    musicLP.frequency.value = night ? 1500 : 18000;
+    musicLP.Q.value = 0.5;
+    musicLP.connect(musicNight);
     musicBus = ctx.createGain();
     musicBus.gain.value = 0.16;
-    musicBus.connect(musicDuck);
+    musicBus.connect(musicLP);
+    // 夜晚環境音
+    nightBus = ctx.createGain();
+    nightBus.gain.value = 0;
+    nightBus.connect(master);
 
     // 撥弦用回授延遲（迴圈裡加低通讓回音越來越柔）
     delayIn = ctx.createGain();
@@ -88,6 +113,7 @@ export function createAudio() {
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    if (night) applyNight(true);
     return true;
   }
 
@@ -374,8 +400,221 @@ export function createAudio() {
       tone(2350, t + 0.76, 0.18, { type: 'sine', gain: 0.05, attack: 0.003 });
       noise(t, 0.6, { filterType: 'bandpass', freq: 2000, Q: 4, gain: 0.012, attack: 0.1 });
     },
+
+    // ---- v3 ----
+    correct() {
+      // 答對：明亮的「叮咚↑」+ 閃亮
+      const t = ctx.currentTime + 0.01;
+      [[79, 0], [84, 0.1], [88, 0.2]].forEach(([m, dt], i) => {
+        tone(mtof(m), t + dt, i === 2 ? 0.7 : 0.3, { type: 'triangle', gain: 0.11, attack: 0.004 });
+        tone(mtof(m + 12), t + dt, 0.22, { type: 'sine', gain: 0.035, attack: 0.004 });
+      });
+      tone(mtof(76), t + 0.2, 0.7, { type: 'sine', gain: 0.06, attack: 0.01 });
+      for (let i = 0; i < 5; i++) tone(mtof(96 + pick(PENTA)), t + 0.28 + i * 0.06, 0.25, { type: 'sine', gain: 0.025, attack: 0.003 });
+      noise(t + 0.2, 0.5, { filterType: 'highpass', freq: 6500, gain: 0.02, attack: 0.05 });
+      duck(0.45, 0.5, 0.8);
+    },
+    wrong() {
+      // 答錯：溫柔的「嘟嗚～」往下兩聲，不刺耳
+      const t = ctx.currentTime + 0.01;
+      tone(mtof(67), t, 0.22, { type: 'triangle', gain: 0.09, freqEnd: mtof(66), glide: 0.2, attack: 0.012, filter: 1800 });
+      tone(mtof(64), t + 0.2, 0.45, { type: 'triangle', gain: 0.085, freqEnd: mtof(62), glide: 0.4, attack: 0.012, filter: 1600 });
+      tone(mtof(52), t + 0.2, 0.45, { type: 'sine', gain: 0.06, attack: 0.02 });
+      duck(0.6, 0.3, 0.6);
+    },
+    unlock() {
+      // 解鎖新裝扮：上行號角 + 和弦 + 一串閃光
+      const t = ctx.currentTime + 0.02;
+      [[60, 0], [64, 0.09], [67, 0.18], [72, 0.27], [76, 0.36]].forEach(([m, dt]) => {
+        tone(mtof(m), t + dt, 0.3, { type: 'square', gain: 0.022, filter: 2600, attack: 0.005 });
+        tone(mtof(m), t + dt, 0.38, { type: 'triangle', gain: 0.09, attack: 0.005 });
+      });
+      [72, 76, 79, 84].forEach((m, i) => {
+        tone(mtof(m) * rand(0.998, 1.002), t + 0.48 + i * 0.012, 1.5, { type: 'sine', gain: 0.06, attack: 0.02 });
+        tone(mtof(m) * 1.003, t + 0.48, 1.4, { type: 'triangle', gain: 0.02, attack: 0.02 });
+      });
+      tone(mtof(48), t + 0.48, 1.3, { type: 'sine', gain: 0.1, attack: 0.02 });
+      for (let i = 0; i < 9; i++) tone(mtof(96 + pick(PENTA)), t + 0.55 + i * 0.07 + rand(0, 0.03), 0.3, { type: 'sine', gain: 0.025, attack: 0.003 });
+      noise(t + 0.45, 1.0, { filterType: 'bandpass', freq: 5000, freqEnd: 11000, Q: 1.5, gain: 0.03, attack: 0.2 });
+      duck(0.2, 1.4, 1.4);
+    },
+    equip() {
+      // 換裝：布料「咻」+ 小「啵」+ 一聲小鈴
+      const t = ctx.currentTime + 0.005;
+      noise(t, 0.2, { filterType: 'bandpass', freq: 900, freqEnd: 3800, Q: 1.2, gain: 0.07, attack: 0.04 });
+      tone(rand(520, 580), t + 0.12, 0.12, { type: 'sine', gain: 0.13, freqEnd: 900, glide: 0.07, attack: 0.003 });
+      tone(mtof(88), t + 0.18, 0.4, { type: 'sine', gain: 0.05, attack: 0.003 });
+      tone(mtof(95), t + 0.22, 0.3, { type: 'sine', gain: 0.025, attack: 0.003 });
+    },
+    acorn() {
+      // 金色橡實：木頭「叩」+ 神奇的金色琶音
+      const t = ctx.currentTime + 0.01;
+      tone(rand(820, 900), t, 0.08, { type: 'sine', gain: 0.18, freqEnd: 520, glide: 0.06, attack: 0.002 });
+      noise(t, 0.04, { filterType: 'bandpass', freq: 1800, Q: 3, gain: 0.08, attack: 0.002 });
+      const seq = [69, 72, 76, 81, 84, 88];
+      seq.forEach((m, i) => {
+        tone(mtof(m), t + 0.1 + i * 0.06, 0.6, { type: 'triangle', gain: 0.08, attack: 0.004 });
+        tone(mtof(m) * 2.003, t + 0.1 + i * 0.06, 0.3, { type: 'sine', gain: 0.02, attack: 0.004 });
+      });
+      [81, 85, 88].forEach((m) => tone(mtof(m), t + 0.5, 1.4, { type: 'sine', gain: 0.045, attack: 0.03 }));
+      noise(t + 0.15, 1.0, { filterType: 'highpass', freq: 7000, gain: 0.025, attack: 0.3 });
+      duck(0.3, 1.0, 1.2);
+    },
+    countdown() {
+      // 倒數：清脆的「嗶」
+      const t = ctx.currentTime + 0.005;
+      tone(660, t, 0.2, { type: 'sine', gain: 0.17, attack: 0.003 });
+      tone(660, t, 0.12, { type: 'square', gain: 0.025, filter: 2400, attack: 0.003 });
+      tone(1320, t, 0.08, { type: 'sine', gain: 0.03, attack: 0.002 });
+    },
+    go() {
+      // 出發：高八度的長「嗶～」+ 往上衝的風聲
+      const t = ctx.currentTime + 0.005;
+      tone(1320, t, 0.5, { type: 'sine', gain: 0.16, attack: 0.003 });
+      tone(990, t, 0.45, { type: 'triangle', gain: 0.07, attack: 0.003 });
+      tone(1320, t, 0.25, { type: 'square', gain: 0.02, filter: 3200, attack: 0.003 });
+      noise(t, 0.45, { filterType: 'bandpass', freq: 600, freqEnd: 4200, Q: 0.8, gain: 0.06, attack: 0.05 });
+      duck(0.5, 0.4, 0.8);
+    },
+    trialEnd() {
+      // 計時挑戰結束：小號角終止式
+      const t = ctx.currentTime + 0.02;
+      const seq = [[67, 0, 0.14], [72, 0.12, 0.14], [76, 0.24, 0.14], [79, 0.36, 0.3], [76, 0.62, 0.12], [79, 0.72, 0.9]];
+      seq.forEach(([m, dt, d]) => {
+        tone(mtof(m), t + dt, d + 0.15, { type: 'square', gain: 0.025, filter: 2400, attack: 0.006 });
+        tone(mtof(m), t + dt, d + 0.2, { type: 'triangle', gain: 0.1, attack: 0.006 });
+      });
+      tone(mtof(43), t, 0.25, { type: 'sine', gain: 0.16, freqEnd: mtof(36), glide: 0.2, attack: 0.004 });
+      tone(mtof(43), t + 0.72, 0.6, { type: 'sine', gain: 0.14, freqEnd: mtof(36), glide: 0.5, attack: 0.004 });
+      [72, 76, 79, 84].forEach((m) => tone(mtof(m) * rand(0.998, 1.002), t + 0.72, 1.6, { type: 'sine', gain: 0.05, attack: 0.03 }));
+      for (let i = 0; i < 6; i++) tone(mtof(96 + pick(PENTA)), t + 0.8 + i * 0.09, 0.3, { type: 'sine', gain: 0.025 });
+      duck(0.15, 1.8, 1.6);
+    },
   };
   let beatTick = false;
+
+  // ---------- v3：夜晚環境音 ----------
+  /** 一聲蟋蟀：幾個很快的高頻脈衝 */
+  function cricketChirp(t, c) {
+    const n = c.pulses + (Math.random() < 0.3 ? 1 : 0);
+    const f = c.f * rand(0.985, 1.015);
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = f;
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.value = f * 2.01;
+    const g2 = ctx.createGain();
+    g2.gain.value = 0.18;
+    const amp = ctx.createGain();
+    amp.gain.setValueAtTime(0.0001, t);
+    const peak = rand(0.016, 0.026);
+    for (let i = 0; i < n; i++) {
+      const t0 = t + i * 0.046;
+      amp.gain.setValueAtTime(0.0001, t0);
+      amp.gain.exponentialRampToValueAtTime(peak, t0 + 0.008);
+      amp.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.034);
+    }
+    osc.connect(amp);
+    osc2.connect(g2);
+    g2.connect(amp);
+    let out = amp;
+    if (ctx.createStereoPanner) {
+      const p = ctx.createStereoPanner();
+      p.pan.value = c.pan;
+      amp.connect(p);
+      out = p;
+    }
+    out.connect(nightBus);
+    const end = t + n * 0.046 + 0.05;
+    osc.start(t); osc2.start(t);
+    osc.stop(end); osc2.stop(end);
+  }
+  /** 遠方貓頭鷹「咕—咕咕」 */
+  function owl(t) {
+    const f = rand(370, 410);
+    const hoot = (t0, d, g) => {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f * 1.04, t0);
+      osc.frequency.exponentialRampToValueAtTime(f * 0.94, t0 + d);
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 900;
+      const gg = ctx.createGain();
+      gg.gain.setValueAtTime(0.0001, t0);
+      gg.gain.exponentialRampToValueAtTime(g, t0 + 0.06);
+      gg.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+      osc.connect(lp); lp.connect(gg); gg.connect(nightBus);
+      osc.start(t0); osc.stop(t0 + d + 0.05);
+    };
+    hoot(t, 0.45, 0.045);
+    hoot(t + 0.62, 0.22, 0.032);
+    hoot(t + 0.9, 0.4, 0.038);
+  }
+  function startNightBed() {
+    if (nightBed) return;
+    try {
+      const src = ctx.createBufferSource();
+      src.buffer = noiseBuf;
+      src.loop = true;
+      src.playbackRate.value = 0.5;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 520;
+      const g = ctx.createGain();
+      g.gain.value = 0.05;
+      src.connect(lp); lp.connect(g); g.connect(nightBus);
+      src.start();
+      nightBed = src;
+    } catch { nightBed = null; }
+  }
+  function scheduleNight() {
+    if (!ctx || ctx.state !== 'running') return;
+    const now = ctx.currentTime;
+    if (!night && now > nightOffAt) {
+      clearInterval(nightTimer);
+      nightTimer = 0;
+      return;
+    }
+    if (muted) return;
+    for (const c of crickets) {
+      if (c.next < now - 0.5) c.next = now + rand(0.05, c.period);
+      while (c.next < now + 0.3) {
+        // 偶爾休息一下，聽起來比較自然
+        if (Math.random() < 0.12) c.next += rand(1.5, 4);
+        else cricketChirp(c.next, c);
+        c.next += c.period * rand(0.85, 1.2);
+      }
+    }
+    if (!nextOwl) nextOwl = now + rand(8, 16);
+    if (now > nextOwl) {
+      owl(now + 0.05);
+      nextOwl = now + rand(22, 40);
+    }
+  }
+  function applyNight(instant) {
+    if (!ctx || !nightBus) return;
+    const t = ctx.currentTime;
+    const ramp = (param, v, dur, exp) => {
+      param.cancelScheduledValues(t);
+      if (instant) { param.setValueAtTime(v, t); return; }
+      param.setValueAtTime(param.value, t);
+      if (exp) param.exponentialRampToValueAtTime(v, t + dur);
+      else param.linearRampToValueAtTime(v, t + dur);
+    };
+    ramp(nightBus.gain, night ? 1 : 0, night ? 3.5 : 2.5);
+    ramp(musicNight.gain, night ? 0.6 : 1, 4);
+    ramp(musicLP.frequency, night ? 1500 : 18000, 4, true);
+    if (night) {
+      startNightBed();
+      nextOwl = 0;
+      if (!nightTimer) nightTimer = setInterval(scheduleNight, 100);
+      scheduleNight();
+    } else {
+      nightOffAt = t + 3;
+    }
+  }
 
   // ---------- 生成式環境音樂 ----------
   const BEAT = 60 / 66;            // 每拍秒數
@@ -428,10 +667,10 @@ export function createAudio() {
       const inChord = beatIndex % BEATS_PER_CHORD;
       if (!muted) {
         if (inChord === 0) padChord(CHORDS[chordIdx], t, BEAT * BEATS_PER_CHORD);
-        // 稀疏的五聲音階撥弦
-        const p = inChord === 0 ? 0.6 : inChord % 2 === 0 ? 0.32 : 0.14;
+        // 稀疏的五聲音階撥弦（夜晚更少、更低）
+        const p = (inChord === 0 ? 0.6 : inChord % 2 === 0 ? 0.32 : 0.14) * (night ? 0.7 : 1);
         if (Math.random() < p) {
-          const oct = Math.random() < 0.7 ? 72 : 84;
+          const oct = night ? (Math.random() < 0.75 ? 72 : 60) : (Math.random() < 0.7 ? 72 : 84);
           pluck(oct + pick(PENTA), t + (Math.random() < 0.25 ? BEAT * 0.5 : 0));
         }
       }
@@ -481,6 +720,14 @@ export function createAudio() {
       }
     },
     isMuted() { return muted; },
+    /** v3：夜晚蟲鳴環境音、音樂變柔和（約 3–4 秒交叉淡入淡出） */
+    setNight(on) {
+      on = !!on;
+      if (on === night) return;
+      night = on;
+      if (ctx) { try { applyNight(false); } catch { /* 忽略 */ } }
+    },
+    isNight() { return night; },
     startMusic() {
       if (!ctx || musicOn) return;
       musicOn = true;

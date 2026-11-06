@@ -1,6 +1,8 @@
 // 分身 5：介面（開始畫面、HUD、指南針、表情、知識卡、設定、勝利畫面、提示訊息、表情泡泡）
 // v2：居民對話框、任務追蹤、分級指南針（setNav）、互動提示、地圖碎片彈窗
+// v3：知識測驗、解鎖彈窗、衣櫥、圖鑑、計時挑戰（倒數、計時器、成績）、日夜循環設定
 import * as THREE from 'three';
+import * as CFG from './config.js';
 import { EMOTES, SAVE_KEY, GAME_TITLE, GAME_SUBTITLE, BIOMES, PING_DURATION, TOTAL_QUESTS } from './config.js';
 
 const OCCLUDE_R = 29.3;     // 判斷被星球擋住用的半徑
@@ -20,6 +22,13 @@ const RING_C = 2 * Math.PI * 22;        // 訊號倒數圈的周長（r = 22，v
 const NAV_HINT_FIRST = 4;   // Lv0 提示：開始後幾秒第一次出現
 const NAV_HINT_EVERY = 75;  // 之後每隔幾秒出現
 const NAV_HINT_SHOW = 7;    // 每次顯示幾秒
+const MEDALS = CFG.TRIAL_MEDALS || { gold: 90, silver: 140, bronze: 220 };
+const MEDAL_ICON = { gold: '🥇', silver: '🥈', bronze: '🥉' };
+const MEDAL_NAME = { gold: '金牌', silver: '銀牌', bronze: '銅牌' };
+const DEFAULT_SLOTS = [{ id: 'hat', name: '帽子' }, { id: 'scarf', name: '圍巾' }, { id: 'trail', name: '腳印特效' }];
+const SLOT_ICON = { hat: '🎩', scarf: '🧣', trail: '👣' };
+const NONE_ITEM = { hat: { icon: '🙅', name: '不戴帽子' }, trail: { icon: '🚫', name: '不要特效' } };
+const SCARF_COLORS = { sunny: '#ffcf4d', sky: '#5fb4f0', mint: '#5fd3a0', rose: '#ff8fb4', lava: '#ff6a3d', night: '#3a4a8c' };
 
 const TITLE_COLORS = ['#ff8a5c', '#ffb703', '#5cc98a', '#3b9ae1', '#a37cf0'];
 
@@ -42,6 +51,14 @@ function retrigger(el, cls) {
 }
 function storageGet(key) {
   try { return localStorage.getItem(key); } catch { return null; }
+}
+/** 計時挑戰用：mm:ss.s（無效值顯示 —） */
+function fmtTrial(sec) {
+  if (sec === null || sec === undefined || !isFinite(sec) || sec < 0) return '—';
+  const tenths = Math.floor(sec * 10 + 1e-6);
+  const m = Math.floor(tenths / 600);
+  const s = Math.floor((tenths % 600) / 10);
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${tenths % 10}`;
 }
 function fmtTime(sec) {
   sec = Math.max(0, Math.floor(sec || 0));
@@ -93,7 +110,16 @@ export function createUI({ root, audio, callbacks = {} }) {
   const bar = h('div', 'tw-bar');
   const barFill = h('div', 'tw-bar-fill');
   bar.append(barFill);
-  progress.append(chips, bar);
+  // v3：星星數放在進度條右邊（不加寬進度卡）
+  const progFoot = h('div', 'tw-progress-foot');
+  const starPill = h('div', 'tw-starpill');
+  starPill.setAttribute('aria-label', '測驗星星');
+  const starIc = h('span', 'tw-starpill-ic', '⭐');
+  const starV = h('b', 'tw-starpill-v', '0');
+  starPill.append(starIc, starV);
+  starPill.hidden = true;
+  progFoot.append(bar, starPill);
+  progress.append(chips, progFoot);
 
   // ================= HUD：指南針 =================
   const compass = h('div', 'tw-compass tw-glass');
@@ -146,6 +172,19 @@ export function createUI({ root, audio, callbacks = {} }) {
   const btnMute = button('tw-iconbtn tw-glass', '🔊', '音效開關');
   topRight.append(btnSettings, btnMute);
 
+  // ================= HUD（v3）：衣櫥 / 圖鑑 =================
+  // 預設在右側、雷達下方（和表情鈕對齊）；矮的橫向畫面改到右上按鈕列旁邊（見 ui.css）
+  const side = h('div', 'tw-side');
+  function sideBtn(icon, label, key) {
+    const b = button('tw-sidebtn tw-glass', '', label);
+    b.append(h('span', 'tw-sidebtn-ic', icon), h('span', 'tw-sidebtn-l', label), h('i', 'tw-sidebtn-dot'));
+    if (key) b.title = `${label}（${key}）`;
+    side.append(b);
+    return b;
+  }
+  const btnBag = sideBtn('🎒', '衣櫥', 'B');
+  const btnBook = sideBtn('📖', '圖鑑', 'J');
+
   // ================= HUD：表情 =================
   const emoteWrap = h('div', 'tw-emote');
   const picker = h('div', 'tw-emote-picker tw-glass');
@@ -173,7 +212,7 @@ export function createUI({ root, audio, callbacks = {} }) {
   marker.append(markerPin);
   worldLayer.append(marker);
 
-  hud.append(leftCol, compass, toasts, topRight, emoteWrap, prompt);
+  hud.append(leftCol, compass, toasts, topRight, side, emoteWrap, prompt);
 
   // ================= 互動狀態 =================
   let started = false;
@@ -253,7 +292,9 @@ export function createUI({ root, audio, callbacks = {} }) {
   }
 
   // 這幾種對話框同名時也要排隊（不覆蓋正在顯示的內容）
-  const QUEUE_SAME = new Set(['dialogue', 'fragment', 'fact']);
+  const QUEUE_SAME = new Set(['dialogue', 'fragment', 'fact', 'quiz', 'unlock', 'countdown', 'result']);
+  // 開始畫面強制關閉時，讓正在等待的 Promise 結束
+  const forced = {};
   function openModal(name, setup, abort) {
     if (current && (current !== name || QUEUE_SAME.has(name))) {
       queue.push([name, setup, abort]);
@@ -268,6 +309,8 @@ export function createUI({ root, audio, callbacks = {} }) {
     closePicker();
     hud.classList.add('is-dimmed');
     hud.classList.toggle('is-talking', name === 'dialogue');
+    hud.classList.toggle('is-wardrobe', name === 'wardrobe');
+    hud.classList.toggle('is-quiet', name === 'countdown');
   }
   function closeModal(name) {
     if (current !== name) return;
@@ -275,7 +318,7 @@ export function createUI({ root, audio, callbacks = {} }) {
     m.classList.remove('is-open');
     m.hidden = true;
     current = null;
-    hud.classList.remove('is-dimmed', 'is-talking');
+    hud.classList.remove('is-dimmed', 'is-talking', 'is-wardrobe', 'is-quiet');
     armedKey = null;
     if (queue.length) {
       const [n, s, a] = queue.shift();
@@ -356,8 +399,10 @@ export function createUI({ root, audio, callbacks = {} }) {
       m.classList.remove('is-open');
       m.hidden = true;
       if (current === 'dialogue') abortDialogue();
+      const f = forced[current];
       current = null;
-      hud.classList.remove('is-dimmed', 'is-talking');
+      hud.classList.remove('is-dimmed', 'is-talking', 'is-wardrobe', 'is-quiet');
+      if (f) { try { f(); } catch { /* 忽略 */ } }
     }
     started = false;
     root.classList.remove('is-playing');
@@ -381,6 +426,10 @@ export function createUI({ root, audio, callbacks = {} }) {
     startedAt = performance.now();
     root.classList.add('is-playing');
     refreshMute();
+    refreshSideVisibility();
+    if (cb.getJournal) {
+      try { const j = cb.getJournal(); if (j && typeof j.stars === 'number') setStars(j.stars, false); } catch { /* 忽略 */ }
+    }
     requestAnimationFrame(relayout);
   }
 
@@ -405,16 +454,31 @@ export function createUI({ root, audio, callbacks = {} }) {
     const p = lastProgress;
     factCount.textContent = `💎 已收集 ${p.crystals} / ${p.totalCrystals} 顆知識晶石`;
   }
+  let factResolve = null;
   function closeFact() {
     if (current !== 'fact') return;
     sfx('ui');
+    const r = factResolve;
+    factResolve = null;
     closeModal('fact');
+    if (r) r();
   }
+  forced.fact = () => { const r = factResolve; factResolve = null; if (r) r(); };
   factBtn.addEventListener('click', () => { if (guardOk()) closeFact(); });
   fact.m.addEventListener('click', (e) => { if (e.target === fact.m && guardOk()) closeFact(); });
 
   function showFact(f = {}) {
-    openModal('fact', () => {
+    return new Promise((resolve) => {
+      openModal('fact', () => {
+        factResolve = resolve;
+        setupFact(f || {});
+      }, () => resolve());
+      bookNew = true;
+      refreshSideBadges();
+    });
+  }
+  function setupFact(f) {
+    {
       factIcon.textContent = f.icon || '💎';
       factTitle.textContent = f.title || '';
       factText.textContent = f.text || '';
@@ -423,7 +487,7 @@ export function createUI({ root, audio, callbacks = {} }) {
       factTag.hidden = !f.biomeName;
       refreshFactCount();
       fact.card.scrollTop = 0;
-    });
+    }
   }
 
   // ================= 設定 =================
@@ -483,8 +547,28 @@ export function createUI({ root, audio, callbacks = {} }) {
     const done = button('tw-btn tw-btn-primary tw-btn-wide', '關閉');
     done.addEventListener('click', () => { sfx('ui'); closeSettings(); });
 
-    settings.card.append(head, row('🔊 音效', sSound), row('✨ 畫質', sQual), resetRow, done);
-    settingsRefs = { soundOn, soundOff, qHigh, qLow, resetRow };
+    // v3：日夜循環、計時挑戰
+    const [sDay, dayOn, dayOff] = seg('開', '關');
+    const setDay = (on) => {
+      sfx('ui');
+      dayNight = on;
+      refreshDayNight();
+      if (cb.onDayNight) cb.onDayNight(on);
+    };
+    dayOn.addEventListener('click', () => setDay(true));
+    dayOff.addEventListener('click', () => setDay(false));
+    const dayRow = row('🌗 日夜循環', sDay);
+    const trialRow = h('div', 'tw-trialrow');
+    const btnTrial = button('tw-btn tw-btn-gold tw-btn-wide', '⏱️ 計時挑戰');
+    trialRow.append(btnTrial, h('p', 'tw-trialrow-note', '收集 8 顆時光晶石，挑戰最快紀錄！'));
+    btnTrial.addEventListener('click', () => {
+      sfx('ui');
+      closeSettings();
+      if (cb.onTimeTrial) cb.onTimeTrial();
+    });
+
+    settings.card.append(head, row('🔊 音效', sSound), row('✨ 畫質', sQual), dayRow, trialRow, resetRow, done);
+    settingsRefs = { soundOn, soundOff, qHigh, qLow, resetRow, dayOn, dayOff, trialRow };
   }
   settings.m.addEventListener('click', (e) => { if (e.target === settings.m && guardOk()) { sfx('ui'); closeSettings(); } });
 
@@ -492,6 +576,11 @@ export function createUI({ root, audio, callbacks = {} }) {
   if (quality !== 'low' && quality !== 'high') {
     const small = Math.min(screen.width || 9999, screen.height || 9999) < 500;
     quality = mqCoarse.matches && small ? 'low' : 'high';
+  }
+  let dayNight = true;
+  function refreshDayNight() {
+    settingsRefs.dayOn.setAttribute('aria-pressed', dayNight ? 'true' : 'false');
+    settingsRefs.dayOff.setAttribute('aria-pressed', dayNight ? 'false' : 'true');
   }
   function refreshQuality() {
     settingsRefs.qHigh.setAttribute('aria-pressed', quality === 'high' ? 'true' : 'false');
@@ -505,6 +594,12 @@ export function createUI({ root, audio, callbacks = {} }) {
       if (q === 'low' || q === 'high') quality = q;
       refreshQuality();
       refreshMute();
+      try { const d = cb.getDayNight ? cb.getDayNight() : undefined; if (typeof d === 'boolean') dayNight = d; } catch { /* 忽略 */ }
+      refreshDayNight();
+      let can = false;
+      try { can = !!(cb.canTimeTrial && cb.canTimeTrial()); } catch { can = false; }
+      settingsRefs.trialRow.hidden = !can || !cb.onTimeTrial;
+      settings.card.scrollTop = 0;
     });
   }
   function closeSettings() {
@@ -535,7 +630,14 @@ export function createUI({ root, audio, callbacks = {} }) {
   const vBtns = h('div', 'tw-btnrow');
   const vCont = button('tw-btn tw-btn-primary', '繼續漫遊');
   const vReset = button('tw-btn tw-btn-secondary', '重新開始');
-  vBtns.append(vCont, vReset);
+  const vTrial = button('tw-btn tw-btn-gold tw-victory-trial', '⏱️ 計時挑戰');
+  vBtns.append(vCont, vTrial, vReset);
+  vTrial.addEventListener('click', () => {
+    if (!guardOk()) return;
+    sfx('ui');
+    closeModal('victory');
+    if (cb.onTimeTrial) cb.onTimeTrial();
+  });
   victory.card.append(vBadge, vTitle, vText, vStats, vBtns);
   vCont.addEventListener('click', () => { if (!guardOk()) return; sfx('ui'); closeModal('victory'); });
   vReset.addEventListener('click', () => {
@@ -548,7 +650,10 @@ export function createUI({ root, audio, callbacks = {} }) {
   const CONFETTI_COLORS = ['#ff8a5c', '#ffd45c', '#5cc98a', '#3b9ae1', '#a37cf0', '#ff7eb6', '#8ef0ff'];
   function buildConfetti() {
     confetti.textContent = '';
-    for (let i = 0; i < 42; i++) {
+    fillConfetti(confetti, 42);
+  }
+  function fillConfetti(container, n) {
+    for (let i = 0; i < n; i++) {
       const p = h('i', 'tw-cf');
       const s = p.style;
       s.left = `${Math.random() * 100}%`;
@@ -560,7 +665,7 @@ export function createUI({ root, audio, callbacks = {} }) {
       s.width = `${6 + Math.random() * 6}px`;
       s.height = `${10 + Math.random() * 8}px`;
       if (Math.random() < 0.3) p.classList.add('round');
-      confetti.append(p);
+      container.append(p);
     }
   }
   function showVictory(stats = {}) {
@@ -576,6 +681,8 @@ export function createUI({ root, audio, callbacks = {} }) {
       vQuest.parentElement.hidden = q === undefined && !p.hasQuests;
       vFrag.parentElement.hidden = fr === undefined && !p.hasQuests;
       vStats.classList.toggle('is-five', !vQuest.parentElement.hidden && !vFrag.parentElement.hidden);
+      vTrial.hidden = !cb.onTimeTrial;
+      vBtns.classList.toggle('is-three', !vTrial.hidden);
       buildConfetti();
     });
   }
@@ -651,6 +758,12 @@ export function createUI({ root, audio, callbacks = {} }) {
     bar.title = `星球恢復 ${Math.round(f * 100)}%`;
     progress.classList.toggle('is-done', np.done || f >= 1);
     lastProgress = np;
+    // v3：星星數（progress.stars 或圖鑑資料）
+    let st = typeof p.stars === 'number' ? p.stars : undefined;
+    if (st === undefined && cb.getJournal) {
+      try { const j = cb.getJournal(); if (j && typeof j.stars === 'number') st = j.stars; } catch { /* 忽略 */ }
+    }
+    if (st !== undefined) setStars(st, started);
     if (current === 'fact') refreshFactCount();
   }
 
@@ -1320,10 +1433,9 @@ export function createUI({ root, audio, callbacks = {} }) {
       bottom = true;
       width = Math.min(vw * 0.88, 420);
     } else if (mqNarrow.matches) {
-      // 窄的橫向畫面：放在上方，進度卡與右上按鈕之間
-      const pr = progress.getBoundingClientRect();
-      const tr = topRight.getBoundingClientRect();
-      const l = pr.right + 8, r = tr.left - 8;
+      // 窄的橫向畫面：放在上方，進度卡（計時中＝計時器）與右上按鈕（含衣櫥/圖鑑、雷達）之間
+      const pr = (timerOn ? timer : progress).getBoundingClientRect();
+      const l = pr.right + 8, r = rightLimit(pr.top, pr.bottom + 80) - 8;
       if (r - l >= 160) {
         top = pr.top;
         cx = (l + r) / 2;
@@ -1334,7 +1446,8 @@ export function createUI({ root, audio, callbacks = {} }) {
       }
     } else {
       const cr = compass.getBoundingClientRect();
-      top = (compassVisible && cr.height ? cr.bottom : st + 12) + 10;
+      const tmr = timerOn ? timer.getBoundingClientRect() : null;
+      top = (compassVisible && cr.height ? cr.bottom : (tmr && tmr.height ? tmr.bottom : st + 12)) + 10;
       // 左邊避開任務卡、右邊避開雷達區
       const qr = quests.getBoundingClientRect();
       const leftEdge = qr.height > 0 && qr.top < top + 120 ? qr.right : 0;
@@ -1346,8 +1459,20 @@ export function createUI({ root, audio, callbacks = {} }) {
     toasts.style.left = `${Math.round(cx)}px`;
     toasts.style.width = `${Math.round(width)}px`;
   }
+  /** 上方 y0..y1 這一帶，右側介面（右上按鈕、衣櫥/圖鑑、雷達）最左邊的 x */
+  function rightLimit(y0, y1) {
+    let x = topRight.getBoundingClientRect().left;
+    const els = [side, document.querySelector('.tew-radar.is-visible')];
+    for (const el of els) {
+      if (!el || el.hidden) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width && r.height && r.top < y1 && r.bottom > y0) x = Math.min(x, r.left);
+    }
+    return x;
+  }
   function relayout() {
     placeCompass();
+    if (timerOn) placeTimer();
     measureQuestMax();
     layoutToasts();
   }
@@ -1357,6 +1482,648 @@ export function createUI({ root, audio, callbacks = {} }) {
     const ro = new ResizeObserver(() => layoutToasts());
     ro.observe(leftCol);
     ro.observe(compass);
+  }
+
+  // =====================================================================
+  // ================= v3：星星、側邊按鈕 =================
+  // =====================================================================
+  let stars = null;        // 目前顯示的星星數（null = 還不知道 → 不顯示）
+  let bagNew = false;      // 有新裝扮 → 衣櫥鈕顯示小紅點
+  let bookNew = false;     // 有新知識 → 圖鑑鈕顯示小紅點
+  function setStars(n, animate) {
+    n = Math.max(0, n | 0);
+    const changed = stars !== null && n !== stars;
+    stars = n;
+    starPill.hidden = false;
+    starV.textContent = String(n);
+    if (animate && changed) retrigger(starPill, 'is-pop');
+  }
+  function refreshSideBadges() {
+    btnBag.classList.toggle('has-new', bagNew);
+    btnBook.classList.toggle('has-new', bookNew);
+  }
+  function refreshSideVisibility() {
+    btnBag.hidden = !cb.getWardrobe;
+    btnBook.hidden = !cb.getJournal;
+    side.hidden = btnBag.hidden && btnBook.hidden;
+  }
+  btnBag.addEventListener('click', () => { btnBag.blur(); sfx('ui'); retrigger(btnBag, 'is-bump'); showWardrobe(); });
+  btnBook.addEventListener('click', () => { btnBook.blur(); sfx('ui'); retrigger(btnBook, 'is-bump'); showJournal(); });
+
+  // 飛行的星星（測驗答對 → 飛到 HUD 的星星數）
+  const flyLayer = h('div', 'tw-fly');
+  flyLayer.setAttribute('aria-hidden', 'true');
+  root.append(flyLayer);
+  function flyStar(fromEl, done) {
+    const target = !starPill.hidden && starPill.offsetParent ? starPill : (!btnBook.hidden ? btnBook : null);
+    const a = fromEl.getBoundingClientRect();
+    const rr = root.getBoundingClientRect();
+    const sx = a.left + a.width / 2 - rr.left, sy = a.top + a.height / 2 - rr.top;
+    let tx = 40, ty = 30;
+    if (target) {
+      const b = target.getBoundingClientRect();
+      tx = b.left + b.width / 2 - rr.left; ty = b.top + b.height / 2 - rr.top;
+    }
+    const el = h('div', 'tw-flystar', '⭐');
+    flyLayer.append(el);
+    // 小火花
+    for (let i = 0; i < 8; i++) {
+      const sp = h('i', 'tw-flyspark');
+      const ang = (i / 8) * Math.PI * 2;
+      sp.style.left = `${sx}px`;
+      sp.style.top = `${sy}px`;
+      sp.style.setProperty('--dx', `${Math.cos(ang) * 46}px`);
+      sp.style.setProperty('--dy', `${Math.sin(ang) * 46}px`);
+      flyLayer.append(sp);
+      setTimeout(() => sp.remove(), 700);
+    }
+    const mx = (sx + tx) / 2 + (tx < sx ? -40 : 40), my = Math.min(sy, ty) - 80;
+    const finish = () => { el.remove(); if (done) done(); if (target === starPill) retrigger(starPill, 'is-pop'); };
+    if (!el.animate) { finish(); return; }
+    const anim = el.animate([
+      { transform: `translate(${sx}px, ${sy}px) translate(-50%, -50%) scale(0.4) rotate(0deg)`, opacity: 0 },
+      { transform: `translate(${sx}px, ${sy - 30}px) translate(-50%, -50%) scale(1.8) rotate(20deg)`, opacity: 1, offset: 0.22 },
+      { transform: `translate(${mx}px, ${my}px) translate(-50%, -50%) scale(1.3) rotate(160deg)`, opacity: 1, offset: 0.6 },
+      { transform: `translate(${tx}px, ${ty}px) translate(-50%, -50%) scale(0.6) rotate(360deg)`, opacity: 0.9 },
+    ], { duration: 1050, easing: 'cubic-bezier(0.45, 0, 0.3, 1)', fill: 'forwards' });
+    anim.onfinish = finish;
+    anim.oncancel = finish;
+  }
+
+  // ================= v3：知識測驗 =================
+  const quiz = makeModal('quiz', 'tw-quiz-card');
+  const quizTop = h('div', 'tw-quiz-top');
+  const quizIcon = h('div', 'tw-quiz-icon', '❓');
+  const quizTag = h('div', 'tw-quiz-tag', '小測驗');
+  quizTop.append(quizIcon, quizTag);
+  const quizQ = h('h2', 'tw-quiz-q', '');
+  const quizChoices = h('div', 'tw-quiz-choices');
+  const quizResult = h('div', 'tw-quiz-result');
+  const quizVerdict = h('div', 'tw-quiz-verdict', '');
+  const quizExplain = h('p', 'tw-quiz-explain', '');
+  const quizNext = button('tw-btn tw-btn-primary tw-btn-wide', '繼續');
+  quizResult.append(quizVerdict, quizExplain, quizNext);
+  quiz.card.append(quizTop, quizQ, quizChoices, quizResult);
+  const Q = { resolve: null, answer: 0, picked: -1, correct: false, at: 0, starBase: 0 };
+
+  function quizPick(i) {
+    if (current !== 'quiz' || Q.picked >= 0 || performance.now() - openedAt < 300) return;
+    const btns = [...quizChoices.children];
+    if (!btns[i]) return;
+    Q.picked = i;
+    Q.correct = i === Q.answer;
+    quiz.card.classList.add('is-answered', Q.correct ? 'is-correct' : 'is-wrong');
+    btns.forEach((b, k) => {
+      b.disabled = true;
+      b.setAttribute('aria-disabled', 'true');
+      if (k === Q.answer) b.classList.add('is-right');
+      else if (k === i) b.classList.add('is-miss');
+      else b.classList.add('is-other');
+    });
+    const right = btns[Q.answer];
+    if (Q.correct) {
+      sfx('correct');
+      quizVerdict.textContent = '';
+      quizVerdict.append(h('span', 'tw-quiz-vt', '🎉 答對了！'), h('span', 'tw-quiz-plus', '+1 ⭐'));
+      flyStar(btns[i], () => { if (stars === null || stars < Q.starBase + 1) setStars(Q.starBase + 1, true); });
+    } else {
+      sfx('wrong');
+      quizVerdict.textContent = '';
+      const ans = right ? right.querySelector('.tw-quiz-ct').textContent : '';
+      quizVerdict.append(h('span', 'tw-quiz-vt', '差一點點！'), h('span', 'tw-quiz-ans', `正確答案是「${ans}」`));
+    }
+    quizExplain.hidden = !quizExplain.textContent;
+    Q.at = performance.now();
+    requestAnimationFrame(() => {
+      try { quizResult.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch { /* 忽略 */ }
+      if (!mqCoarse.matches) { try { quizNext.focus({ preventScroll: true }); } catch { /* 忽略 */ } }
+    });
+  }
+  function closeQuiz() {
+    if (current !== 'quiz' || Q.picked < 0 || performance.now() - Q.at < 350) return;
+    sfx('ui');
+    const r = Q.resolve;
+    const res = { correct: Q.correct, choice: Q.picked };
+    Q.resolve = null;
+    closeModal('quiz');
+    if (r) r(res);
+    if (reopenJournal) {
+      reopenJournal = false;
+      clearTimeout(reopenTimer);
+      setTimeout(() => { if (!current) showJournal(); }, 280);
+    }
+  }
+  forced.quiz = () => { const r = Q.resolve; Q.resolve = null; if (r) r({ correct: false, choice: -1 }); };
+  quizNext.addEventListener('click', closeQuiz);
+
+  function showQuiz({ icon = '❓', question = '', choices = [], answer = 0, explain = '' } = {}) {
+    return new Promise((resolve) => {
+      openModal('quiz', () => {
+        clearTimeout(reopenTimer);
+        Q.resolve = resolve;
+        Q.picked = -1;
+        Q.correct = false;
+        Q.starBase = stars || 0;
+        const list = (Array.isArray(choices) ? choices : []).map(String);
+        Q.answer = Math.max(0, Math.min(list.length - 1, answer | 0));
+        quiz.card.classList.remove('is-answered', 'is-correct', 'is-wrong');
+        quizIcon.textContent = icon || '❓';
+        quizQ.textContent = question || '';
+        quizExplain.textContent = explain ? `💡 ${explain}` : '';
+        quizVerdict.textContent = '';
+        quizChoices.textContent = '';
+        list.forEach((c, i) => {
+          const b = button('tw-quiz-choice', '');
+          b.style.setProperty('--i', i);
+          b.append(h('span', 'tw-quiz-cn', String(i + 1)), h('span', 'tw-quiz-ct', c), h('span', 'tw-quiz-mark'));
+          b.addEventListener('click', () => quizPick(i));
+          quizChoices.append(b);
+        });
+        quiz.card.scrollTop = 0;
+      }, () => resolve({ correct: false, choice: -1 }));
+    });
+  }
+
+  // ================= v3：解鎖新裝扮 =================
+  const unlock = makeModal('unlock', 'tw-unlock-card');
+  unlock.m.classList.add('tw-modal-celebrate');
+  const unlockArt = h('div', 'tw-unlock-art');
+  const unlockRays = h('div', 'tw-rays');
+  const unlockIcon = h('div', 'tw-unlock-icon', '🎁');
+  unlockArt.append(unlockRays, unlockIcon);
+  for (let i = 0; i < 6; i++) {
+    const sp = h('i', 'tw-unlock-spark', '✦');
+    sp.style.setProperty('--i', i);
+    unlockArt.append(sp);
+  }
+  const unlockBody = h('div', 'tw-unlock-body');
+  const unlockKicker = h('div', 'tw-kicker', '✨ 解鎖新裝扮！');
+  const unlockName = h('h2', 'tw-unlock-name', '');
+  const unlockText = h('p', 'tw-unlock-text', '');
+  const unlockBtns = h('div', 'tw-btnrow');
+  const unlockOk = button('tw-btn tw-btn-primary', '好耶！');
+  const unlockWear = button('tw-btn tw-btn-secondary', '🎒 去換裝');
+  unlockBtns.append(unlockOk, unlockWear);
+  unlockBody.append(unlockKicker, unlockName, unlockText, unlockBtns);
+  unlock.card.append(unlockArt, unlockBody);
+  function closeUnlock(wear) {
+    if (current !== 'unlock' || !guardOk()) return;
+    sfx('ui');
+    closeModal('unlock');
+    if (wear && !current) showWardrobe();
+  }
+  unlockOk.addEventListener('click', () => closeUnlock(false));
+  unlockWear.addEventListener('click', () => closeUnlock(true));
+  unlock.m.addEventListener('click', (e) => { if (e.target === unlock.m) closeUnlock(false); });
+  function showUnlock({ icon = '🎁', name = '', text = '' } = {}) {
+    bagNew = true;
+    refreshSideBadges();
+    openModal('unlock', () => {
+      unlockIcon.textContent = icon || '🎁';
+      unlockName.textContent = name || '新裝扮';
+      unlockText.textContent = text || '';
+      unlockText.hidden = !text;
+      unlockWear.hidden = !cb.getWardrobe || queue.length > 0;
+      unlock.card.scrollTop = 0;
+    });
+  }
+
+  // ================= v3：衣櫥（不遮住角色的側邊面板 / 底部抽屜） =================
+  const wd = makeModal('wardrobe', 'tw-wd-card');
+  wd.m.classList.add('tw-modal-wd');
+  const wdHead = h('div', 'tw-card-head tw-wd-head');
+  const wdTitle = h('h2', 'tw-card-title', '🎒 衣櫥');
+  const wdCount = h('span', 'tw-wd-count', '');
+  const wdClose = button('tw-close', '✕', '關閉');
+  const wdTitleWrap = h('div', 'tw-wd-titlewrap');
+  wdTitleWrap.append(wdTitle, wdCount);
+  wdHead.append(wdTitleWrap, wdClose);
+  const wdTabs = h('div', 'tw-wd-tabs');
+  wdTabs.setAttribute('role', 'tablist');
+  const wdGrid = h('div', 'tw-wd-grid');
+  const wdHint = h('div', 'tw-wd-hint', '');
+  wd.card.append(wdHead, wdTabs, wdGrid, wdHint);
+  let wdSlot = 'hat';
+  let wdHintTimer = 0;
+  wdClose.addEventListener('click', () => { sfx('ui'); closeWardrobe(); });
+  wd.m.addEventListener('click', (e) => { if (e.target === wd.m && guardOk()) { sfx('ui'); closeWardrobe(); } });
+
+  function getWardrobeData() {
+    let d = null;
+    try { d = cb.getWardrobe ? cb.getWardrobe() : null; } catch { d = null; }
+    d = d || {};
+    const slots = Array.isArray(d.slots) && d.slots.length ? d.slots : DEFAULT_SLOTS;
+    const items = Array.isArray(d.items) ? d.items.filter((it) => it && typeof it === 'object') : [];
+    const equipped = d.equipped || {};
+    return { slots, items, equipped };
+  }
+  function wdShowHint(text, kind) {
+    wdHint.textContent = text;
+    wdHint.className = `tw-wd-hint is-on ${kind ? 'is-' + kind : ''}`;
+    retrigger(wdHint, 'is-pop');
+    clearTimeout(wdHintTimer);
+    wdHintTimer = setTimeout(() => wdHint.classList.remove('is-on'), 3200);
+  }
+  function renderWardrobe(bump) {
+    const { slots, items, equipped } = getWardrobeData();
+    if (!slots.some((s) => s.id === wdSlot)) wdSlot = slots[0].id;
+    // 分頁
+    wdTabs.textContent = '';
+    let total = 0, have = 0;
+    for (const s of slots) {
+      const own = items.filter((it) => it.slot === s.id);
+      const un = own.filter((it) => it.unlocked).length;
+      total += own.length; have += un;
+      const t = button('tw-wd-tab', '');
+      t.setAttribute('role', 'tab');
+      t.setAttribute('aria-selected', s.id === wdSlot ? 'true' : 'false');
+      const top = h('span', 'tw-wd-tab-top');
+      top.append(h('span', 'tw-wd-tab-ic', SLOT_ICON[s.id] || '✨'), h('span', 'tw-wd-tab-l', s.name || s.id));
+      t.append(top, h('span', 'tw-wd-tab-n', `${un}/${own.length}`));
+      t.addEventListener('click', () => {
+        if (wdSlot === s.id) return;
+        sfx('ui');
+        wdSlot = s.id;
+        wdHint.classList.remove('is-on');
+        renderWardrobe();
+        wdGrid.scrollTop = 0;
+      });
+      wdTabs.append(t);
+    }
+    wdCount.textContent = total ? `${have}/${total}` : '';
+    // 物品
+    wdGrid.textContent = '';
+    const list = items.filter((it) => it.slot === wdSlot);
+    const eq = equipped[wdSlot] ?? null;
+    if (NONE_ITEM[wdSlot] && !list.some((it) => it.id === null || it.id === 'none')) {
+      list.unshift({ id: null, slot: wdSlot, icon: NONE_ITEM[wdSlot].icon, name: NONE_ITEM[wdSlot].name, unlocked: true, none: true });
+    }
+    for (const it of list) {
+      const on = (it.id ?? null) === eq || (it.id === 'none' && eq === null);
+      const b = button('tw-wd-item', '');
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.classList.toggle('is-on', on);
+      b.classList.toggle('is-locked', !it.unlocked);
+      b.classList.toggle('is-none', !!it.none);
+      const art = h('span', 'tw-wd-art');
+      const color = it.color || (wdSlot === 'scarf' ? SCARF_COLORS[it.id] : null);
+      if (color) { art.classList.add('has-swatch'); art.style.setProperty('--sw', color); }
+      art.append(h('span', 'tw-wd-ic', it.icon || SLOT_ICON[wdSlot] || '✨'));
+      b.append(art, h('span', 'tw-wd-name', it.unlocked ? (it.name || '') : (it.name || '？？？')));
+      if (on) b.append(h('span', 'tw-wd-check', '✓'));
+      if (!it.unlocked) b.append(h('span', 'tw-wd-lock', '🔒'));
+      if (bump && on) b.classList.add('is-bump');
+      b.setAttribute('aria-label', `${it.name || ''}${on ? '（穿戴中）' : ''}${it.unlocked ? '' : '（未解鎖）'}`);
+      b.addEventListener('click', () => {
+        if (!it.unlocked) {
+          sfx('ui');
+          retrigger(b, 'is-shake');
+          wdShowHint(`🔒 ${it.hint || '還沒解鎖喔，繼續探索吧！'}`, 'lock');
+          return;
+        }
+        if (on) {
+          retrigger(b, 'is-bump');
+          wdShowHint(`✓ 已經穿上「${it.name || ''}」了`, 'ok');
+          return;
+        }
+        try { if (cb.onEquip) cb.onEquip(wdSlot, it.id ?? null); } catch { /* 忽略 */ }
+        renderWardrobe(true);
+        wdShowHint(it.none ? `已經${wdSlot === 'hat' ? '脫下帽子' : '關閉腳印特效'}` : `✨ 換上「${it.name || ''}」！`, 'ok');
+      });
+      wdGrid.append(b);
+    }
+    if (!list.length) wdGrid.append(h('p', 'tw-wd-empty', '這裡還沒有東西喔。'));
+  }
+  function showWardrobe() {
+    if (!started || current || !cb.getWardrobe) return;
+    openModal('wardrobe', () => {
+      bagNew = false;
+      refreshSideBadges();
+      wdHint.classList.remove('is-on');
+      renderWardrobe();
+      wdGrid.scrollTop = 0;
+    });
+    try { if (cb.onWardrobeOpen) cb.onWardrobeOpen(true); } catch { /* 忽略 */ }
+  }
+  function closeWardrobe() {
+    if (current !== 'wardrobe') return;
+    closeModal('wardrobe');
+    try { if (cb.onWardrobeOpen) cb.onWardrobeOpen(false); } catch { /* 忽略 */ }
+  }
+  forced.wardrobe = () => { try { if (cb.onWardrobeOpen) cb.onWardrobeOpen(false); } catch { /* 忽略 */ } };
+
+  // ================= v3：圖鑑 =================
+  const jn = makeModal('journal', 'tw-jn-card');
+  const jnHead = h('div', 'tw-card-head tw-jn-head');
+  const jnClose = button('tw-close', '✕', '關閉');
+  jnHead.append(h('h2', 'tw-card-title', '📖 圖鑑'), jnClose);
+  const jnBody = h('div', 'tw-jn-body');
+  jn.card.append(jnHead, jnBody);
+  let reopenJournal = false;
+  let reopenTimer = 0;
+  jnClose.addEventListener('click', () => { sfx('ui'); closeJournal(); });
+  jn.m.addEventListener('click', (e) => { if (e.target === jn.m && guardOk()) { sfx('ui'); closeJournal(); } });
+  function closeJournal() { closeModal('journal'); }
+
+  function jnStat(icon, label, value, sub) {
+    const s = h('div', 'tw-jn-stat');
+    s.append(h('span', 'tw-jn-stat-ic', icon));
+    const t = h('div', 'tw-jn-stat-t');
+    t.append(h('b', 'tw-jn-stat-v', value), h('span', 'tw-jn-stat-l', label));
+    s.append(t);
+    if (sub) s.append(sub);
+    return s;
+  }
+  function renderJournal() {
+    let j = null;
+    try { j = cb.getJournal ? cb.getJournal() : null; } catch { j = null; }
+    j = j || {};
+    const facts = Array.isArray(j.facts) ? j.facts.filter((f) => f && typeof f === 'object') : [];
+    jnBody.textContent = '';
+    // ---- 統計 ----
+    const starsN = typeof j.stars === 'number' ? j.stars : (stars || 0);
+    if (typeof j.stars === 'number') setStars(j.stars, false);
+    const stats = h('div', 'tw-jn-stats');
+    const collected = facts.filter((f) => f.collected).length;
+    stats.append(jnStat('📚', '已收集知識', `${collected}/${facts.length || 12}`));
+    stats.append(jnStat('⭐', '測驗星星', `${starsN}/${facts.length || 12}`));
+    const ac = j.acorns || {};
+    stats.append(jnStat('🌰', '金色橡實', `${ac.found | 0}/${ac.total || 6}`));
+    const best = typeof j.bestTime === 'number' && isFinite(j.bestTime) && j.bestTime > 0 ? j.bestTime : null;
+    const medal = MEDAL_ICON[j.medal] || '';
+    stats.append(jnStat(medal || '⏱️', '計時挑戰最佳', best !== null ? fmtTrial(best) : '尚未挑戰'));
+    jnBody.append(stats);
+    // ---- 橡實提示 ----
+    let hints = [];
+    if (Array.isArray(ac.hints)) hints = ac.hints.filter(Boolean).map(String);
+    else if (Array.isArray(ac.list)) hints = ac.list.filter((a) => a && !a.found && a.hint).map((a) => String(a.hint));
+    if (hints.length && (ac.found | 0) < (ac.total || 6)) {
+      const box = h('div', 'tw-jn-hints');
+      box.append(h('div', 'tw-jn-hints-t', '🌰 還沒找到的金色橡實'));
+      const ul = h('ul', 'tw-jn-hints-l');
+      for (const t of hints) ul.append(h('li', '', t));
+      box.append(ul);
+      jnBody.append(box);
+    }
+    // ---- 依生態區分組 ----
+    const order = BIOMES.map((b) => b.id);
+    const groups = new Map();
+    for (const f of facts) {
+      const id = f.biome || 'other';
+      if (!groups.has(id)) groups.set(id, []);
+      groups.get(id).push(f);
+    }
+    const ids = [...groups.keys()].sort((a, b) => (order.indexOf(a) + 99) % 99 - (order.indexOf(b) + 99) % 99);
+    for (const id of ids) {
+      const list = groups.get(id);
+      const b = BIOMES.find((x) => x.id === id);
+      const name = (b && b.name) || list[0].biomeName || '其他';
+      const sec = h('section', 'tw-jn-sec');
+      const sh = h('div', 'tw-jn-sec-h');
+      sh.append(h('span', 'tw-jn-sec-ic', (b && b.icon) || '🌍'), h('span', 'tw-jn-sec-n', name), h('span', 'tw-jn-sec-c', `${list.filter((f) => f.collected).length}/${list.length}`));
+      sec.append(sh);
+      const grid = h('div', 'tw-jn-grid');
+      for (const f of list) grid.append(journalEntry(f, name));
+      sec.append(grid);
+      jnBody.append(sec);
+    }
+    if (!facts.length) jnBody.append(h('p', 'tw-wd-empty', '還沒有任何紀錄，去找知識晶石吧！'));
+  }
+  function journalEntry(f, biomeName) {
+    const e = h('article', `tw-jn-entry ${f.collected ? 'is-have' : 'is-missing'}`);
+    const ic = h('div', 'tw-jn-ic', f.collected ? (f.icon || '💎') : '❔');
+    const body = h('div', 'tw-jn-eb');
+    if (!f.collected) {
+      body.append(h('div', 'tw-jn-title', '？？？'), h('div', 'tw-jn-where', `藏在${f.biomeName || biomeName}的某處`));
+      e.append(ic, body);
+      return e;
+    }
+    body.append(h('div', 'tw-jn-title', f.title || ''), h('p', 'tw-jn-text', f.text || ''));
+    const foot = h('div', 'tw-jn-foot');
+    if (f.quiz === 'correct') {
+      foot.append(h('span', 'tw-jn-badge is-ok', '⭐ 答對了'));
+    } else {
+      foot.append(h('span', `tw-jn-badge ${f.quiz === 'wrong' ? 'is-bad' : 'is-none'}`, f.quiz === 'wrong' ? '❌ 答錯了' : '❔ 還沒作答'));
+      if (cb.onRetryQuiz) {
+        const r = button('tw-jn-retry', f.quiz === 'wrong' ? '🔁 再答一次' : '✏️ 來答題');
+        r.addEventListener('click', () => {
+          if (current !== 'journal') return;
+          sfx('ui');
+          closeJournal();
+          reopenJournal = true;
+          clearTimeout(reopenTimer);
+          reopenTimer = setTimeout(() => { reopenJournal = false; }, 1500); // 沒有出題就不要再打開
+          try { cb.onRetryQuiz(f.id); } catch { /* 忽略 */ }
+        });
+        foot.append(r);
+      }
+    }
+    body.append(foot);
+    e.append(ic, body);
+    return e;
+  }
+  function showJournal() {
+    if (!started || current || !cb.getJournal) return;
+    openModal('journal', () => {
+      bookNew = false;
+      refreshSideBadges();
+      renderJournal();
+      jnBody.scrollTop = 0;
+    });
+  }
+
+  // ================= v3：計時挑戰 HUD =================
+  const timer = h('div', 'tw-timer tw-glass');
+  timer.setAttribute('role', 'timer');
+  const timerMain = h('div', 'tw-timer-main');
+  const timerIc = h('span', 'tw-timer-ic', '⏱️');
+  const timerTime = h('b', 'tw-timer-time', '00:00.0');
+  timerMain.append(timerIc, timerTime);
+  const timerSub = h('div', 'tw-timer-sub');
+  const timerFound = h('span', 'tw-timer-found', '⌛ 0/8');
+  const timerBest = h('span', 'tw-timer-best', '');
+  timerSub.append(timerFound, timerBest);
+  const timerCancel = button('tw-timer-cancel', '放棄挑戰', '放棄計時挑戰');
+  const timerInfo = h('div', 'tw-timer-info');
+  timerInfo.append(timerMain, timerSub);
+  timer.append(timerInfo, timerCancel);
+  timer.hidden = true;
+  hud.insertBefore(timer, compass);
+  let timerOn = false;
+  let timerFoundN = -1;
+  let cancelArmed = 0;
+  timerCancel.addEventListener('click', () => {
+    timerCancel.blur();
+    if (!timerOn) return;
+    sfx('ui');
+    const now = performance.now();
+    if (now - cancelArmed > 3000) {
+      cancelArmed = now;
+      timerCancel.textContent = '確定放棄？';
+      timer.classList.add('is-confirm');
+      setTimeout(() => {
+        if (performance.now() - cancelArmed >= 2950) { timerCancel.textContent = '放棄挑戰'; timer.classList.remove('is-confirm'); }
+      }, 3000);
+      return;
+    }
+    cancelArmed = 0;
+    timerCancel.textContent = '放棄挑戰';
+    timer.classList.remove('is-confirm');
+    try { if (cb.onCancelTrial) cb.onCancelTrial(); } catch { /* 忽略 */ }
+  });
+  function placeTimer() {
+    if (mqNarrow.matches) {
+      if (timer.parentNode !== leftCol) leftCol.insertBefore(timer, leftCol.firstChild);
+    } else if (timer.parentNode !== hud) {
+      hud.insertBefore(timer, compass.parentNode === hud ? compass : toasts);
+    }
+  }
+  function setTimer(st) {
+    const on = !!st;
+    if (on !== timerOn) {
+      timerOn = on;
+      timer.hidden = !on;
+      hud.classList.toggle('has-timer', on);
+      if (on) {
+        placeTimer();
+        retrigger(timer, 'is-in');
+        timerFoundN = -1;
+        cancelArmed = 0;
+        timerCancel.textContent = '放棄挑戰';
+        timer.classList.remove('is-confirm');
+      }
+      timerCancel.hidden = !cb.onCancelTrial;
+      requestAnimationFrame(() => { measureQuestMax(); layoutToasts(); });
+    }
+    if (!on) return;
+    setText(timerTime, fmtTrial(st.time || 0));
+    const total = st.total | 0;
+    const found = st.found | 0;
+    setText(timerFound, `⌛ ${found}/${total || CFG.TRIAL_COUNT || 8}`);
+    if (found !== timerFoundN) {
+      if (timerFoundN >= 0 && found > timerFoundN) retrigger(timerFound, 'is-pop');
+      timerFoundN = found;
+    }
+    const best = typeof st.best === 'number' && isFinite(st.best) && st.best > 0 ? st.best : null;
+    setText(timerBest, best !== null ? `🏆 ${fmtTrial(best)}` : '🏆 —');
+    const slow = best !== null && (st.time || 0) > best;
+    timer.classList.toggle('is-slow', slow);
+  }
+
+  // ================= v3：倒數 =================
+  const cd = makeModal('countdown', 'tw-cd-card');
+  cd.m.classList.add('tw-modal-cd');
+  const cdNum = h('div', 'tw-cd-num', '');
+  cd.card.append(cdNum);
+  let cdToken = null;
+  function showCountdown() {
+    return new Promise((resolve) => {
+      openModal('countdown', () => {
+        const token = {};
+        cdToken = token;
+        const steps = ['3', '2', '1'];
+        let i = 0;
+        const STEP = 850;
+        const tick = () => {
+          if (cdToken !== token) return;
+          if (i < steps.length) {
+            cdNum.textContent = steps[i];
+            cdNum.className = `tw-cd-num is-n${3 - i}`;
+            retrigger(cdNum, 'is-show');
+            sfx('countdown');
+            i++;
+            setTimeout(tick, STEP);
+            return;
+          }
+          cdNum.textContent = '出發！';
+          cdNum.className = 'tw-cd-num is-go';
+          retrigger(cdNum, 'is-show');
+          sfx('go');
+          cdToken = null;
+          // 「出發！」出現時就結束倒數（可以立刻開始移動），文字自己淡出
+          const ghost = cdNum.cloneNode(true);
+          ghost.classList.add('tw-cd-ghost');
+          flyLayer.append(ghost);
+          setTimeout(() => ghost.remove(), 900);
+          closeModal('countdown');
+          resolve();
+        };
+        cdNum.textContent = '';
+        setTimeout(tick, 120);
+        forced.countdown = () => { cdToken = null; resolve(); };
+      }, () => resolve());
+    });
+  }
+
+  // ================= v3：計時挑戰成績 =================
+  const res = makeModal('result', 'tw-res-card');
+  res.m.classList.add('tw-modal-celebrate');
+  const resConfetti = h('div', 'tw-confetti');
+  resConfetti.setAttribute('aria-hidden', 'true');
+  res.m.insertBefore(resConfetti, res.card);
+  const resArt = h('div', 'tw-res-art');
+  const resRays = h('div', 'tw-rays');
+  const resMedal = h('div', 'tw-res-medal', '🥇');
+  const resRecord = h('div', 'tw-res-record', '新紀錄！');
+  resArt.append(resRays, resMedal, resRecord);
+  const resBody = h('div', 'tw-res-body');
+  const resKicker = h('div', 'tw-kicker', '⏱️ 計時挑戰完成！');
+  const resTitle = h('h2', 'tw-res-title', '');
+  const resTime = h('div', 'tw-res-time', '00:00.0');
+  const resBest = h('div', 'tw-res-best', '');
+  const resLadder = h('div', 'tw-res-ladder');
+  const ladderEls = {};
+  for (const k of ['gold', 'silver', 'bronze']) {
+    const li = h('div', 'tw-res-rung');
+    li.append(h('span', 'tw-res-rung-ic', MEDAL_ICON[k]), h('span', 'tw-res-rung-t', `< ${fmtTime(MEDALS[k])}`));
+    resLadder.append(li);
+    ladderEls[k] = li;
+  }
+  const resBtns = h('div', 'tw-btnrow');
+  const resRetry = button('tw-btn tw-btn-primary', '🔁 再挑戰');
+  const resExit = button('tw-btn tw-btn-secondary', '結束');
+  resBtns.append(resRetry, resExit);
+  resBody.append(resKicker, resTitle, resTime, resBest, resLadder, resBtns);
+  res.card.append(resArt, resBody);
+  let resResolve = null;
+  function closeResult(v) {
+    if (current !== 'result' || !guardOk()) return;
+    sfx('ui');
+    const r = resResolve;
+    resResolve = null;
+    closeModal('result');
+    if (r) r(v);
+  }
+  forced.result = () => { const r = resResolve; resResolve = null; if (r) r('exit'); };
+  resRetry.addEventListener('click', () => closeResult('retry'));
+  resExit.addEventListener('click', () => closeResult('exit'));
+  function showTrialResult({ time = 0, best = null, medal = null, newRecord = false } = {}) {
+    return new Promise((resolve) => {
+      openModal('result', () => {
+        resResolve = resolve;
+        const m = MEDAL_ICON[medal] ? medal : null;
+        res.card.classList.remove('is-gold', 'is-silver', 'is-bronze', 'is-none');
+        res.card.classList.add(m ? `is-${m}` : 'is-none');
+        resMedal.textContent = m ? MEDAL_ICON[m] : '💪';
+        resTitle.textContent = m ? `獲得${MEDAL_NAME[m]}！` : '再接再厲！';
+        resTime.textContent = fmtTrial(time);
+        const b = typeof best === 'number' && isFinite(best) && best > 0 ? best : null;
+        resBest.textContent = newRecord ? (b !== null && b < time - 0.05 ? `最佳紀錄 ${fmtTrial(b)}` : '🏆 這就是你的最佳紀錄！') : `最佳紀錄 ${b !== null ? fmtTrial(b) : '—'}`;
+        resRecord.hidden = !newRecord;
+        res.card.classList.toggle('is-record', !!newRecord);
+        for (const k of Object.keys(ladderEls)) ladderEls[k].classList.toggle('is-got', k === m);
+        resConfetti.textContent = '';
+        if (m || newRecord) fillConfetti(resConfetti, 30);
+        res.card.scrollTop = 0;
+        sfx('trialEnd');
+        if (!mqCoarse.matches) setTimeout(() => { try { resRetry.focus({ preventScroll: true }); } catch { /* 忽略 */ } }, 50);
+      }, () => resolve('exit'));
+    });
+  }
+
+  // ================= v3：夜晚（HUD 更不透明，深色場景也清楚） =================
+  function setNight(on) {
+    root.classList.toggle('is-night', !!on);
   }
 
   // ================= 鍵盤 =================
@@ -1404,6 +2171,43 @@ export function createUI({ root, audio, callbacks = {} }) {
       }
       return;
     }
+    if (current === 'quiz') {
+      const answered = Q.picked >= 0;
+      if (!answered && /^(Digit|Numpad)[1-9]$/.test(code) && !e.repeat) {
+        e.preventDefault();
+        quizPick(+code.slice(-1) - 1);
+        return;
+      }
+      if (answered && (CLOSE_KEYS.has(code) || e.key === 'Enter' || e.key === ' ' || e.key === 'Escape')) {
+        e.preventDefault();
+        if (!e.repeat) armedKey = code || e.key;
+      }
+      return;
+    }
+    if (current === 'unlock') {
+      if (CLOSE_KEYS.has(code) || e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        if (!e.repeat && guardOk()) armedKey = code || e.key;
+      }
+      return;
+    }
+    if (current === 'result') {
+      if (e.key === 'Escape' && !e.repeat) { e.preventDefault(); closeResult('exit'); }
+      return;
+    }
+    if (current === 'countdown') {
+      if (code === 'Space' || e.key === 'Enter' || e.key === 'Escape') e.preventDefault();
+      return;
+    }
+    if (current === 'wardrobe' || current === 'journal') {
+      const own = current === 'wardrobe' ? 'KeyB' : 'KeyJ';
+      if ((e.key === 'Escape' || code === own) && !e.repeat) {
+        e.preventDefault();
+        sfx('ui');
+        if (current === 'wardrobe') closeWardrobe(); else closeJournal();
+      }
+      return;
+    }
     if (current === 'start') {
       if ((e.key === 'Enter' || code === 'NumpadEnter') && !e.repeat) {
         e.preventDefault();
@@ -1423,6 +2227,8 @@ export function createUI({ root, audio, callbacks = {} }) {
       return;
     }
     if (!started || current || e.repeat) return;
+    if (code === 'KeyB' && cb.getWardrobe) { e.preventDefault(); closePicker(); sfx('ui'); showWardrobe(); return; }
+    if (code === 'KeyJ' && cb.getJournal) { e.preventDefault(); closePicker(); sfx('ui'); showJournal(); return; }
     let n = -1;
     if (/^Digit[1-6]$/.test(code)) n = +code.slice(5) - 1;
     else if (/^Numpad[1-6]$/.test(code)) n = +code.slice(6) - 1;
@@ -1438,11 +2244,14 @@ export function createUI({ root, audio, callbacks = {} }) {
     armedKey = null;
     if (current === 'fact') closeFact();
     else if (current === 'fragment') closeFragment();
+    else if (current === 'quiz') closeQuiz();
+    else if (current === 'unlock') closeUnlock(false);
     else if (current === 'dialogue') { e.preventDefault(); dlgAdvance(true); }
   });
 
   refreshMute();
   refreshQuality();
+  refreshSideVisibility();
   updateProgress(lastProgress);
   relayout();
 
@@ -1463,5 +2272,16 @@ export function createUI({ root, audio, callbacks = {} }) {
     setNav,
     setPrompt,
     showFragment,
+    // v3
+    showQuiz,
+    showUnlock,
+    showWardrobe,
+    hideWardrobe: closeWardrobe,
+    showJournal,
+    setTimer,
+    showCountdown,
+    showTrialResult,
+    setStars: (n) => setStars(n, started),
+    setNight,
   };
 }

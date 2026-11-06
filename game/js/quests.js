@@ -557,6 +557,8 @@ export function createQuests({ scene, world, player, ui, audio, effects, onFragm
   // 對話
   // =========================================================================
   let dlgToken = 0, dlgBusy = false, dlgBusyTime = 0;
+  // v3：計時挑戰中暫停任務（不撿東西、不觸發對話、計時暫停；居民與跟隨者照常動）
+  let paused = false;
   const pickLine = (arr) => arr[Math.floor(Math.random() * arr.length) % arr.length];
 
   function openDialogue(q, mode) {
@@ -649,12 +651,12 @@ export function createQuests({ scene, world, player, ui, audio, effects, onFragm
     for (const id of QUEST_ORDER) { const n = npcs[id]; n.dist = n.pos.distanceTo(pp); }
   }
   function getInteractHint() {
-    if (dlgBusy) return null;
+    if (dlgBusy || paused) return null;
     refreshNpcDist();
     return nearestNpc(INTERACT_RADIUS) ? '對話' : null;
   }
   function interact() {
-    if (dlgBusy) return false;
+    if (dlgBusy || paused) return false;
     refreshNpcDist();
     const n = nearestNpc(INTERACT_RADIUS);
     if (!n) return false;
@@ -739,7 +741,7 @@ export function createQuests({ scene, world, player, ui, audio, effects, onFragm
       const vis = dp < CULL_SMALL;
       f.ch.object.visible = vis;
       if (f.state === 'wait') {
-        if (dp < TOUCH_R + 0.25) {
+        if (dp < TOUCH_R + 0.25 && !paused) {
           if (q.status === 'active') {
             f.state = 'follow';
             play('npc');
@@ -822,7 +824,7 @@ export function createQuests({ scene, world, player, ui, audio, effects, onFragm
       }
     }
     // 送達：小雞 → 雞舍門口；企鵝寶寶 → 媽媽身邊
-    if (q.status === 'active') {
+    if (q.status === 'active' && !paused) {
       const dest = isChick ? homePoint : q.npc.pos;
       const R = isChick ? HOME_R : MOM_R;
       if (pp.distanceTo(dest) < R) {
@@ -858,7 +860,7 @@ export function createQuests({ scene, world, player, ui, audio, effects, onFragm
       const bob = 0.12 + Math.sin(t * 2.2 + it.phase) * 0.08;
       it.facing.applyAxisAngle(it.dir, dt * 1.2);
       placeFast(it.obj, it.dir, it.r + bob, it.facing);
-      if (dp < PICK_R) {
+      if (dp < PICK_R && !paused) {
         if (q.status === 'active') {
           it.collected = true;
           it.obj.visible = false;
@@ -882,7 +884,7 @@ export function createQuests({ scene, world, player, ui, audio, effects, onFragm
       ice.phase += dt;
       placeFast(ice.obj, ice.dir, ice.r + 0.05 + Math.sin(ice.phase * 2) * 0.04, ice.facing);
     }
-    if (q.status === 'done') return;
+    if (q.status === 'done' || paused) return;
     if (!q.carrying) {
       if (dp < PICK_R + 0.2) {
         if (q.status === 'active') {
@@ -939,7 +941,7 @@ export function createQuests({ scene, world, player, ui, audio, effects, onFragm
       if (it.done) it.facing.applyAxisAngle(it.dir, dt * 2.5);
       placeFast(it.obj, it.dir, it.r, it.facing);
       it.label.position.copy(it.dir).multiplyScalar(it.r + 2.0 + Math.sin(t * 2.5 + it.index) * 0.08);
-      if (dp < PICK_R && !it.done) {
+      if (dp < PICK_R && !it.done && !paused) {
         if (q.status === 'idle') { preHint(q); continue; }
         if (q.status !== 'active') continue;
         if (it.index === q.next) {
@@ -968,7 +970,7 @@ export function createQuests({ scene, world, player, ui, audio, effects, onFragm
         }
       }
     }
-    if (q.running) {
+    if (q.running && !paused) {
       q.timer -= dt;
       const sec = Math.max(0, Math.ceil(q.timer));
       if (sec !== q.lastSec) {
@@ -1007,7 +1009,7 @@ export function createQuests({ scene, world, player, ui, audio, effects, onFragm
     updateStations(quests.volcano, dt, t);
 
     // 自動對話：第一次靠近（介紹）／完成目標後回來（回報）
-    if (!dlgBusy) {
+    if (!dlgBusy && !paused) {
       for (const id of QUEST_ORDER) {
         const q = quests[id];
         if (q.npc.dist >= INTERACT_RADIUS) continue;
@@ -1201,6 +1203,9 @@ export function createQuests({ scene, world, player, ui, audio, effects, onFragm
     reset,
     onPlayerEmote,
     isBusy: () => dlgBusy,
+    /** v3：計時挑戰中暫停任務收集與計時 */
+    setPaused: (b) => { paused = !!b; },
+    isPaused: () => paused,
     /** 擺放用：所有任務物件的方向（gameplay 的種子／荒地避開它們） */
     _debug: { quests, npcs, ice, homePoint, root },
   };
