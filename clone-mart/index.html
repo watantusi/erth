@@ -302,6 +302,13 @@ body.touch #hint{bottom:calc(env(safe-area-inset-bottom,0px) + 186px);font-size:
 .ctrl{margin-top:12px;font-size:13px;line-height:1.7;color:var(--ink);background:#f4efe4;border-radius:10px;padding:8px 10px}
 .bigstars{text-align:center;font-size:48px;letter-spacing:8px;color:var(--sign);text-shadow:0 3px 0 var(--ink);margin:2px 0 4px;line-height:1.1}
 .newbest{display:block;text-align:center;font-weight:900;color:var(--coral);margin-bottom:6px}
+.ch-h{grid-column:1/-1;display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:6px;padding-bottom:4px;border-bottom:2px dashed #cfc6b2}
+.ch-h b{font-size:16px;font-weight:900} .ch-h span{font-size:12px;font-weight:700;color:var(--muted)}
+.diff{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 12px}
+.df{border:2px solid #cfc6b2;border-radius:12px;background:#fff;color:var(--ink);padding:7px 8px;text-align:left;display:flex;flex-direction:column;gap:2px;min-height:44px}
+.df b{font-size:15px;font-weight:900} .df small{font-size:11px;font-weight:700;color:var(--muted);line-height:1.35}
+.df.on{border-color:var(--ink);background:var(--sign);box-shadow:0 3px 0 var(--ink)} .df.on small{color:var(--ink)}
+@media (max-width:420px){ .df small{display:none} }
 @media (prefers-reduced-motion:reduce){ .tk.urgent{animation:none} #bigmsg span{animation:none} }
 
 /* ---------- controls UX: hold ring, target label, compact tickets, small-screen sheets ---------- */
@@ -2055,12 +2062,29 @@ const LEVELS = [
    desc:'錯過 5 張單就打烊，看你能撐多久！'},
 ];
 const MAX_FAILS_ENDLESS = 5;
+// stable level ids for saving: indices shift when chapters are added. Keep the endless level LAST in LEVELS.
+const LEVEL_IDS_V1 = ['c1-1','c1-2','c1-3','c1-4','c1-5','c1-6','endless'];   // order of the v1 save (best keyed by index)
+LEVELS.forEach((L, i) => { if (!L.id) L.id = LEVEL_IDS_V1[i] || ('lv' + i); if (L.ch === undefined) L.ch = L.endless ? 0 : 1; });
+{ const EL = LEVELS.find(L => L.endless); if (EL && !EL.req) EL.req = {lv:'c1-6', stars:1}; }
+// chapters: `need` = stars earned in the previous chapter to open it; `theme` = applyTheme() id for its levels
+const CHAPTERS = [
+  {id:1, n:'第一章　開店日記', ic:'🏪', theme:'default', need:0, desc:'學會分身便利店的基本功。'},
+];
+const CHAPTER = id => CHAPTERS.find(c => c.id === id);
+// difficulty scales ticket timers, order rate, burn/fire timers, star thresholds and clone slots
+const DIFFS = [
+  {id:'easy',   n:'輕鬆', ic:'🌱', time:1.5, every:1.3,  burn:1.7, star:0.65, slots:1, coin:0.8, desc:'點單等很久、東西不容易燒焦，還能多帶 1 個分身。'},
+  {id:'normal', n:'標準', ic:'🍳', time:1.2, every:1.12, burn:1.3, star:0.85, slots:0, coin:1,   desc:'有點忙，但喘得過氣。'},
+  {id:'hard',   n:'挑戰', ic:'🔥', time:1,   every:1,    burn:1,   star:1,    slots:0, coin:1.3, desc:'原汁原味的手忙腳亂，3 星可以拿到 👑 皇冠。'},
+];
+const DIFF = id => DIFFS.find(d => d.id === id) || DIFFS[0];
 const CLONE_SPEED = 2.6, CLONE_WORK = 0.7, CLONE_THINK = 0.5;   // AI clones are slower than you on purpose
 
 /* ---------------- game state ---------------- */
 const G = {
   state:'title', prevState:'play', lv:0, level:LEVELS[0], time:0, money:0, combo:1, orderSeq:0, spawnT:0,
   stats:null, best:{}, tips:new Set(), team:[], demo:true, endT:0, fails:0, outT:0, spillT:0,
+  diff:'easy', coins:0, owned:new Set(), equip:{}, ach:{},   // progression: difficulty, shop coins, cosmetics owned/equipped (per role), achievements
 };
 // money/rating are kept as the names other modules (juice, HUD money tick) read: money = this shift's score
 function newStats(){ return {delivered:0, failed:0, tips:0, base:0, penalty:0, burnt:0, fires:0, maxCombo:1, byRec:{}, vip:0, vipMiss:0, bulk:0, rushDone:0, events:0}; }
@@ -2808,6 +2832,7 @@ function createPlayer(){
   owner.agent.pos.set(4.2, 0, 2.4);
   player = owner;
   staff.push(owner);
+  applyCosmetics(owner);
 }
 function spawnClone(roleId, instant){
   const r = ROLE[roleId];
@@ -2818,6 +2843,7 @@ function spawnClone(roleId, instant){
   if (!instant) s.ch.g.scale.setScalar(0.01);
   addHoloFx(s.ch, r.color, s);
   staff.push(s);
+  applyCosmetics(s);
   return s;
 }
 function randomNear(p){ for (let k=0;k<20;k++){ const x=p.x+rand(-0.8,0.8), z=p.z+rand(-0.8,0.8); if (walkXZ(x,z)) return {x,z}; } return {x:p.x,z:p.z}; }
@@ -2962,7 +2988,7 @@ function spawnOrder(forceRec){
   const L = G.level;
   const rec = forceRec || pickRecipe(), R = RECIPES[rec];
   const ramp = L.endless ? Math.max(0.5, 1 - G.time/700) : 1;   // endless: tickets get shorter over time
-  const o = {id:++G.orderSeq, rec, t:0, limit:R.time*ramp, cust:null, claim:null, el:null, pts:R.pts, qty:1, got:0};
+  const o = {id:++G.orderSeq, rec, t:0, limit:R.time*ramp*(L.timeMul || 1), cust:null, claim:null, el:null, pts:R.pts, qty:1, got:0};
   if (G.tut >= 0 && forceRec){ o.tut = true; o.limit = R.time*(L.tutMul || 2); }   // tutorial ticket: generous, owner only
   else if (!G.demo){
     if (L.bulk && L.bulk.rec.includes(rec) && Math.random() < L.bulk.p){ o.qty = 2; o.limit *= 1.5; o.pts = R.pts*2 + 10; }
@@ -3918,7 +3944,7 @@ const mmss = s => { s = Math.max(0, Math.ceil(s)); return Math.floor(s/60) + ':'
 function updateHUD(dt){
   setText(hud.money, 'm', fmt(moneyDisplay(dt)));
   const L = G.level;
-  setText(hud.day, 'd', L.endless ? '無限營業' : '第 ' + (G.lv+1) + ' 關');
+  setText(hud.day, 'd', lvLabel(G.lv));
   setText(hud.clock, 'c', L.endless ? '失誤 ' + G.fails + '/' + MAX_FAILS_ENDLESS : mmss(L.len - G.time));
   const f = L.endless ? clamp(G.fails/MAX_FAILS_ENDLESS,0,1) : clamp(G.time/(L.len||1),0,1);
   const fr = Math.round(f*200)/2;
@@ -4082,16 +4108,78 @@ function openPanel(name){
   joy.active = false; joyEl.hidden = true; touchUse = false;
   if (name === 'pause'){
     const L = G.level;
-    $('#pauseInfo').textContent = (L.endless ? '無限營業' : '第 ' + (G.lv+1) + ' 關 · ' + L.n + ' · 剩 ' + mmss(L.len - G.time)) + ' · 分數 ' + fmt(G.money);
+    $('#pauseInfo').textContent = (L.endless ? '無限營業' : lvLabel(G.lv) + ' · ' + L.n + ' · 剩 ' + mmss(L.len - G.time)) + ' · ' + DIFF(L.diff).ic + DIFF(L.diff).n + ' · 分數 ' + fmt(G.money);
     syncAudioToggles();
   }
   showScreen(name);
 }
 function closePanels(){ showScreen(null); if (G.state === 'paused') G.state = G.prevState || 'play'; canvas.focus({preventScroll:true}); }
+function lvIndex(id){ return LEVELS.findIndex(L => L.id === id); }
+function bestOf(i){ const L = LEVELS[i]; return (L && G.best[L.id]) || {score:0, stars:0, crown:false}; }
+function chapterStars(ch){ let t = 0; LEVELS.forEach((L, k) => { if (L.ch === ch) t += bestOf(k).stars; }); return t; }
+// the level as played on a difficulty (a shallow copy; LEVELS stays untouched)
+function effLevel(L, diffId){
+  const D = DIFF(diffId || G.diff);
+  return Object.assign({}, L, {base:L, diff:D.id, timeMul:D.time, every:[L.every[0]*D.every, L.every[1]*D.every],
+    clones:Math.min(5, L.clones + D.slots), stars:L.stars.map(t => Math.max(10, Math.round(t*D.star/10)*10))});
+}
+function lvLabel(i){
+  const L = LEVELS[i]; if (!L) return '';
+  if (L.endless) return '無限營業';
+  const same = LEVELS.filter(x => x.ch === L.ch && !x.endless);
+  return '第 ' + L.ch + '-' + (same.indexOf(L) + 1) + ' 關';
+}
 function levelUnlocked(i){
-  if (i === 0) return true;
-  if (LEVELS[i].endless) return ((G.best[i-1] && G.best[i-1].stars) || 0) >= 1;
-  return ((G.best[i-1] && G.best[i-1].stars) || 0) >= 1;
+  const L = LEVELS[i]; if (!L) return false;
+  if (L.req){ const j = lvIndex(L.req.lv); return j >= 0 && bestOf(j).stars >= (L.req.stars || 1); }
+  const same = []; LEVELS.forEach((x, k) => { if (x.ch === L.ch && !x.endless) same.push(k); });
+  const pos = same.indexOf(i);
+  if (pos > 0) return bestOf(same[pos-1]).stars >= 1;
+  const C = CHAPTER(L.ch), ci = CHAPTERS.indexOf(C);
+  if (!C || ci <= 0 || !C.need) return true;
+  return chapterStars(CHAPTERS[ci-1].id) >= C.need;
+}
+function applyDiffToMachines(k){   // scale burn / fire timers for the difficulty (keeps the base values)
+  for (const id in APPL){
+    const a = APPL[id];
+    if (!('_fire' in a)) a._fire = a.fire;
+    if (a._fire) a.fire = a._fire*k;
+    for (const t in a.ins){ const r = a.ins[t]; if (!('_burn' in r)) r._burn = r.burn; if (r._burn) r.burn = r._burn*k; }
+  }
+}
+
+/* ---------------- cosmetics registry (shop items your staff can wear) ----------------
+   slot: 'hat' | 'face' | 'back'. build() returns an Object3D placed in the character's local space (feet at y=0,
+   head centre at y≈1.32, facing +z). G.equip[roleId][slot] = cosmetic id ('owner' for you). */
+const COSMETICS = [
+  {id:'hat_chef', n:'廚師高帽', slot:'hat',  price:150, ic:'👨‍🍳', build(){ const g = new THREE.Group(); const b = new THREE.Mesh(new THREE.CylinderGeometry(0.17,0.15,0.26,14), mat(0xffffff)); b.position.y = 1.66; const t = new THREE.Mesh(new THREE.SphereGeometry(0.21,14,10), mat(0xffffff)); t.position.y = 1.82; g.add(b, t); return g; }},
+  {id:'hat_cat',  n:'貓耳髮箍', slot:'hat',  price:220, ic:'🐱',   build(){ const g = new THREE.Group(); for (const x of [-0.13,0.13]){ const e = new THREE.Mesh(new THREE.ConeGeometry(0.07,0.16,4), mat(0x333344)); e.position.set(x,1.6,0); g.add(e); } return g; }},
+  {id:'face_glasses', n:'圓框眼鏡', slot:'face', price:120, ic:'👓', build(){ const g = new THREE.Group(); for (const x of [-0.075,0.075]){ const r = new THREE.Mesh(new THREE.TorusGeometry(0.05,0.012,6,14), mat(0x222222)); r.position.set(x,1.34,0.215); g.add(r); } return g; }},
+];
+const COSMETIC = id => COSMETICS.find(c => c.id === id);
+function applyCosmetics(s){
+  if (!s || !s.ch) return;
+  const want = (G.equip && G.equip[s.role]) || {}, ch = s.ch;
+  ch.cos = ch.cos || {};
+  for (const slot of ['hat','face','back']){
+    const id = want[slot] || null;
+    if ((ch.cos[slot] && ch.cos[slot].id) === id) continue;
+    if (ch.cos[slot]){ ch.g.remove(ch.cos[slot].obj); ch.cos[slot] = null; }
+    const c = id && COSMETIC(id);
+    if (c && c.build){ const obj = c.build(); obj.traverse(o => { if (o.isMesh) o.castShadow = true; }); ch.g.add(obj); ch.cos[slot] = {id, obj}; }
+  }
+}
+
+/* ---------------- chapter themes (store dressing per chapter) ----------------
+   THEMES[id] = {n, on(), off()}; applyTheme switches the dressing when a level of another chapter starts. */
+const THEMES = { default:{n:'本店'} };
+let themeNow = 'default';
+function applyTheme(id){
+  if (!THEMES[id]) id = 'default';
+  if (themeNow === id) return;
+  const prev = THEMES[themeNow]; if (prev && prev.off) try { prev.off(); } catch(e){}
+  themeNow = id;
+  const T = THEMES[id]; if (T.on) try { T.on(); } catch(e){}
 }
 // menus simulate the world behind them: a quit/finished level must not keep running there (tickets, fails, keyboard)
 function menuWorld(){ if (!G.demo){ setupWorld(0, ROLES.map(r => r.id), true); hud.big.innerHTML = ''; } }
@@ -4099,22 +4187,45 @@ function showLevels(){
   menuWorld();
   hintQ.length = 0;
   G.state = 'menu';
+  renderDiffPicker();
   const list = $('#lvList'); list.innerHTML = '';
-  const ts = totalStars();
-  $('#lvStars').textContent = '已拿到 ★' + ts + '　·　星星越多，解鎖越多種 AI 分身';
-  LEVELS.forEach((L, i) => {
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'lv';
-    const best = G.best[i] || {score:0, stars:0};
-    const open = levelUnlocked(i);
-    const st = '★'.repeat(best.stars) + '<i>' + '★'.repeat(3 - best.stars) + '</i>';
-    b.innerHTML = `<span class="no">${L.endless ? 'ENDLESS' : 'LEVEL ' + (i+1)}</span><span class="nm">${open ? '' : '🔒 '}${L.n}</span>` +
-      `<span class="rc">${L.rec.map(r => RECIPES[r].ic).join('')}</span>${L.tw ? `<span class="tw">${L.tw}</span>` : ''}<span class="st">${st}</span>` +
-      `<span class="bs">${open ? (best.score ? '最高 ' + fmt(best.score) : '還沒玩過') : '前一關拿到 ★ 解鎖'}</span>`;
-    b.disabled = !open;
-    b.onclick = () => { initAudio(); SFX.pick(); showPrep(i); };
-    list.appendChild(b);
-  });
+  $('#lvStars').textContent = '★' + totalStars() + '　💰' + G.coins + '　·　星星越多，解鎖越多種 AI 分身';
+  const groups = CHAPTERS.map(C => ({C, idx:[]})).concat([{C:{id:0, n:'特別模式', ic:'⭐'}, idx:[]}]);
+  LEVELS.forEach((L, i) => { const g = groups.find(x => x.C.id === L.ch); if (g) g.idx.push(i); });
+  for (const g of groups){
+    if (!g.idx.length) continue;
+    const h = document.createElement('div'); h.className = 'ch-h';
+    const open = g.C.id === 0 || levelUnlocked(g.idx[0]);
+    h.innerHTML = `<b>${g.C.ic} ${g.C.n}</b><span>${g.C.id ? '★' + chapterStars(g.C.id) + ' / ' + g.idx.length*3 : ''}${!open && g.C.need ? '　🔒 上一章拿到 ★' + g.C.need + ' 解鎖' : ''}</span>`;
+    list.appendChild(h);
+    for (const i of g.idx) list.appendChild(levelCard(i));
+  }
   showScreen('levels');
+}
+function levelCard(i){
+  const L = LEVELS[i];
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'lv';
+  const best = bestOf(i), open = levelUnlocked(i);
+  const st = '★'.repeat(best.stars) + '<i>' + '★'.repeat(3 - best.stars) + '</i>' + (best.crown ? ' 👑' : '');
+  const lock = L.req ? lvLabel(lvIndex(L.req.lv)) + ' 拿到 ★ 解鎖' : '前一關拿到 ★ 解鎖';
+  b.innerHTML = `<span class="no">${L.endless ? 'ENDLESS' : 'LEVEL ' + lvLabel(i).replace(/[^0-9-]/g,'')}</span><span class="nm">${open ? '' : '🔒 '}${L.n}</span>` +
+    `<span class="rc">${L.rec.map(r => RECIPES[r].ic).join('')}</span>${L.tw ? `<span class="tw">${L.tw}</span>` : ''}<span class="st">${st}</span>` +
+    `<span class="bs">${open ? (best.score ? '最高 ' + fmt(best.score) : '還沒玩過') : lock}</span>`;
+  b.disabled = !open;
+  b.onclick = () => { initAudio(); SFX.pick(); showPrep(i); };
+  return b;
+}
+function renderDiffPicker(){
+  let box_ = $('#diffPick');
+  if (!box_){ box_ = document.createElement('div'); box_.id = 'diffPick'; box_.className = 'diff'; box_.setAttribute('role','radiogroup'); box_.setAttribute('aria-label','難度'); $('#lvStars').after(box_); }
+  box_.innerHTML = '';
+  for (const D of DIFFS){
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'df' + (G.diff === D.id ? ' on' : '');
+    b.setAttribute('role','radio'); b.setAttribute('aria-checked', G.diff === D.id ? 'true' : 'false');
+    b.innerHTML = `<b>${D.ic} ${D.n}</b><small>${D.desc}</small>`;
+    b.onclick = () => { G.diff = D.id; saveProgress(); SFX.pick(); renderDiffPicker(); };
+    box_.appendChild(b);
+  }
 }
 let prepLv = 0, prepTeam = [];
 function roleUnlocked(r){ return totalStars() >= r.need; }
@@ -4129,9 +4240,9 @@ function defaultTeam(L){
 }
 function showPrep(i){
   menuWorld();
-  prepLv = i; const L = LEVELS[i];
-  $('#prepTitle').textContent = (L.endless ? '' : '第 ' + (i+1) + ' 關 · ') + L.n;
-  $('#prepDesc').textContent = L.desc + (L.endless ? '' : '　營業 ' + mmss(L.len) + '，★ ' + L.stars.join(' / ★★ ').replace(/\/ ★★ (\d+)$/, '/ ★★★ $1'));
+  prepLv = i; const L = effLevel(LEVELS[i]);
+  $('#prepTitle').textContent = (L.endless ? '' : lvLabel(i) + ' · ') + L.n;
+  $('#prepDesc').textContent = L.desc + '　' + DIFF(L.diff).ic + DIFF(L.diff).n + (L.endless ? '' : '　營業 ' + mmss(L.len) + '，★ ' + L.stars[0] + ' / ★★ ' + L.stars[1] + ' / ★★★ ' + L.stars[2]);
   let tw = $('#prepTwist');
   if (!tw){ tw = document.createElement('p'); tw.id = 'prepTwist'; tw.className = 'twist'; $('#prepDesc').after(tw); }
   tw.textContent = '今日特色　' + (L.twist || '');
@@ -4153,7 +4264,7 @@ function showPrep(i){
   showScreen('prep');
 }
 function renderPrepTeam(){
-  const L = LEVELS[prepLv];
+  const L = effLevel(LEVELS[prepLv]);
   $('#prepSlots').textContent = prepTeam.length + ' / ' + L.clones;
   const box_ = $('#prepTeam'); box_.innerHTML = '';
   for (const r of ROLES){
@@ -4248,11 +4359,13 @@ function clearWorld(){
 }
 function setupWorld(i, team, demo){
   clearWorld();
-  G.demo = demo; G.lv = i; G.level = demo ? DEMO_LEVEL : LEVELS[i];
+  G.demo = demo; G.lv = i; G.level = demo ? DEMO_LEVEL : effLevel(LEVELS[i]);
+  applyDiffToMachines(demo ? 1 : DIFF(G.level.diff).burn);
+  applyTheme(demo ? 'default' : (G.level.theme || (CHAPTER(G.level.ch) || {}).theme || 'default'));
   const L = G.level;
   G.time = 0; G.money = 0; G.combo = 1; G.fails = 0; G.spawnT = 1; G.gapT = 0; G.stats = newStats();
   G.spillT = L.spills ? rand(14, 24)/L.spills : 1e9; G.outT = L.outage ? L.outage*0.7 : 1e9;
-  G.tut = (!demo && L.script && !G.skipTut && !(G.best[i] && G.best[i].stars)) ? 0 : -1;   // G.skipTut: test hook G.rush = null; G.warnAt = 0;   // the tutorial runs until the level has a ★
+  G.tut = (!demo && L.script && !G.skipTut && !bestOf(i).stars) ? 0 : -1; G.rush = null; G.warnAt = 0;   // the tutorial runs until the level has a ★ (G.skipTut: test hook)
   G.rainT = L.rain ? L.rain.every*0.6 : 1e9; G.stormT = L.storm ? L.storm.every*0.55 : 1e9;
   owner.agent.pos.set(4.2, 0, 2.4); owner.agent.face(-Math.PI/2);
   for (const id of team) spawnClone(id, !!demo);
@@ -4298,12 +4411,14 @@ function showResults(){
   G.state = 'results';
   const L = G.level, S = G.stats, score = Math.max(0, Math.round(G.money));
   const stars = starsFor(score, L.stars);
-  const prev = G.best[G.lv] || {score:0, stars:0}, starsBefore = totalStars();
+  const lid = LEVELS[G.lv].id, prev = G.best[lid] || {score:0, stars:0, crown:false}, starsBefore = totalStars();
   const isBest = score > prev.score;
-  G.best[G.lv] = {score: Math.max(prev.score, score), stars: Math.max(prev.stars, stars)};
+  const crown = !!prev.crown || (L.diff === 'hard' && stars === 3 && !L.endless);
+  G.best[lid] = {score: Math.max(prev.score, score), stars: Math.max(prev.stars, stars), crown};
+  const coins = Math.max(0, Math.round(score/10*DIFF(L.diff).coin)); G.coins += coins; G.stats.coins = coins;
   saveProgress();
   const row = (a,b,cls) => `<div class="r ${cls||''}"><span>${a}</span><span>${b}</span></div>`;
-  $('#resTitle').textContent = (L.endless ? '無限營業 · 撐了 ' + mmss(G.time) : '第 ' + (G.lv+1) + ' 關 · ' + L.n);
+  $('#resTitle').textContent = (L.endless ? '無限營業 · 撐了 ' + mmss(G.time) : lvLabel(G.lv) + ' · ' + L.n) + ' · ' + DIFF(L.diff).ic + DIFF(L.diff).n;
   $('#resStars').innerHTML = '★'.repeat(stars) + '<i>' + '★'.repeat(3 - stars) + '</i>'; juiceStars(stars);
   $('#resBest').hidden = !isBest || score === 0;
   const recRows = Object.keys(S.byRec).map(k => row(RECIPES[k].ic + ' ' + RECIPES[k].n, S.byRec[k] + ' 份')).join('');
@@ -4314,7 +4429,7 @@ function showResults(){
     (S.bulk ? row('🧾 團購單完成', S.bulk + ' 張') : '') + (S.rushDone ? row('🔥 撐過尖峰', S.rushDone + ' 次') : '') +
     (S.failed ? row('逾時沒送到', S.failed + ' 張', 'neg') : '') + (S.burnt ? row('燒焦／失敗品', S.burnt + ' 個', 'neg') : '') + (S.fires ? row('起火', S.fires + ' 次', 'neg') : '') + '<hr>' +
     row('餐點收入', fmt(S.base)) + row('小費', '+' + fmt(S.tips)) + (S.penalty ? row('逾時扣分', '-' + fmt(S.penalty), 'neg') : '') + '<hr>' +
-    row('本次分數', fmt(score), 'tot pos') + row('星星門檻', '★' + L.stars[0] + '　★★' + L.stars[1] + '　★★★' + L.stars[2]) +
+    row('本次分數', fmt(score), 'tot pos') + row('獲得金幣', '💰 +' + coins + (crown && !prev.crown ? '　👑 皇冠！' : '')) + row('星星門檻', '★' + L.stars[0] + '　★★' + L.stars[1] + '　★★★' + L.stars[2]) +
     (stars < 3 ? row('距離 ' + '★'.repeat(stars + 1), '還差 ' + fmt(L.stars[stars] - score)) : '') +
     `<div class="coach"></div><div class="bar"></div>`;
   $('#receipt .coach').textContent = coachLine(L, S, stars);
@@ -4346,11 +4461,25 @@ function backToTitle(){
 
 /* ---------------- save / load ---------------- */
 const SAVE_KEY_RUSH = 'clonemart-rush-v1';
-function saveProgress(){ try { localStorage.setItem(SAVE_KEY_RUSH, JSON.stringify({v:1, best:G.best, tips:[...G.tips], team:G.team, muted})); } catch(e){} }
+function saveProgress(){ try { localStorage.setItem(SAVE_KEY_RUSH, JSON.stringify({v:2, best:G.best, diff:G.diff, coins:G.coins, owned:[...G.owned], equip:G.equip, ach:G.ach, tips:[...G.tips], team:G.team, muted})); } catch(e){} }
+function normBestKey(k){ return /^\d+$/.test(k) ? (LEVEL_IDS_V1[+k] || null) : k; }   // v1 saves keyed best by level index
+function mergeBest(src){
+  if (!src || typeof src !== 'object') return;
+  for (const k in src){
+    const id = normBestKey(k), b = src[k]; if (!id || !b || !isFinite(b.score) || !isFinite(b.stars)) continue;
+    const p = G.best[id] || {score:0, stars:0, crown:false};
+    G.best[id] = {score:Math.max(p.score, Math.max(0, b.score|0)), stars:clamp(Math.max(p.stars, b.stars|0), 0, 3), crown:!!(p.crown || b.crown)};
+  }
+}
 function loadProgress(){
   try {
     const d = JSON.parse(localStorage.getItem(SAVE_KEY_RUSH) || 'null'); if (!d) return;
-    if (d.best && typeof d.best === 'object') for (const k in d.best){ const b = d.best[k]; if (b && isFinite(b.score) && isFinite(b.stars)) G.best[k] = {score:Math.max(0, b.score|0), stars:clamp(b.stars|0, 0, 3)}; }
+    mergeBest(d.best);
+    if (DIFFS.some(x => x.id === d.diff)) G.diff = d.diff;
+    if (isFinite(d.coins) && d.coins >= 0) G.coins = Math.floor(d.coins);
+    if (Array.isArray(d.owned)) G.owned = new Set(d.owned.filter(x => typeof x === 'string'));
+    if (d.equip && typeof d.equip === 'object') G.equip = d.equip;
+    if (d.ach && typeof d.ach === 'object') G.ach = d.ach;
     if (Array.isArray(d.tips)) G.tips = new Set(d.tips);
     if (Array.isArray(d.team)) G.team = d.team.filter(id => ROLE[id]);
     if (typeof d.muted === 'boolean') muted = d.muted;
@@ -4624,10 +4753,7 @@ function boot(hotData){
   if (!isTouch) $('#howMove').textContent = 'WASD 走路，空白鍵拿起／放下，E 長按做動作，Q 換人。';
   if (isTouch) document.body.classList.add('touch');
   loadProgress();
-  if (hotData && hotData.best && typeof hotData.best === 'object') for (const k in hotData.best){   // hot reload: merge the snapshot (getSaveData)
-    const b = hotData.best[k], p = G.best[k] || {score:0, stars:0};
-    if (b && isFinite(b.score) && isFinite(b.stars)) G.best[k] = {score:Math.max(p.score, b.score|0), stars:clamp(Math.max(p.stars, b.stars|0), 0, 3)};
-  }
+  if (hotData && hotData.best) mergeBest(hotData.best);   // hot reload: merge the snapshot (getSaveData)
   if (hotData && Array.isArray(hotData.team) && !G.team.length) G.team = hotData.team.filter(id => ROLE[id]);
   buildWorld();
   buildKitchen();
@@ -4643,7 +4769,7 @@ function boot(hotData){
     sim(secs){ const n = Math.round(secs*30); for (let i=0;i<n && G.state === 'play';i++) simulate(1/30); if (G.state === 'ending'){ G.endT = 0; showResults(); } return G.state; },
     G, orders, SLOTS, SLOT, staff, customers, spills, LEVELS, RECIPES, ROLES, ITEMS, PLANS, APPL, COMBOS, MAX_FAILS_ENDLESS, scene, pickables,
     startLevel, setupWorld, endLevel, showResults, showLevels, showPrep, spawnOrder, spawnSpill, ignite, breakRandomMachine, grab, useTick, findTarget, switchChar, actGrab,
-    get player(){ return player; }, get owner(){ return owner; }, ROLE,
+    get player(){ return player; }, get owner(){ return owner; }, ROLE, CHAPTERS, DIFFS, COSMETICS, THEMES, effLevel, lvLabel, levelUnlocked, bestOf, applyCosmetics, applyTheme, saveProgress, loadProgress,
     botOwner(on){ G.bot = !!on; if (on){ ROLE.bot = {id:'bot', recipes:ALL_RECIPES.slice(), home:{x:4.2, z:2.4}, fixer:true}; owner.role = 'bot'; } else { owner.role = 'owner'; player = owner; } }, skipCountdown(){ if (G.state === 'countdown'){ G.cdT = 0; countdownTick(0); } },
   };
 }

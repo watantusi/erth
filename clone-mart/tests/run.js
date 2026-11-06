@@ -120,6 +120,7 @@ async function finishCountdown(page, maxMs) {
   const c0 = await page.evaluate(() => window.__cloneMart.G.cdT);
   if (await poll(() => page.evaluate(() => window.__cloneMart.G.state === 'play'), maxMs, 150)) return 'natural';
   const c1 = await page.evaluate(() => ({ st: window.__cloneMart.G.state, cd: window.__cloneMart.G.cdT }));
+  if (c1.st === 'play') return 'natural';   // it finished between the last poll and this read
   assert(c1.st === 'countdown', 'state "' + c1.st + '" while waiting for the countdown');
   assert(c1.cd < c0, `countdown not running (cdT ${c0} → ${c1.cd})`);
   await page.evaluate(() => window.__cloneMart.skipCountdown());
@@ -133,7 +134,8 @@ function qaLib() {
   const C = window.__cloneMart, N = window.__cloneMartNav, UX = window.__cloneMartUX;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const Q = window.__qa = { C };
-  C.G.skipTut = true;   // the level-1 tutorial pauses the clock and scripts tickets; logic tests run without it
+  C.G.skipTut = true;
+  C.G.diff = 'hard';   // star thresholds/timers in these tests are the base (挑戰) values   // the level-1 tutorial pauses the clock and scripts tickets; logic tests run without it
   Q.slot = id => { const s = C.SLOT[id]; if (!s) throw new Error('no station "' + id + '"'); return s; };
   Q.near = (sl, p) => sl.band ? { x: clamp(p.x, sl.band[0], sl.band[1]), z: clamp(p.z, sl.band[2], sl.band[3]) } : { x: sl.x, z: sl.z };
   Q.place = (s, x, z, rot) => { const a = s.agent; a.pos.x = x; a.pos.z = z; a.path.length = 0; s.pending = null; s.slip = null; if (rot !== undefined) { a.rot = rot; a.g.rotation.y = rot; } };
@@ -252,7 +254,7 @@ function qaLib() {
     C.G.money = money; C.G.time = L.len - 0.05;
     const st = C.sim(0.5);
     const html = document.getElementById('resStars').innerHTML;
-    return { st, stars: (html.split('<i>')[0].match(/★/g) || []).length, best: C.G.best[lv] && Object.assign({}, C.G.best[lv]),
+    return { st, stars: (html.split('<i>')[0].match(/★/g) || []).length, best: Object.assign({}, C.bestOf ? C.bestOf(lv) : C.G.best[lv]),
       receipt: document.getElementById('receipt').textContent, resultsVisible: !document.getElementById('results').hidden,
       next: { hidden: document.getElementById('btnNextLv').hidden, disabled: document.getElementById('btnNextLv').disabled } };
   };
@@ -880,7 +882,7 @@ async function desktopTrack() {
         await ready(sp);
         const b = await sp.evaluate(a => {
           const Q = __qa, C = Q.C;
-          const best = C.G.best[a.i0];
+          const best = C.bestOf ? C.bestOf(a.i0) : C.G.best[a.i0];
           if (!best || best.score !== a.score || best.stars !== 3) throw new Error('after reload best = ' + JSON.stringify(best));
           if (!Q.lvButtons()[a.i0 + 1]) throw new Error('unlock lost after reload');
           // roles: earn stars level by level, check the prep team buttons each time
@@ -910,7 +912,8 @@ async function desktopTrack() {
       await test('edge', 'hot reload: snapshot is registered and its data is restored on boot', async () => {
         const r = await H.page.evaluate(() => ({ snap: typeof window.__hotSnap === 'function' ? window.__hotSnap() : null, best: JSON.parse(JSON.stringify(__qa.C.G.best)), lv: __qa.lvButtons() }));
         assert(r.snap && r.snap.best, 'game did not register a hot snapshot');
-        assert(r.best[0] && r.best[0].score === 4321 && r.best[0].stars === 2, 'hot data not restored: best = ' + JSON.stringify(r.best));
+        const b0 = r.best['c1-1'] || r.best[0];   // v1 snapshots key by level index; the game migrates them to level ids
+        assert(b0 && b0.score === 4321 && b0.stars === 2, 'hot data not restored: best = ' + JSON.stringify(r.best));
         assert(r.lv[1] && r.lv[2], 'levels unlocked by the hot data are still locked');
         return 'best restored, levels unlocked';
       });
