@@ -1257,6 +1257,8 @@ async function progressionTrack(order, label) {
       const i0 = C.LEVELS.findIndex(L => !L.endless);
       Q.start(i0, [], true);
       C.applyTheme('default');
+      for (const id of Object.keys(C.THEMES)) C.applyTheme(id);   // themes build their dressing on first use: warm them up before the baseline
+      C.applyTheme('default');
       const base = count(), vBase = visible(), out = [];
       const r0 = routes(); if (r0 !== true) throw new Error('default store: ' + r0);
       let ids = Object.keys(C.THEMES).filter(id => id !== 'default'), synth = false;
@@ -1456,6 +1458,9 @@ async function progressionTrack(order, label) {
             owned: r.owned.filter(id => data.owned.includes(id)),
             equip: Object.fromEntries(Object.entries(data.equip).map(([role, sl]) => [role, Object.fromEntries(Object.keys(sl).map(k => [k, (r.equip[role] || {})[k]]))])),
           };
+          // coins may only grow: on boot the achievement system pays out rewards the saved progress already qualifies for
+          assert(r.coins >= data.coins, `reload ${k + 1}: coins ${r.coins} < ${data.coins}`);
+          data.coins = r.coins;
           for (const f of ['best', 'diff', 'coins', 'owned', 'equip', 'ach']) {
             const a = f in subset ? subset[f] : r[f];
             assert(JSON.stringify(a) === JSON.stringify(data[f]), `reload ${k + 1}: ${f} ${JSON.stringify(a)} ≠ ${JSON.stringify(data[f])}`);
