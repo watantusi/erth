@@ -23,6 +23,8 @@ const ACCEL_GROUND = 13.5;       // 指數平滑速率（加速）
 const DECEL_GROUND = 17.5;       // 指數平滑速率（減速）
 const ACCEL_AIR = 5.4;           // v2：空中控制比 v1 好一點，方便落在半徑 1 的平台上（v4 再好一點）
 const DECEL_AIR = 2.4;
+// v4.1（整合者）：地面走得慢，但起跳時水平速度放大，跳躍距離維持 v4 的水準，平台挑戰不會變難
+const AIR_BOOST = 1.45;
 // v4 步伐：每步的距離（世界單位）。比 v3 短，讓較慢的速度仍有輕快的步頻、腳不打滑
 const STRIDE_WALK = 0.74;
 const STRIDE_RUN = 1.02;
@@ -1458,6 +1460,7 @@ export function createPlayer({ scene, world }) {
     let targetSpeed = 0;
     if (tl > 1e-6 && wantMag > 0) {
       targetSpeed = (wantRun ? runSpeed : walkSpeed) * wantMag * (api.inWater ? WATER_SPEED : 1);
+      if (!wasGrounded) targetSpeed *= AIR_BOOST;
       _target.multiplyScalar(targetSpeed / tl);
     } else {
       _target.set(0, 0, 0);
@@ -1477,6 +1480,7 @@ export function createPlayer({ scene, world }) {
     jumpBuffer -= h;
     if (jumpBuffer > 0 && coyote > 0) {
       vRad = JUMP_SPEED * (api.inWater ? WATER_JUMP : 1);
+      if (!api.inWater) vel.multiplyScalar(AIR_BOOST);
       api.grounded = false;
       api.supportPlatform = null;
       coyote = 0;

@@ -12,8 +12,8 @@ export const MAX_TERRAIN = 3.2;      // 地形最高約可高出基準多少（�
 
 // 角色物理
 export const GRAVITY = 32;
-export const WALK_SPEED = 5.2;   // v4：放慢約 3 成（設定可調 慢/標準/快）
-export const RUN_SPEED = 8.4;
+export const WALK_SPEED = 4.0;   // v4.1：再放慢（設定可調 慢/標準/快）
+export const RUN_SPEED = 6.5;
 export const JUMP_SPEED = 12.5;
 export const PLAYER_RADIUS = 0.45;   // 與障礙物碰撞的半徑
 export const PLAYER_HEIGHT = 1.4;
@@ -99,7 +99,7 @@ export const TOTAL_QUESTS = 6;
 export const DAY_LENGTH = 480;          // 一整天（秒）：白天約 5 分、夜晚約 3 分
 export const START_TIME_OF_DAY = 0.3;   // 0 = 午夜、0.25 日出、0.5 正午、0.75 日落
 export const TRIAL_COUNT = 8;           // 計時挑戰的時光晶石數
-export const TRIAL_MEDALS = { gold: 60, silver: 90, bronze: 180 }; // 秒（v4：依 50 組隨機路線模擬調整）
+export const TRIAL_MEDALS = { gold: 78, silver: 115, bronze: 230 }; // 秒（依路線模擬，按 v4.1 速度等比例放寬）
 
 // ---- v4：可選角色、移動速度設定、地形 ----
 export const SPEED_SCALES = { slow: 0.8, normal: 1, fast: 1.3 }; // 設定「移動速度」

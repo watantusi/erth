@@ -7,7 +7,8 @@ import { clamp } from './utils.js';
 const JOY_RADIUS = 52;          // 搖桿最大位移（px），輸出 1.0
 const JOY_BASE_RADIUS = 64;     // 底座視覺半徑（px），用來把底座限制在螢幕內
 const JOY_DEADZONE = 0.12;
-const JOY_RUN = 0.9;            // 推超過此比例就跑步
+const JOY_RUN = 0.95;           // 推到邊緣……
+const JOY_RUN_HOLD = 700;       // ……並持續這麼多毫秒才開始跑（整合者：避免手機一推就跑太快）
 const JOY_FOLLOW = 1.45;        // 手指離中心超過此倍數時底座跟著滑動
 const JOY_ZONE_X = 0.45;        // 左側 45% 寬
 const JOY_ZONE_TOP = 0.25;      // 上方 25% 留給 HUD
@@ -187,7 +188,7 @@ export function createInput({ canvas, touchRoot }) {
   const mouse = { dragging: false, id: -1, x: 0, y: 0 };
 
   // ---- 觸控：搖桿與視角 ----
-  const joy = { active: false, id: -1, cx: 0, cy: 0, x: 0, y: 0, outX: 0, outY: 0, run: false };
+  const joy = { active: false, id: -1, cx: 0, cy: 0, x: 0, y: 0, outX: 0, outY: 0, run: false, edgeSince: 0 };
   const lookPtrs = []; // [{ id, x, y }]，最多兩個（第二個用來捏合）
   let pinchDist = 0;
 
@@ -226,8 +227,9 @@ export function createInput({ canvas, touchRoot }) {
     } else {
       joy.outX = 0; joy.outY = 0;
     }
-    const run = raw >= JOY_RUN;
-    if (run !== joy.run) { joy.run = run; joyBase.classList.toggle('running', run); }
+    // 推到邊緣要撐住一下才會跑（在 endFrame 檢查時間）
+    if (raw >= JOY_RUN) { if (!joy.edgeSince) joy.edgeSince = performance.now(); }
+    else { joy.edgeSince = 0; if (joy.run) { joy.run = false; joyBase.classList.remove('running'); } }
     const kd = Math.min(d, JOY_RADIUS);
     const kx = d > 1e-6 ? (dx / d) * kd : 0;
     const ky = d > 1e-6 ? (dy / d) * kd : 0;
@@ -240,6 +242,7 @@ export function createInput({ canvas, touchRoot }) {
     joy.id = -1;
     joy.outX = 0; joy.outY = 0;
     joy.run = false;
+    joy.edgeSince = 0;
     joyBase.classList.remove('active', 'running');
     joyBase.classList.add('idle');
     joyBase.style.left = '';
@@ -544,6 +547,11 @@ export function createInput({ canvas, touchRoot }) {
 
   let lastT = performance.now();
   function endFrame() {
+    if (joy.active && joy.edgeSince && !joy.run && performance.now() - joy.edgeSince >= JOY_RUN_HOLD) {
+      joy.run = true;
+      joyBase.classList.add('running');
+      recompute();
+    }
     state.jumpPressed = false;
     state.interactPressed = false;
     state.lookX = 0;
