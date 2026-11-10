@@ -25,7 +25,7 @@
   #hud .row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
   #clockText { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
   #timeSlider { width: 100%; accent-color: var(--accent); }
-  button { font: inherit; font-size: 13px; border: 0; border-radius: 10px; padding: 7px 10px; cursor: pointer; background: #eef1f5; color: var(--text); transition: transform .1s, background .2s; }
+  button { touch-action: manipulation; font: inherit; font-size: 13px; border: 0; border-radius: 10px; padding: 7px 10px; cursor: pointer; background: #eef1f5; color: var(--text); transition: transform .1s, background .2s; }
   button:hover { background: #e2e7ee; }
   button:active { transform: scale(.96); }
   button.primary { background: var(--accent); color: #fff; }
@@ -44,7 +44,18 @@
   #loader { position: fixed; inset: 0; z-index: 100; background: linear-gradient(#87ceeb, #cfeaff); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; font-size: 16px; transition: opacity .6s; }
   #loader .house { font-size: 54px; animation: hop 0.8s ease-in-out infinite; }
   @keyframes hop { 50% { transform: translateY(-14px); } }
+  .touchonly { display: none; } body.touch .touchonly { display: inline; }
+  #joy, #jumpBtn { display: none; position: fixed; z-index: 15; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #joy { left: calc(20px + env(safe-area-inset-left, 0px)); bottom: calc(24px + env(safe-area-inset-bottom, 0px)); width: 130px; height: 130px; border-radius: 50%; background: rgba(255,255,255,.28); border: 2px solid rgba(255,255,255,.7); box-shadow: 0 4px 18px rgba(0,0,0,.15); }
+  #joyKnob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%; background: rgba(255,255,255,.92); box-shadow: 0 3px 10px rgba(0,0,0,.25); }
+  #jumpBtn { right: calc(24px + env(safe-area-inset-right, 0px)); bottom: calc(40px + env(safe-area-inset-bottom, 0px)); width: 76px; height: 76px; border-radius: 50%; font-size: 15px; font-weight: 700; background: rgba(255,122,89,.92); color: #fff; box-shadow: 0 4px 18px rgba(0,0,0,.2); }
+  body.touch #joy, body.touch #jumpBtn { display: block; }
+  body.touch #info { bottom: auto; top: calc(150px + env(safe-area-inset-top, 0px)); }
+  body.touch #title p .kbd { display: none; }
   @media (max-width: 640px) {
+    body.touch #joy { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); width: 116px; height: 116px; }
+    body.touch #jumpBtn { bottom: calc(164px + env(safe-area-inset-bottom, 0px)); width: 66px; height: 66px; }
+    body.touch #info { top: calc(70px + env(safe-area-inset-top, 0px)); }
     #title { max-width: calc(100vw - 24px); right: 12px; padding: 10px 12px; }
     #title h1 { font-size: 17px; }
     #title p { display: none; }
@@ -69,7 +80,7 @@
 
 <div id="title" class="panel">
   <h1>🏘️ 晴空互動小鎮 <span class="toggle-help" id="helpBtn">說明</span></h1>
-  <p>🖱️ 拖曳旋轉視角、滾輪 / 雙指縮放<br>👆 點地面讓小人走過去，或用 <b>WASD / 方向鍵</b> 移動<br>🏠 點建築、🚗 汽車、🧍 路人、🌳 樹、⛲ 噴泉、⏰ 鐘塔都有反應<br>⭐ 收集小鎮裡的 12 顆星星！</p>
+  <p>🖱️ 拖曳旋轉視角、滾輪 / 雙指縮放<br>👆 點地面讓小人走過去，<span class="kbd">或用 <b>WASD / 方向鍵</b> 移動、空白鍵跳</span><span class="touchonly">或用左下搖桿移動</span><br>🏠 點建築、🚗 汽車、🧍 路人、🌳 樹、⛲ 噴泉、⏰ 鐘塔都有反應<br>⭐ 收集小鎮裡的 12 顆星星！</p>
 </div>
 
 <div id="hud" class="panel">
@@ -97,6 +108,8 @@
     <button id="closeBtn" aria-label="關閉">✕</button>
   </div>
 </div>
+<div id="joy" aria-label="移動搖桿"><div id="joyKnob"></div></div>
+<button id="jumpBtn" aria-label="跳">跳！</button>
 <div id="tip"></div>
 <div id="toast"></div>
 
@@ -154,7 +167,9 @@ function signTex(text, bg, fg) {
 /* 場景 / 相機 / 燈光                                                  */
 /* ------------------------------------------------------------------ */
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+if (isTouch) document.body.classList.add('touch');
+renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.5 : 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -174,7 +189,7 @@ const hemi = new THREE.HemisphereLight(0xdcefff, 0x6b8f4a, 1.1);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffffff, 2.6);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
 Object.assign(sun.shadow.camera, { left: -75, right: 75, top: 75, bottom: -75, near: 1, far: 320 });
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.03;
@@ -1233,11 +1248,28 @@ function blocked(x, z, r = 0.38) {
   for (const c of colliders) if (x > c.minX - r && x < c.maxX + r && z > c.minZ - r && z < c.maxZ + r) return true;
   return false;
 }
+const joy = { active: false, x: 0, y: 0, id: null };
+{
+  const pad = $('joy'), knob = $('joyKnob');
+  const move = (e) => {
+    const r = pad.getBoundingClientRect(), R = r.width / 2;
+    let dx = (e.clientX - r.left - R) / R, dy = (e.clientY - r.top - R) / R;
+    const m = Math.hypot(dx, dy); if (m > 1) { dx /= m; dy /= m; }
+    joy.x = dx; joy.y = dy;
+    knob.style.transform = `translate(${dx * R * 0.6}px, ${dy * R * 0.6}px)`;
+  };
+  const end = (e) => { if (e.pointerId !== joy.id) return; joy.active = false; joy.id = null; joy.x = joy.y = 0; knob.style.transform = ''; };
+  pad.addEventListener('pointerdown', e => { audio(); joy.active = true; joy.id = e.pointerId; pad.setPointerCapture(e.pointerId); playerState.target = null; move(e); e.preventDefault(); });
+  pad.addEventListener('pointermove', e => { if (e.pointerId === joy.id) move(e); });
+  pad.addEventListener('pointerup', end); pad.addEventListener('pointercancel', end);
+  $('jumpBtn').addEventListener('pointerdown', e => { audio(); e.preventDefault(); if (!playerState.jump) playerState.jump = 0.001; });
+}
 const tmpF = new THREE.Vector3(), tmpR = new THREE.Vector3();
 function updatePlayer(dt) {
   let mx = 0, mz = 0;
-  const kf = (keys.has('w') || keys.has('arrowup')) - (keys.has('s') || keys.has('arrowdown'));
-  const kr = (keys.has('d') || keys.has('arrowright')) - (keys.has('a') || keys.has('arrowleft'));
+  let kf = (keys.has('w') || keys.has('arrowup')) - (keys.has('s') || keys.has('arrowdown'));
+  let kr = (keys.has('d') || keys.has('arrowright')) - (keys.has('a') || keys.has('arrowleft'));
+  if (joy.active && Math.hypot(joy.x, joy.y) > 0.12) { kf = -joy.y; kr = joy.x; }
   if (kf || kr) {
     camera.getWorldDirection(tmpF); tmpF.y = 0; tmpF.normalize();
     tmpR.crossVectors(tmpF, camera.up).normalize();
@@ -1248,7 +1280,7 @@ function updatePlayer(dt) {
     if (Math.hypot(mx, mz) < 0.3) { playerState.target = null; mx = mz = 0; }
   }
   const len = Math.hypot(mx, mz);
-  const wantSpeed = len > 0 ? 6.5 : 0;
+  const wantSpeed = len > 0 ? 6.5 * (joy.active ? clamp(Math.hypot(joy.x, joy.y), 0.35, 1) : 1) : 0;
   playerState.speed += (wantSpeed - playerState.speed) * Math.min(1, dt * 10);
   if (len > 0) {
     mx /= len; mz /= len;
