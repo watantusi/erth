@@ -517,7 +517,7 @@ export function createUI(cb = {}) {
       const t = el('div', 'pm-toast');
       t.textContent = msg;
       toasts.appendChild(t);
-      while (toasts.children.length > 3) toasts.firstChild.remove();
+      while (toasts.children.length > 2) toasts.firstChild.remove();
       setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 400); }, 1800);
     },
 

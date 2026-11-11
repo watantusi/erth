@@ -590,7 +590,7 @@ kbd {
   position: absolute;
   left: 0; right: 0;
   margin: 0 auto;
-  bottom: calc(var(--pm-sab) + 200px);
+  bottom: calc(var(--pm-sab) + 48px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -612,7 +612,9 @@ kbd {
 }
 .pm-toast.out { opacity: 0; transform: translateY(-12px); }
 @keyframes pm-toast-in { from { opacity: 0; transform: translateY(16px) scale(.8); } to { opacity: 1; transform: none; } }
-@media (max-height: 500px) and (orientation: landscape) { .pm-toasts { bottom: calc(var(--pm-sab) + 24px); } }
+/* 觸控：避開右下加速鈕；toast 放在除草機下方，不擋住車子 */
+.pm-ui.is-touch .pm-toasts { bottom: calc(var(--pm-sab) + 140px); }
+@media (max-height: 500px) and (orientation: landscape) { .pm-ui .pm-toasts, .pm-ui.is-touch .pm-toasts { bottom: calc(var(--pm-sab) + 16px); } }
 .pm-flash { position: absolute; inset: 0; pointer-events: none; opacity: 0; z-index: 8; }
 .pm-flash.go { animation: pm-flash .45s ease-out both; }
 @keyframes pm-flash { from { opacity: .7; } to { opacity: 0; } }

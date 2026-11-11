@@ -41,7 +41,7 @@ export const LEVELS = [
   },
   {
     id: 3, name: '冰晶星', sub: '滑溜溜的凍原',
-    radius: 9, time: 150, target: 0.8, density: 5.5, traction: 2.0,
+    radius: 9, time: 165, target: 0.8, density: 5.5, traction: 2.0,
     rocks: 2, cacti: 0, crystals: 10, lava: 0, bugs: 0,
     regrow: 0,
     colors: {

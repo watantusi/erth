@@ -14,6 +14,7 @@ const MOW_R = 1.25;
 const WIDE_R = 2.3;
 const CAM_H = 4.4;
 const CAM_D = 6.8;
+let camH = CAM_H, camD = CAM_D; // 直向螢幕時相機拉高，看得到前方更多草地
 const MAX_LIVES = 3;
 const BUG_RAD = 0.6;
 const SEED_COL = { r: 1, g: 0.5, b: 0.9 };
@@ -80,6 +81,8 @@ const env = createEnvironment(scene);
 function onResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.fov = camera.aspect < 0.8 ? 72 : 62; // 直向手機看廣一點
+  const portrait = camera.aspect < 0.8;
+  camH = portrait ? 6.0 : CAM_H; camD = portrait ? 5.6 : CAM_D;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
@@ -373,7 +376,7 @@ function resetPlayer() {
 const camPos = V(), camUp = V(0, 1, 0), camLook = V();
 let shake = 0, menuAngle = 0;
 function playCamTarget(out) {
-  return out.copy(P.up).multiplyScalar(L.R + CAM_H).addScaledVector(P.fwd, -CAM_D);
+  return out.copy(P.up).multiplyScalar(L.R + camH).addScaledVector(P.fwd, -camD);
 }
 function snapCamera() {
   playCamTarget(camPos); camUp.copy(P.up);
@@ -424,7 +427,11 @@ window.addEventListener('keydown', (e) => {
   keys.add(c);
   if (c === 'KeyP' || c === 'Escape') { if (mode === 'play') pauseGame(); else if (mode === 'paused') resumeGame(); }
   if (c === 'KeyM') toggleMute();
-  if ((c === 'Enter' || c === 'Space') && mode === 'brief') startCountdown();
+  const onBtn = e.target && e.target.closest && e.target.closest('button'); // 已聚焦按鈕會自己觸發 click
+  if ((c === 'Enter' || c === 'Space') && mode === 'brief' && !onBtn) startCountdown();
+  else if (c === 'Enter' && mode === 'menu' && !onSelectScreen && !onBtn) { Sound.init(); Sound.play('click'); Sound.music(true); goSelect(); }
+  else if (c === 'Escape' && mode === 'menu' && onSelectScreen) goTitle();
+  else if (c === 'Escape' && mode === 'brief') goSelect();
 });
 window.addEventListener('keyup', (e) => keys.delete(e.code));
 window.addEventListener('blur', () => { keys.clear(); if (mode === 'play') pauseGame(); });
@@ -608,6 +615,7 @@ function updateBugs(dt, t) {
     b.up.applyQuaternion(_q).normalize(); b.fwd.applyQuaternion(_q);
     b.fwd.addScaledVector(b.up, -b.fwd.dot(b.up)).normalize();
     orient(b.group, b.up, b.fwd, R);
+    b.update(dt, t);
     if (b.up.dot(P.up) > Math.cos((PLAYER_RAD + BUG_RAD) / R)) {
       if (P.invuln <= 0) { b.cool = 4; b.fwd.negate(); b.wander = 2; b.turn = 0; }
       hurt(b.up, '🐛 被播種蟲咬了！');
@@ -644,8 +652,15 @@ function updateArrow() {
   const R = L.R;
   _a.copy(L.radarDir).addScaledVector(P.up, -L.radarDir.dot(P.up)).normalize(); // 切線方向
   arrow.position.copy(P.up).multiplyScalar(R + 2.7 + Math.sin(T * 4) * 0.12);
-  _b.crossVectors(P.up, _a).normalize();
-  _m.makeBasis(_b, P.up, _a);
+  // 箭頭平躺在「面向相機」的平面上，指向目標在螢幕上的投影方向；
+  // 否則目標在正前/正後方時只看得到圓錐底面（一顆黃點）
+  _c.subVectors(camLook, camPos).normalize();          // 視線方向
+  _b.copy(_a).addScaledVector(_c, -_a.dot(_c));
+  if (_b.lengthSq() < 1e-4) _b.copy(camUp).addScaledVector(_c, -camUp.dot(_c));
+  _b.normalize();
+  _c.negate();                                          // y 軸朝向相機
+  _d.crossVectors(_c, _b).normalize();
+  _m.makeBasis(_d, _c, _b);
   arrow.quaternion.setFromRotationMatrix(_m);
 }
 
@@ -691,7 +706,8 @@ function animateIdle(dt) {
 }
 
 // ---------- 流程 ----------
-let countdownT = 0, countdownStep = -1, endT = 0, pendingResult = null;
+let countdownT = 0, countdownStep = -1, endT = 0, pendingResult = null, countdownHideTimer = 0;
+let onSelectScreen = false; // 選關畫面的「返回」要回標題
 
 function toggleMute() { Sound.init(); const m = Sound.toggleMute(); ui.setMuted(m); }
 
@@ -700,6 +716,7 @@ function goTitle() {
   Sound.setEngine(0, false); Sound.setMow(0);
   if (!L) buildLevel(Math.min(save.unlocked, LEVELS.length) - 1);
   arrow.visible = false;
+  onSelectScreen = false;
   ui.showHUD(false);
   ui.showTitle();
 }
@@ -708,12 +725,14 @@ function goSelect() {
   Sound.setEngine(0, false); Sound.setMow(0);
   if (!L) buildLevel(Math.min(save.unlocked, LEVELS.length) - 1);
   arrow.visible = false;
+  onSelectScreen = true;
   ui.showHUD(false);
   ui.showSelect(LEVELS, save);
 }
 function openBriefing(idx) {
   buildLevel(idx);
   mode = 'brief';
+  onSelectScreen = false;
   ui.showHUD(false);
   ui.showBriefing(LEVELS[idx], idx);
 }
@@ -721,6 +740,7 @@ function startCountdown() {
   ui.hideScreens();
   ui.showHUD(true);
   resetPlayer();
+  clearTimeout(countdownHideTimer); ui.showCountdown(null);
   mode = 'countdown'; countdownT = 0; countdownStep = -1;
   updateHUD();
 }
@@ -771,7 +791,7 @@ const ui = createUI({
   onPause() { pauseGame(); },
   onResume() { Sound.play('click'); resumeGame(); },
   onRestart() { Sound.play('click'); openBriefing(levelIdx); startCountdown(); },
-  onMenu() { Sound.play('click'); goSelect(); },
+  onMenu() { Sound.play('click'); if (mode === 'menu' && onSelectScreen) goTitle(); else goSelect(); },
   onNext() { Sound.play('click'); openBriefing(Math.min(LEVELS.length - 1, levelIdx + 1)); },
   onMute() { toggleMute(); },
 });
@@ -799,7 +819,7 @@ function tick(dt) {
       if (step !== countdownStep) {
         countdownStep = step;
         if (step < 3) { ui.showCountdown(String(3 - step)); Sound.play('count'); }
-        else { ui.showCountdown('出發!'); Sound.play('go'); mode = 'play'; setTimeout(() => ui.showCountdown(null), 700); }
+        else { ui.showCountdown('出發!'); Sound.play('go'); mode = 'play'; clearTimeout(countdownHideTimer); countdownHideTimer = setTimeout(() => ui.showCountdown(null), 700); }
       }
       animateIdle(dt);
       updatePlayCamera(dt);
@@ -828,5 +848,5 @@ if (boot) boot.remove();
 requestAnimationFrame(frame);
 
 // 方便測試
-window.__game = { get L() { return L; }, P, get mode() { return mode; }, LEVELS, save, buildLevel, openBriefing, startCountdown, tick,
+window.__game = { get L() { return L; }, P, get mode() { return mode; }, LEVELS, save, renderer, buildLevel, openBriefing, startCountdown, tick,
   sim(sec, step = 1 / 30) { for (let t = 0; t < sec; t += step) tick(step); } };
