@@ -24,7 +24,7 @@ export const LEVELS = [
   },
   {
     id: 2, name: '沙丘星', sub: '仙人掌荒漠',
-    radius: 9, time: 110, target: 0.8, density: 5.5, traction: 9,
+    radius: 9, time: 130, target: 0.8, density: 5.5, traction: 9,
     rocks: 4, cacti: 12, crystals: 0, lava: 0, bugs: 0,
     regrow: 0,
     colors: {
@@ -41,7 +41,7 @@ export const LEVELS = [
   },
   {
     id: 3, name: '冰晶星', sub: '滑溜溜的凍原',
-    radius: 9, time: 120, target: 0.8, density: 5.5, traction: 1.3,
+    radius: 9, time: 150, target: 0.8, density: 5.5, traction: 2.0,
     rocks: 2, cacti: 0, crystals: 10, lava: 0, bugs: 0,
     regrow: 0,
     colors: {
@@ -58,7 +58,7 @@ export const LEVELS = [
   },
   {
     id: 4, name: '熔岩星', sub: '滾燙的火山地帶',
-    radius: 10, time: 130, target: 0.8, density: 5.5, traction: 9,
+    radius: 10, time: 150, target: 0.8, density: 5.5, traction: 9,
     rocks: 6, cacti: 0, crystals: 0, lava: 8, bugs: 0,
     regrow: 0,
     colors: {
@@ -75,7 +75,7 @@ export const LEVELS = [
   },
   {
     id: 5, name: '紫晶星', sub: '播種蟲的巢穴',
-    radius: 10.5, time: 170, target: 0.8, density: 5.5, traction: 9,
+    radius: 10.5, time: 180, target: 0.78, density: 5.5, traction: 9,
     rocks: 0, cacti: 0, crystals: 6, lava: 0, bugs: 2,
     regrow: 0.12,
     colors: {
@@ -92,8 +92,8 @@ export const LEVELS = [
   },
   {
     id: 6, name: '暗影星', sub: '終章・夜光草原',
-    radius: 11, time: 200, target: 0.8, density: 5.5, traction: 3.5,
-    rocks: 4, cacti: 6, crystals: 0, lava: 6, bugs: 3,
+    radius: 11, time: 220, target: 0.78, density: 5.5, traction: 4.5,
+    rocks: 4, cacti: 6, crystals: 0, lava: 6, bugs: 2,
     regrow: 0.12,
     colors: {
       ground: [0x141a24, 0x1c1030],

@@ -398,18 +398,10 @@ kbd {
   border-radius: 2px;
   box-shadow: 0 0 6px rgba(255,255,255,.8);
 }
-.pm-prog-target span {
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-top: 1px;
-  font-size: 10px;
-  color: #fff;
-  opacity: .85;
-}
+.pm-prog-target span { display: none; }
+.pm-hud-pct small { font-size: 13px; font-weight: 700; color: var(--pm-dim); margin-left: 4px; }
 .pm-hud-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; }
-.pm-hud-pct { font-size: 20px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.pm-hud-pct { white-space: nowrap; font-size: 20px; font-weight: 900; font-variant-numeric: tabular-nums; }
 .pm-lives { font-size: 16px; letter-spacing: 1px; white-space: nowrap; }
 .pm-lives .empty { opacity: .45; }
 .pm-boost { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
@@ -438,9 +430,11 @@ kbd {
 
 .pm-radar {
   position: absolute;
-  left: 50%;
+  left: 0; right: 0;
+  margin: 0 auto;
+  width: max-content;
+  max-width: calc(100% - 16px);
   top: calc(var(--pm-sat) + 128px);
-  transform: translateX(-50%);
   padding: 8px 16px;
   border-radius: 999px;
   background: rgba(255, 210, 63, .9);
@@ -469,17 +463,22 @@ kbd {
 .pm-power-t { color: var(--pm-yellow); font-variant-numeric: tabular-nums; }
 .pm-power.ending { animation: pm-blink .35s steps(2, jump-none) infinite alternate; }
 
-/* 窄螢幕：計時器移到資訊欄下方中間 */
+/* 窄螢幕：改成流式排版，計時器置中於資訊欄下方 */
 @media (max-width: 560px) {
-  .pm-hud-top { flex-wrap: wrap; }
+  .pm-hud { display: flex; flex-wrap: wrap; align-content: flex-start; align-items: flex-start; gap: 8px; }
+  .pm-hud-top { display: contents; }
   .pm-hud-info { flex: 1 1 0; order: 1; }
   .pm-hud-btns { order: 2; flex-direction: column; }
-  .pm-timer { order: 3; position: absolute; left: 50%; transform: translateX(-50%); top: calc(var(--pm-sat) + 8px + 118px); margin: 0; }
-  .pm-timer.low { animation-name: pm-blink-c; }
-  .pm-radar { top: calc(var(--pm-sat) + 180px); }
-  .pm-powers { margin-top: 6px; }
+  .pm-powers { order: 3; width: 100%; flex-direction: row; flex-wrap: wrap; margin: 0; }
+  .pm-timer { order: 4; margin: 0 auto; }
+  .pm-hud > .pm-radar { order: 6; position: static; margin: 0 auto; }
+  .pm-hud::before, .pm-hud::after { content: ''; flex: 0 0 100%; height: 0; margin-top: -8px; }
+  .pm-hud::before { order: 3; }
+  .pm-hud::after { order: 5; }
+  .pm-hud > * { flex-shrink: 0; }
+  .pm-hud-info { flex-shrink: 1; }
+  .pm-powers:empty, .pm-powers:not(:has(.pm-power:not([hidden]))) { display: none; }
 }
-@keyframes pm-blink-c { from { opacity: 1; transform: translateX(-50%) scale(1.06); } to { opacity: .45; transform: translateX(-50%) scale(1); } }
 /* 橫向手機：矮螢幕 */
 @media (max-height: 500px) and (orientation: landscape) {
   .pm-hud-info { flex-basis: 260px; padding: 6px 10px 8px; }
@@ -589,9 +588,9 @@ kbd {
 }
 .pm-toasts {
   position: absolute;
-  left: 50%;
-  bottom: calc(var(--pm-sab) + 150px);
-  transform: translateX(-50%);
+  left: 0; right: 0;
+  margin: 0 auto;
+  bottom: calc(var(--pm-sab) + 200px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -630,4 +629,26 @@ kbd {
 
 @media (prefers-reduced-motion: reduce) {
   .pm-logo-main, .pm-brief-ball, .pm-allclear, .pm-joy-hint, .pm-radar { animation: none; }
+}
+
+/* 矮螢幕（橫向手機）：面板緊湊化，盡量一屏放下 */
+@media (max-height: 500px) {
+  .pm-panel { padding: 12px 16px; border-radius: 20px; }
+  .pm-brief { max-width: 620px; }
+  .pm-brief-head { margin-bottom: 8px; }
+  .pm-brief-ball { width: 56px; height: 56px; }
+  .pm-stats { margin-bottom: 8px; }
+  .pm-stat { padding: 4px 10px; }
+  .pm-stat-v { font-size: 22px; }
+  .pm-hz, .pm-tip { padding: 6px 12px; margin-bottom: 8px; font-size: 14px; }
+  .pm-big { min-height: 48px; font-size: 18px; }
+  .pm-result { max-width: 560px; }
+  .pm-big-stars { margin: 4px 0 8px; }
+  .pm-bs { font-size: 46px; }
+  .pm-result-btns, .pm-pause .pm-col { flex-direction: row; flex-wrap: wrap; justify-content: center; }
+  .pm-result-btns .pm-btn, .pm-pause .pm-col .pm-btn { flex: 1 1 auto; }
+  .pm-pause { max-width: 560px; }
+  .pm-pause .pm-h2 { margin-bottom: 10px; }
+  .pm-pause-mute { margin-top: 10px; }
+  .pm-reason { margin: 6px 0 10px; }
 }

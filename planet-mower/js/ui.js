@@ -126,7 +126,10 @@ export function createUI(cb = {}) {
       <div class="pm-title-spacer"></div>`;
     const btns = el('div', 'pm-title-btns');
     btns.appendChild(button('▶ 開始遊戲', 'pm-primary pm-big', () => call('onPlay')));
-    const helpBtn = button('❓ 操作說明', 'pm-secondary', () => help.hidden = !help.hidden);
+    const helpBtn = button('❓ 操作說明', 'pm-secondary', () => {
+      help.hidden = !help.hidden;
+      if (!help.hidden) requestAnimationFrame(() => { try { help.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (_) { /* ignore */ } });
+    });
     btns.appendChild(helpBtn);
     wrap.appendChild(btns);
     const help = el('div', 'pm-panel pm-help');
@@ -204,7 +207,7 @@ export function createUI(cb = {}) {
           <div class="pm-prog-target"><span></span></div>
         </div>
         <div class="pm-hud-row">
-          <span class="pm-hud-pct">0%</span>
+          <span class="pm-hud-pct"><span>0%</span><small></small></span>
           <span class="pm-lives"></span>
         </div>
         <div class="pm-boost"><span class="pm-boost-ico">⚡</span><div class="pm-boost-bar"><div class="pm-boost-fill"></div></div></div>
@@ -219,7 +222,7 @@ export function createUI(cb = {}) {
   const H = {
     lv: q('.pm-hud-lv'), title: q('.pm-hud-title'), fill: q('.pm-prog-fill'), target: q('.pm-prog-target'),
     pct: q('.pm-hud-pct'), lives: q('.pm-lives'), boost: q('.pm-boost-fill'), timer: q('.pm-timer'),
-    radar: q('.pm-radar'), powers: q('.pm-powers'), btns: q('.pm-hud-btns'), prog: q('.pm-prog')
+    radar: q('.pm-radar'), pctN: q('.pm-hud-pct span'), pctT: q('.pm-hud-pct small'), powers: q('.pm-powers'), btns: q('.pm-hud-btns'), prog: q('.pm-prog')
   };
   {
     const pb = button('⏸', 'pm-icon', () => call('onPause'));
@@ -469,11 +472,12 @@ export function createUI(cb = {}) {
       set('target', tgt, v => {
         H.target.style.left = Math.min(100, v) + '%';
         H.target.firstChild.textContent = Math.round(v) + '%';
+        H.pctT.textContent = '/ ' + Math.round(v) + '%';
       });
       const pr = Math.round(pct * 10) / 10;
       set('pct', pr, v => {
         H.fill.style.width = v + '%';
-        H.pct.textContent = Math.floor(v) + '%';
+        H.pctN.textContent = Math.floor(v) + '%';
       });
       set('reached', pct >= tgt, v => H.prog.classList.toggle('reached', v));
       const ts = Math.max(0, Math.ceil(h.time || 0));

@@ -16,7 +16,8 @@ const CAM_H = 4.4;
 const CAM_D = 6.8;
 const MAX_LIVES = 3;
 const BUG_RAD = 0.6;
-const BUG_SEED_R = 0.95;
+const SEED_COL = { r: 1, g: 0.5, b: 0.9 };
+const BUG_SEED_R = 0.6;
 
 // ---------- 小工具 ----------
 function mulberry32(a) {
@@ -430,6 +431,7 @@ window.addEventListener('blur', () => { keys.clear(); if (mode === 'play') pause
 document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'play') pauseGame(); });
 
 function readInput() {
+  if (window.__bot) return window.__bot(P, L);
   let thr = 0, steer = 0, boost = false;
   if (keys.has('KeyW') || keys.has('ArrowUp')) thr += 1;
   if (keys.has('KeyS') || keys.has('ArrowDown')) thr -= 1;
@@ -455,7 +457,8 @@ function hurt(fromDir, msg) {
   P.vel.copy(_a.normalize()).multiplyScalar(9);
   Sound.play('hit');
   ui.flash('rgba(255,60,60,0.45)');
-  if (msg) ui.toast(msg);
+  if (msg) toast(msg);
+  if (window.__hurtLog) window.__hurtLog.push(msg);
   for (let i = 0; i < 14; i++) {
     const x = P.up.x * L.R, y = P.up.y * L.R, z = P.up.z * L.R;
     emit(x, y, z, P.up.x, P.up.y, P.up.z, { r: 1, g: 0.45, b: 0.2 }, 4);
@@ -483,6 +486,7 @@ function updatePlayer(dt) {
   if (P.stun > 0) { P.stun -= dt; thr = 0; steer = 0; boost = false; }
   if (P.invuln > 0) P.invuln -= dt;
   if (P.wideT > 0) P.wideT -= dt;
+  if (P.cactusCD > 0) P.cactusCD -= dt;
   const boosting = boost && thr > 0 && P.boost > 1;
   if (boosting && !P.boosting) Sound.play('boost');
   P.boosting = boosting;
@@ -509,8 +513,8 @@ function updatePlayer(dt) {
   for (const o of L.obstacles) {
     const hit = pushOut(o);
     if (hit) {
-      if (o.type === 'cactus' && P.invuln <= 0 && P.stun <= 0) {
-        P.stun = 1.0; shake = 0.3; Sound.play('bump'); ui.toast('🌵 好刺！暈頭轉向…');
+      if (o.type === 'cactus' && P.invuln <= 0 && P.stun <= 0 && !(P.cactusCD > 0)) {
+        P.stun = 1.0; P.cactusCD = 2.5; shake = 0.3; Sound.play('bump'); toast('🌵 好刺！暈頭轉向…');
         P.vel.multiplyScalar(0.3);
       } else if (hit > 1.5) { Sound.play('bump'); shake = Math.min(0.25, hit * 0.04); }
     }
@@ -533,7 +537,11 @@ function updateGrass(dt) {
   const cx = P.up.x * R + P.fwd.x * 0.45, cy = P.up.y * R + P.fwd.y * 0.45, cz = P.up.z * R + P.fwd.z * 0.45;
   const bugs = L.bugs, nb = bugs.length;
   const bp = [];
-  for (let j = 0; j < nb; j++) bp.push(bugs[j].up.x * R, bugs[j].up.y * R, bugs[j].up.z * R);
+  for (let j = 0; j < nb; j++) {
+    // 追人時不播種；播種點在蟲的後方
+    if (bugs[j].chase || ((T + j * 2.7) % 8) > 3) bp.push(1e9, 1e9, 1e9);
+    else bp.push((bugs[j].up.x * R - bugs[j].fwd.x * 0.5), (bugs[j].up.y * R - bugs[j].fwd.y * 0.5), (bugs[j].up.z * R - bugs[j].fwd.z * 0.5));
+  }
   const s2 = BUG_SEED_R * BUG_SEED_R;
   const regrow = !!L.def.regrow;
   let changed = false, cuts = 0;
@@ -551,11 +559,11 @@ function updateGrass(dt) {
     } else {
       if (regrow && G.weed[i]) {
         G.timer[i] -= dt;
-        if (G.timer[i] <= 0) { cut[i] = 0; L.mowed--; changed = true; continue; }
+        if (G.timer[i] <= 0) { cut[i] = 0; G.weed[i] = 0; L.mowed--; changed = true; continue; }
       }
       for (let j = 0; j < nb; j++) {
         const dx = x - bp[j * 3], dy = y - bp[j * 3 + 1], dz = z - bp[j * 3 + 2];
-        if (dx * dx + dy * dy + dz * dz < s2) { cut[i] = 0; L.mowed--; changed = true; break; }
+        if (dx * dx + dy * dy + dz * dz < s2) { cut[i] = 0; L.mowed--; changed = true; if (Math.random() < 0.3) emit(x, y, z, x / R, y / R, z / R, SEED_COL, 1.5); break; }
       }
     }
   }
@@ -581,7 +589,8 @@ function updateBugs(dt, t) {
   const R = L.R;
   for (const b of L.bugs) {
     const dist = Math.acos(Math.max(-1, Math.min(1, b.up.dot(P.up)))) * R;
-    b.chase = dist < 7;
+    if (b.cool > 0) b.cool -= dt;
+    b.chase = dist < 5.5 && !(b.cool > 0);
     let turn;
     if (b.chase) {
       _a.copy(P.up).addScaledVector(b.up, -P.up.dot(b.up)).normalize();
@@ -593,13 +602,16 @@ function updateBugs(dt, t) {
       turn = b.turn;
     }
     b.fwd.applyAxisAngle(b.up, turn * dt);
-    const sp = b.chase ? 4.3 : 3.0;
+    const sp = b.chase ? 3.8 : 2.8;
     _a.crossVectors(b.up, b.fwd).normalize();
     _q.setFromAxisAngle(_a, (sp * dt) / R);
     b.up.applyQuaternion(_q).normalize(); b.fwd.applyQuaternion(_q);
     b.fwd.addScaledVector(b.up, -b.fwd.dot(b.up)).normalize();
     orient(b.group, b.up, b.fwd, R);
-    if (b.up.dot(P.up) > Math.cos((PLAYER_RAD + BUG_RAD) / R)) hurt(b.up, '🐛 被播種蟲咬了！');
+    if (b.up.dot(P.up) > Math.cos((PLAYER_RAD + BUG_RAD) / R)) {
+      if (P.invuln <= 0) { b.cool = 4; b.fwd.negate(); b.wander = 2; b.turn = 0; }
+      hurt(b.up, '🐛 被播種蟲咬了！');
+    }
   }
 }
 
@@ -611,9 +623,9 @@ function updatePickups(dt, t, active) {
       if (active && P.up.dot(p.dir) > Math.cos(1.2 / R)) {
         p.active = false; p.group.visible = false; p.respawn = 14;
         Sound.play('pickup');
-        if (p.type === 'wide') { P.wideT = 10; ui.toast('🔶 超寬刀片 10 秒！'); }
-        else if (p.type === 'time') { L.time += 12; ui.toast('⏱️ 時間 +12 秒'); }
-        else { P.boost = 100; ui.toast('⚡ 加速能量全滿！'); }
+        if (p.type === 'wide') { P.wideT = 10; toast('🔶 超寬刀片 10 秒！'); }
+        else if (p.type === 'time') { L.time += 12; toast('⏱️ 時間 +12 秒'); }
+        else { P.boost = 100; toast('⚡ 加速能量全滿！'); }
         const x = p.dir.x * (R + 0.9), y = p.dir.y * (R + 0.9), z = p.dir.z * (R + 0.9);
         const col = p.type === 'wide' ? { r: 1, g: 0.6, b: 0.2 } : p.type === 'time' ? { r: 0.3, g: 0.95, b: 1 } : { r: 1, g: 0.9, b: 0.2 };
         for (let i = 0; i < 20; i++) emit(x, y, z, p.dir.x, p.dir.y, p.dir.z, col, 3.5);
@@ -736,7 +748,7 @@ function endLevel(win, reason) {
     save.unlocked = Math.max(save.unlocked, Math.min(LEVELS.length, L.idx + 2));
     persist();
     Sound.play('win');
-    ui.toast('🎉 草坪整理完成！');
+    toast('🎉 草坪整理完成！');
     const x = P.up.x * L.R, y = P.up.y * L.R, z = P.up.z * L.R;
     for (let i = 0; i < 60; i++) emit(x, y, z, P.up.x, P.up.y, P.up.z, { r: Math.random(), g: 1, b: Math.random() }, 6);
   } else {
@@ -750,6 +762,8 @@ function endLevel(win, reason) {
   updateHUD();
 }
 
+let lastToast = '', lastToastT = -9;
+function toast(msg) { if (mode !== 'play' && mode !== 'ending') return; if (msg === lastToast && T - lastToastT < 2) return; lastToast = msg; lastToastT = T; ui.toast(msg); }
 const ui = createUI({
   onPlay() { Sound.init(); Sound.play('click'); Sound.music(true); goSelect(); },
   onSelect(idx) { Sound.init(); Sound.play('click'); openBriefing(idx); },
@@ -769,6 +783,10 @@ function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
   last = now;
+  tick(dt);
+  renderer.render(scene, camera);
+}
+function tick(dt) {
   if (mode !== 'paused') T += dt;
   grassUniforms.uTime.value = T;
 
@@ -802,7 +820,6 @@ function frame(now) {
     if (mode !== 'paused') updateParticles(dt);
     env.update(dt, T, camera);
   }
-  renderer.render(scene, camera);
 }
 
 goTitle();
@@ -811,4 +828,5 @@ if (boot) boot.remove();
 requestAnimationFrame(frame);
 
 // 方便測試
-window.__game = { get L() { return L; }, P, get mode() { return mode; }, LEVELS, save, buildLevel, openBriefing, startCountdown };
+window.__game = { get L() { return L; }, P, get mode() { return mode; }, LEVELS, save, buildLevel, openBriefing, startCountdown, tick,
+  sim(sec, step = 1 / 30) { for (let t = 0; t < sec; t += step) tick(step); } };
