@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#05060f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>星際除草王</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#05060f;overscroll-behavior:none}
+  #game{position:fixed;inset:0;z-index:0;touch-action:none}
+  #game canvas{display:block;width:100%;height:100%}
+  #boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#9be15d;
+    font:700 20px "PingFang TC","Microsoft JhengHei","Noto Sans TC",system-ui,sans-serif;background:#05060f;z-index:999}
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<div id="game"></div>
+<div id="boot">🚀 星球載入中…</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
